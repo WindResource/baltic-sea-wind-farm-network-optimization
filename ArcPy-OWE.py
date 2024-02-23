@@ -253,19 +253,19 @@ def add_all_rasters_to_map(output_folder: str, map_frame_name: str) -> None:
 
 if __name__ == "__main__":
     # Prompt the user for the necessary parameters
-    year = arcpy.GetParameterAsText(0)
-    raster_path = arcpy.GetParameterAsText(1)
-    output_folder = arcpy.GetParameterAsText(2)
-    shapefile = arcpy.GetParameterAsText(3)
+    year: str = arcpy.GetParameterAsText(0)
+    raster_path: str = arcpy.GetParameterAsText(1)
+    output_folder: str = arcpy.GetParameterAsText(2)
+    shapefile: str = arcpy.GetParameterAsText(3)
     water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
-    n_wind_turbines = int(arcpy.GetParameterAsText(8))
-    project_path = arcpy.GetParameterAsText(9) 
-    map_frame_name = arcpy.GetParameterAsText(10)
-    port_distance = float(arcpy.GetParameterAsText(11))
-    WT_rated_power = float(arcpy.GetParameterAsText(12))
-    include_install_costs = arcpy.GetParameter(13)
+    n_wind_turbines: int = int(arcpy.GetParameterAsText(8))
+    project_path: str = arcpy.GetParameterAsText(9) 
+    map_frame_name: str = arcpy.GetParameterAsText(10)
+    port_distance: float = float(arcpy.GetParameterAsText(11))
+    WT_rated_power: float = float(arcpy.GetParameterAsText(12))
+    include_install_costs: bool = arcpy.GetParameter(13)
 
-    result_raster = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
+    result_raster: Tuple[Optional[str], Optional[str], Optional[str], Optional[str]] = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
 
     if result_raster is not None:
         add_all_rasters_to_map(output_folder, map_frame_name)
