@@ -1,88 +1,49 @@
-import os
 import arcpy
+import os
 
-def select_and_save_polygons_by_country(input_shapefile, output_shapefile, country_name):
-    # Set the workspace
-    arcpy.env.workspace = os.path.dirname(input_shapefile)
+def create_shapefile(input_shapefile: str, output_folder: str, selected_country: str, selected_statuses: list) -> str:
+    """
+    Create shapefiles for the specified combination of country and statuses based on the input shapefile.
 
-    # Ensure the input shapefile has an attribute field for the country
-    country_field = "Country"  # Change this to the actual field name in your shapefile
-    if country_field not in [field.name for field in arcpy.ListFields(input_shapefile)]:
-        arcpy.AddError(f"The specified field '{country_field}' does not exist in the shapefile.")
-        return
+    Parameters:
+    - input_shapefile (str): Path to the input shapefile.
+    - output_folder (str): Path to the output folder where shapefiles will be saved.
+    - selected_country (str): The selected country.
+    - selected_statuses (list): List of selected statuses.
 
-    # Build a SQL expression to select features based on the country
-    sql_expression = f"{arcpy.AddFieldDelimiters(input_shapefile, country_field)} = '{country_name}'"
+    Returns:
+    - str: A message indicating the result of the operation.
+    """
+    try:
+        # Create a SQL expression to select features for the specified combination and statuses
+        status_conditions = " OR ".join([arcpy.AddFieldDelimiters(input_shapefile, "Status") + " = '{}'".format(status) for status in selected_statuses])
+        sql_expression = (
+            arcpy.AddFieldDelimiters(input_shapefile, "Country") + " = '{}' AND (" + status_conditions + ")"
+        ).format(selected_country)
 
-    # Make a feature layer to perform the selection
-    arcpy.MakeFeatureLayer_management(input_shapefile, "temp_layer", sql_expression)
+        # Create the new shapefile for the specified combination and statuses
+        output_shapefile = os.path.join(output_folder, f"offshore_wind_farms_{selected_country}_{'_'.join(selected_statuses)}.shp")
+        arcpy.Select_analysis(input_shapefile, output_shapefile, sql_expression)
 
-    # Select features based on the SQL expression
-    arcpy.SelectLayerByAttribute_management("temp_layer", "NEW_SELECTION", sql_expression)
+        return f"Shapefile created successfully for {selected_country}, {', '.join(selected_statuses)}."
+    except Exception as e:
+        return str(e)
 
-    # Construct the output shapefile path in the specified Results folder
-    script_directory = os.path.dirname(os.path.abspath(__file__))
-    output_folder = os.path.join(script_directory, "Results")
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+if __name__ == "__main__":
+        # Get the input shapefile, output folder, country, and statuses from the user input
+        input_shapefile: str = arcpy.GetParameterAsText(0)
+        output_folder: str = arcpy.GetParameterAsText(1)
+        selected_country: str = arcpy.GetParameterAsText(2)
+        selected_statuses: list = arcpy.GetParameterAsText(3).split(";")  # Use MultiValue input, separated by semicolon
 
-    output_shapefile = os.path.join(output_folder, f"{country_name}_selected_features.shp")
+        # Validate input parameters
+        if not arcpy.Exists(input_shapefile):
+            arcpy.AddError("Input shapefile does not exist.")
+        elif not os.path.isdir(output_folder):
+            arcpy.AddError("Output folder is not valid.")
+        else:
+            # Execute the main function
+            result_message: str = create_shapefile(input_shapefile, output_folder, selected_country, selected_statuses)
 
-    # Copy the selected features to a new shapefile
-    arcpy.CopyFeatures_management("temp_layer", output_shapefile)
-
-    # Clean up
-    arcpy.Delete_management("temp_layer")
-
-    arcpy.AddMessage(f"Selected features for {country_name} saved to {output_shapefile}.")
-
-# Set default file paths relative to the script location
-default_input_shapefile = os.path.join("Data", "Wind Farms (polygons)", "windfarmspolyPolygon.shp")
-default_output_folder = os.path.join("Results")
-default_country_to_select = "YourCountry"  # Replace with the actual country name
-
-# Create parameters for the script tool
-input_shapefile_param = arcpy.Parameter(
-    displayName="Input Shapefile",
-    name="input_shapefile",
-    datatype="DEShapefile",
-    parameterType="Required",
-    direction="Input",
-    defaultValue=default_input_shapefile,
-    multiValue=False
-)
-
-output_shapefile_param = arcpy.Parameter(
-    displayName="Output Shapefile",
-    name="output_shapefile",
-    datatype="DEShapefile",
-    parameterType="Required",
-    direction="Output",
-    defaultValue=default_output_folder,
-    multiValue=False
-)
-
-country_param = arcpy.Parameter(
-    displayName="Country Name",
-    name="country_name",
-    datatype="GPString",
-    parameterType="Required",
-    direction="Input",
-    defaultValue=default_country_to_select,
-    multiValue=False
-)
-
-# Set the parameter list
-parameters = [input_shapefile_param, output_shapefile_param, country_param]
-
-# Get user inputs using arcpy
-arcpy.GetParameterAsText(0)  # Input shapefile
-arcpy.GetParameterAsText(1)  # Output shapefile
-arcpy.GetParameterAsText(2)  # Country name
-
-# Call the function with user inputs
-select_and_save_polygons_by_country(
-    input_shapefile=input_shapefile_param.valueAsText,
-    output_shapefile=output_shapefile_param.valueAsText,
-    country_name=country_param.valueAsText
-)
+            # Set the output message
+            arcpy.AddMessage(result_message)
