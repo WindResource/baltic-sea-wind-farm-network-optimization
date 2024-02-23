@@ -1,13 +1,13 @@
 import arcpy
 import os
 
-def create_shapefile(input_shapefile: str, output_folder: str, country: str, approved: bool, construction: bool, planned: bool, production: bool) -> str:
+def create_shapefiles(input_shapefile: str, output_folder: str, country: str, approved: bool, construction: bool, planned: bool, production: bool) -> list:
     """
-    Create a shapefile for the specified combination of country and selected statuses based on the input shapefile.
+    Create shapefiles for each selected status and country based on the input shapefile.
 
     Parameters:
     - input_shapefile (str): Path to the input shapefile.
-    - output_folder (str): Path to the output folder where the shapefile will be saved.
+    - output_folder (str): Path to the output folder where the shapefiles will be saved.
     - country (str): The selected country.
     - approved (bool): True if the Approved status is selected, False otherwise.
     - construction (bool): True if the Construction status is selected, False otherwise.
@@ -15,55 +15,99 @@ def create_shapefile(input_shapefile: str, output_folder: str, country: str, app
     - production (bool): True if the Production status is selected, False otherwise.
 
     Returns:
-    - str: A message indicating the result of the operation.
+    - list: List of paths to the created shapefiles.
     """
-    try:
-        # Create a list of selected statuses
-        selected_statuses = []
-        if approved:
-            selected_statuses.append("Approved")
-        if construction:
-            selected_statuses.append("Construction")
-        if planned:
-            selected_statuses.append("Planned")
-        if production:
-            selected_statuses.append("Production")
+    # Create a list of selected statuses
+    selected_statuses = []
+    if approved:
+        selected_statuses.append("Approved")
+    if construction:
+        selected_statuses.append("Construction")
+    if planned:
+        selected_statuses.append("Planned")
+    if production:
+        selected_statuses.append("Production")
 
+    # Initialize a list to store paths of created shapefiles
+    created_shapefiles = []
+
+    # Iterate through selected statuses and create shapefile for each
+    for status in selected_statuses:
         # Create a SQL expression to select features for the specified combination
         sql_expression = (
             arcpy.AddFieldDelimiters(input_shapefile, "Country") + " = '{}' AND " +
-            arcpy.AddFieldDelimiters(input_shapefile, "Status") + " IN ({})").format(
-                country, ", ".join(["'{}'".format(status) for status in selected_statuses]))
+            arcpy.AddFieldDelimiters(input_shapefile, "Status") + " = '{}'").format(country, status)
 
         # Create the new shapefile for the specified combination
-        output_shapefile = os.path.join(output_folder, f"offshore_wind_farms_{country}_{'_'.join(selected_statuses)}.shp")
+        output_shapefile = os.path.join(output_folder, f"offshore_wind_farms_{country}_{status}.shp")
         arcpy.Select_analysis(input_shapefile, output_shapefile, sql_expression)
+        
+        created_shapefiles.append(output_shapefile)
 
-        return f"Shapefile created successfully for {country}, {', '.join(selected_statuses)}."
-    except Exception as e:
-        return str(e)
+    return created_shapefiles
+
+def add_all_shapefiles_to_map(shapefile_paths: list, map_frame_name: str) -> None:
+    """
+    Add all shapefiles from the specified list to the map.
+
+    Parameters:
+    - shapefile_paths (list): List of paths to shapefiles.
+    - map_frame_name (str): Name of the map frame to which shapefiles will be added.
+    """
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+
+    # Check if the map with the specified name exists
+    map_list = aprx.listMaps(map_frame_name)
+
+    if not map_list:
+        arcpy.AddError(f"Map '{map_frame_name}' not found in the project.")
+        return
+
+    map_object = map_list[0]
+
+    # Define unique colors for each status
+    status_colors = {
+        "Approved": (0, 255, 0),
+        "Construction": (255, 0, 0),
+        "Planned": (0, 0, 255),
+        "Production": (255, 255, 0),
+    }
+
+    # Iterate through the shapefiles and add each to the map
+    for shapefile_path in shapefile_paths:
+        # Add the shapefile to the map
+        layer = map_object.addDataFromPath(shapefile_path)
+
+        # Set the unique color for the status
+        status = os.path.basename(shapefile_path).split("_")[2]
+        if status in status_colors:
+            layer.color = status_colors[status]
 
 if __name__ == "__main__":
-        # Get the input shapefile, output folder, country, and status parameters from the user input
-        input_shapefile: str = arcpy.GetParameterAsText(0)
-        output_folder: str = arcpy.GetParameterAsText(1)
-        country: str = arcpy.GetParameterAsText(2)
-        status_approved: bool = arcpy.GetParameter(3)
-        status_construction: bool = arcpy.GetParameter(4)
-        status_planned: bool = arcpy.GetParameter(5)
-        status_production: bool = arcpy.GetParameter(6)
+    # Get the input shapefile, output folder, country, status parameters, and map frame name from the user input
+    input_shapefile: str = arcpy.GetParameterAsText(0)
+    output_folder: str = arcpy.GetParameterAsText(1)
+    selected_country: str = arcpy.GetParameterAsText(2)
+    selected_approved: bool = arcpy.GetParameter(3)
+    selected_construction: bool = arcpy.GetParameter(4)
+    selected_planned: bool = arcpy.GetParameter(5)
+    selected_production: bool = arcpy.GetParameter(6)
+    map_frame_name: str = arcpy.GetParameterAsText(7)
 
-        # Validate input parameters
-        if not arcpy.Exists(input_shapefile):
-            arcpy.AddError("Input shapefile does not exist.")
-        elif not os.path.isdir(output_folder):
-            arcpy.AddError("Output folder is not valid.")
-        else:
-            # Execute the main function
-            result_message: str = create_shapefile(
-                input_shapefile, output_folder, country, status_approved, status_construction, status_planned, status_production
-            )
+    # Validate input parameters
+    if not arcpy.Exists(input_shapefile):
+        arcpy.AddError("Input shapefile does not exist.")
+    elif not os.path.isdir(output_folder):
+        arcpy.AddError("Output folder is not valid.")
+    else:
+        # Execute the main function to create shapefiles
+        created_shapefiles: list = create_shapefiles(
+            input_shapefile, output_folder, selected_country,
+            selected_approved, selected_construction, selected_planned, selected_production
+        )
 
-            # Set the output message
-            arcpy.AddMessage(result_message)
+        # Add all shapefiles to the map
+        add_all_shapefiles_to_map(created_shapefiles, map_frame_name)
 
+        # Set the output message
+        arcpy.AddMessage("Shapefiles created and added to the map successfully.")
