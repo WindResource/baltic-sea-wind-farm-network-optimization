@@ -253,13 +253,13 @@ def add_all_rasters_to_map(output_folder: str, map_frame_name: str) -> None:
 
 if __name__ == "__main__":
     # Prompt the user for the necessary parameters
-    year: str = arcpy.GetParameterAsText(0)
+    project_path: str = arcpy.GetParameterAsText(0)
     raster_path: str = arcpy.GetParameterAsText(1)
-    output_folder: str = arcpy.GetParameterAsText(2)
-    shapefile: str = arcpy.GetParameterAsText(3)
+    shapefile: str = arcpy.GetParameterAsText(2)
+    output_folder: str = arcpy.GetParameterAsText(3)
     water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
     n_wind_turbines: int = int(arcpy.GetParameterAsText(8))
-    project_path: str = arcpy.GetParameterAsText(9) 
+    year: str = arcpy.GetParameterAsText(9) 
     map_frame_name: str = arcpy.GetParameterAsText(10)
     port_distance: float = float(arcpy.GetParameterAsText(11))
     WT_rated_power: float = float(arcpy.GetParameterAsText(12))
