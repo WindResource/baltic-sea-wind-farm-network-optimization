@@ -38,11 +38,20 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
             arcpy.AddFieldDelimiters(input_shapefile, "Country") + " = '{}' AND " +
             arcpy.AddFieldDelimiters(input_shapefile, "Status") + " = '{}'").format(country, status)
 
-        # Create the new shapefile for the specified combination
-        output_shapefile = os.path.join(output_folder, f"offshore_wind_farms_{country}_{status}.shp")
-        arcpy.Select_analysis(input_shapefile, output_shapefile, sql_expression)
-        
-        created_shapefiles.append(output_shapefile)
+        # Create a search cursor to get unique FID values
+        with arcpy.da.SearchCursor(input_shapefile, "FID", where_clause=sql_expression) as cursor:
+            for row in cursor:
+                # Get the FID value
+                feature_fid = row[0]
+
+                # Create a new SQL expression for the specific FID
+                fid_sql_expression = "{} = {}".format(arcpy.AddFieldDelimiters(input_shapefile, "FID"), feature_fid)
+
+                # Create the new shapefile for the specified combination and FID
+                output_shapefile = os.path.join(output_folder, f"OWF_{country}_{status}_FID_{feature_fid}.shp")
+                arcpy.Select_analysis(input_shapefile, output_shapefile, fid_sql_expression)
+
+                created_shapefiles.append(output_shapefile)
 
     return created_shapefiles
 
@@ -75,13 +84,19 @@ def add_all_shapefiles_to_map(shapefile_paths: list, map_frame_name: str) -> Non
 
     # Iterate through the shapefiles and add each to the map
     for shapefile_path in shapefile_paths:
-        # Add the shapefile to the map
-        layer = map_object.addDataFromPath(shapefile_path)
-
-        # Set the unique color for the status
+        # Extract the status from the shapefile path
         status = os.path.basename(shapefile_path).split("_")[2]
+
         if status in status_colors:
+            # Add the shapefile to the map
+            layer = map_object.addDataFromPath(shapefile_path)
+            # Set the color for the status
             layer.color = status_colors[status]
+        else:
+            arcpy.AddWarning(f"Status '{status}' is not recognized.")
+            
+            # Refresh the map to apply changes
+            aprx.save()
 
 if __name__ == "__main__":
     # Get the input shapefile, output folder, country, status parameters, and map frame name from the user input
