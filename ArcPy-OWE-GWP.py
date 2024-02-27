@@ -63,6 +63,9 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
             num_turbines_x = int(extent.width / turbine_spacing)
             num_turbines_y = int(extent.height / turbine_spacing)
 
+            print(f"Bounding Box Dimensions: Width = {extent.width}, Height = {extent.height}")
+            print(f"Calculated Number of Turbines: X = {num_turbines_x}, Y = {num_turbines_y}")
+
             for i in range(num_turbines_x):
                 for j in range(num_turbines_y):
                     x_coord = extent.XMin + i * turbine_spacing
@@ -80,6 +83,7 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
                     ))
 
             arcpy.AddMessage(f"{num_turbines_x * num_turbines_y} turbines created.")
+
 
         arcpy.AddMessage(f"Shapefile '{input_shapefile}' successfully processed.")
 
