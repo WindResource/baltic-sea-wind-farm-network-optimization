@@ -70,15 +70,13 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         # Create a bounding box that encompasses the entire polygon
         bounding_box = shape.extent
 
-        # Create a new point feature class for wind turbine locations
-        output_feature_class_name = f"WindTurbines_{os.path.splitext(input_shapefile)[0]}.shp"
-        output_feature_class = os.path.join(output_folder, output_feature_class_name)
-
-        # Set spatial reference for WGS 1984
-        spatial_reference = arcpy.SpatialReference(4326)  # 4326 is the WKID for WGS 1984
-
         # Create the point feature class with the specified spatial reference
-        arcpy.management.CreateFeatureclass(output_folder, output_feature_class_name, "POINT", spatial_reference=spatial_reference)
+        output_feature_class = arcpy.management.CreateFeatureclass(
+            out_path=output_folder,
+            out_name=f"WindTurbines_{os.path.splitext(input_shapefile)[0]}.shp",
+            geometry_type="POINT",
+            spatial_reference=arcpy.SpatialReference(4326)  # 4326 is the WKID for WGS 1984
+        )
 
         # Add fields to store turbine information
         arcpy.management.AddFields(output_feature_class, [
