@@ -1,25 +1,5 @@
 import arcpy
 import os
-import math
-
-def calculate_meters_to_decimal_degrees(latitude):
-    """
-    Calculate the meters to decimal degrees conversion factor for a given latitude.
-
-    Parameters:
-    - latitude (float): The latitude of the point in decimal degrees.
-
-    Returns:
-    - Tuple[float, float]: Conversion factors for latitude (y-direction) and longitude (x-direction).
-    """
-    # Calculate the conversion factor based on the latitude
-    meters_per_degree_y = 111132.92 - 559.82 * math.cos(2 * math.radians(latitude)) + 1.175 * math.cos(4 * math.radians(latitude)) - 0.0023 * math.cos(6 * math.radians(latitude))
-
-    # For longitude (x-direction), we assume a constant conversion factor
-    # This assumes the shapefile covers a relatively small area, so the variation in longitude is negligible
-    meters_per_degree_x = 111320.0
-
-    return meters_per_degree_y, meters_per_degree_x
 
 def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, output_folder: str, map_frame_name: str) -> None:
     """
@@ -51,6 +31,9 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         arcpy.AddError("No shapefiles found in the input folder.")
         return
 
+    # Use Web Mercator conversion factors for both latitude and longitude
+    meters_per_degree = 111319.9
+
     # Iterate over all shapefiles in the input folder
     for input_shapefile in shapefiles:
         arcpy.AddMessage(f"Processing shapefile: {input_shapefile}")
@@ -60,17 +43,13 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
             for row in cursor:
                 shape, centroid = row[0], row[1]
 
-        # Calculate meters to decimal degrees conversion factors for latitude (y) and longitude (x)
-        meters_per_degree_y, meters_per_degree_x = calculate_meters_to_decimal_degrees(centroid[1])
-
         # Convert turbine_spacing from meters to decimal degrees
-        spacing_decimal_degrees_y = turbine_spacing / meters_per_degree_y
-        spacing_decimal_degrees_x = turbine_spacing / meters_per_degree_x
+        spacing_decimal_degrees = turbine_spacing / meters_per_degree
 
         # Create a bounding box that encompasses the entire polygon
         bounding_box = shape.extent
 
-        # Create the point feature class with the specified spatial reference
+        # Create the point feature class with the specified spatial reference in degrees (WKID 4326)
         output_feature_class = arcpy.management.CreateFeatureclass(
             out_path=output_folder,
             out_name=f"WindTurbines_{os.path.splitext(input_shapefile)[0]}.shp",
@@ -113,10 +92,10 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
 
                         turbine_count += 1
 
-                    x_coord += spacing_decimal_degrees_x
+                    x_coord += spacing_decimal_degrees
 
                 x_coord = bounding_box.XMin
-                y_coord += spacing_decimal_degrees_y
+                y_coord += spacing_decimal_degrees
 
         arcpy.AddMessage(f"{turbine_count} turbines created for shapefile '{input_shapefile}'.")
 
@@ -126,7 +105,6 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         map_obj.addDataFromPath(output_feature_class)
 
     arcpy.AddMessage("Wind turbine shapefiles created and added to the map successfully.")
-
 
 if __name__ == "__main__":
     # Get the input folder, output folder, map frame name, and turbine spacing from the user input
