@@ -88,27 +88,21 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
             ["YCoord", "DOUBLE", "Latitude"]
         ])
 
-        # Calculate the number of turbines outside the inner loop
-        num_turbines_x = int(bounding_box.width / spacing_decimal_degrees_x)
-        num_turbines_y = int(bounding_box.height / spacing_decimal_degrees_y)
-
-        # Print bounding box dimensions and calculated number of turbines
-        print(f"Bounding Box Dimensions: Width = {bounding_box.width}, Height = {bounding_box.height}")
-        print(f"Calculated Number of Turbines: X = {num_turbines_x}, Y = {num_turbines_y}")
-
         # Generate a grid of points within the bounding box of the polygon
         with arcpy.da.InsertCursor(output_feature_class, ["SHAPE@", "TurbineID", "Capacity", "XCoord", "YCoord"]) as cursor:
-            for i in range(num_turbines_x):
-                for j in range(num_turbines_y):
-                    x_coord = bounding_box.XMin + i * spacing_decimal_degrees_x
-                    y_coord = bounding_box.YMin + j * spacing_decimal_degrees_y
+            # Start from the minimum coordinates of the bounding box
+            x_coord = bounding_box.XMin
+            y_coord = bounding_box.YMin
+            turbine_count = 0
 
+            while y_coord < bounding_box.YMax:
+                while x_coord < bounding_box.XMax:
                     # Check if the point is within the polygon
                     if shape.contains(arcpy.Point(x_coord, y_coord)):
                         # Print turbine coordinates
                         print(f"Turbine Coordinates: Longitude = {x_coord}, Latitude = {y_coord}")
 
-                        turbine_id = f"Turbine_{i}_{j}"
+                        turbine_id = f"Turbine_{turbine_count}"
                         capacity = 0.0  # You can set the capacity based on your requirements
 
                         cursor.insertRow((
@@ -119,8 +113,14 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
                             y_coord
                         ))
 
-        arcpy.AddMessage(f"{num_turbines_x * num_turbines_y} turbines created.")
-        arcpy.AddMessage(f"Shapefile '{input_shapefile}' successfully processed.")
+                        turbine_count += 1
+
+                    x_coord += spacing_decimal_degrees_x
+
+                x_coord = bounding_box.XMin
+                y_coord += spacing_decimal_degrees_y
+
+        arcpy.AddMessage(f"{turbine_count} turbines created for shapefile '{input_shapefile}'.")
 
         # Add the point feature class to the specified map frame
         aprx = arcpy.mp.ArcGISProject("CURRENT")
