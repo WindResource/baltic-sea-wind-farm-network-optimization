@@ -67,6 +67,9 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         spacing_decimal_degrees_y = turbine_spacing / meters_per_degree_y
         spacing_decimal_degrees_x = turbine_spacing / meters_per_degree_x
 
+        # Create a bounding box that encompasses the entire polygon
+        bounding_box = shape.extent
+
         # Create a new point feature class for wind turbine locations
         output_feature_class_name = f"WindTurbines_{os.path.splitext(input_shapefile)[0]}.shp"
         output_feature_class = os.path.join(output_folder, output_feature_class_name)
@@ -86,33 +89,35 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         ])
 
         # Calculate the number of turbines outside the inner loop
-        num_turbines_x = int(shape.extent.width / spacing_decimal_degrees_x)
-        num_turbines_y = int(shape.extent.height / spacing_decimal_degrees_y)
+        num_turbines_x = int(bounding_box.width / spacing_decimal_degrees_x)
+        num_turbines_y = int(bounding_box.height / spacing_decimal_degrees_y)
 
         # Print bounding box dimensions and calculated number of turbines
-        print(f"Bounding Box Dimensions: Width = {shape.extent.width}, Height = {shape.extent.height}")
+        print(f"Bounding Box Dimensions: Width = {bounding_box.width}, Height = {bounding_box.height}")
         print(f"Calculated Number of Turbines: X = {num_turbines_x}, Y = {num_turbines_y}")
 
         # Generate a grid of points within the bounding box of the polygon
         with arcpy.da.InsertCursor(output_feature_class, ["SHAPE@", "TurbineID", "Capacity", "XCoord", "YCoord"]) as cursor:
             for i in range(num_turbines_x):
                 for j in range(num_turbines_y):
-                    x_coord = centroid[0] + (i - num_turbines_x / 2) * spacing_decimal_degrees_x
-                    y_coord = centroid[1] + (j - num_turbines_y / 2) * spacing_decimal_degrees_y
+                    x_coord = bounding_box.XMin + i * spacing_decimal_degrees_x
+                    y_coord = bounding_box.YMin + j * spacing_decimal_degrees_y
 
-                    # Print turbine coordinates
-                    print(f"Turbine Coordinates: Longitude = {x_coord}, Latitude = {y_coord}")
+                    # Check if the point is within the polygon
+                    if shape.contains(arcpy.Point(x_coord, y_coord)):
+                        # Print turbine coordinates
+                        print(f"Turbine Coordinates: Longitude = {x_coord}, Latitude = {y_coord}")
 
-                    turbine_id = f"Turbine_{i}_{j}"
-                    capacity = 0.0  # You can set the capacity based on your requirements
+                        turbine_id = f"Turbine_{i}_{j}"
+                        capacity = 0.0  # You can set the capacity based on your requirements
 
-                    cursor.insertRow((
-                        arcpy.Point(x_coord, y_coord),
-                        turbine_id,
-                        capacity,
-                        x_coord,
-                        y_coord
-                    ))
+                        cursor.insertRow((
+                            arcpy.Point(x_coord, y_coord),
+                            turbine_id,
+                            capacity,
+                            x_coord,
+                            y_coord
+                        ))
 
         arcpy.AddMessage(f"{num_turbines_x * num_turbines_y} turbines created.")
         arcpy.AddMessage(f"Shapefile '{input_shapefile}' successfully processed.")
