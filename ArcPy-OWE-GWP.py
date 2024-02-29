@@ -3,7 +3,7 @@ import os
 
 def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, output_folder: str, map_frame_name: str) -> None:
     """
-    Create a shapefile feature class containing wind turbine points with WGS 1984 coordinate system
+    Create a shapefile feature class containing wind turbine points with a UTM projection
     and add it to the project map.
 
     Parameters:
@@ -31,8 +31,11 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         arcpy.AddError("No shapefiles found in the input folder.")
         return
 
-    # Use Web Mercator conversion factors for both latitude and longitude
-    meters_per_degree = 111319.9
+    # Set the spatial reference to UTM Zone 33N
+    utm_wkid = 32633
+
+    # Set the spatial reference to UTM Zone 33N
+    utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
 
     # Iterate over all shapefiles in the input folder
     for input_shapefile in shapefiles:
@@ -43,18 +46,15 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
             for row in cursor:
                 shape, centroid = row[0], row[1]
 
-        # Convert turbine_spacing from meters to decimal degrees
-        spacing_decimal_degrees = turbine_spacing / meters_per_degree
-
         # Create a bounding box that encompasses the entire polygon
         bounding_box = shape.extent
 
-        # Create the point feature class with the specified spatial reference in degrees (WKID 4326)
+        # Create the point feature class with the specified spatial reference in UTM
         output_feature_class = arcpy.management.CreateFeatureclass(
             out_path=output_folder,
             out_name=f"WindTurbines_{os.path.splitext(input_shapefile)[0]}.shp",
             geometry_type="POINT",
-            spatial_reference=arcpy.SpatialReference(4326)  # 4326 is the WKID for WGS 1984
+            spatial_reference=utm_spatial_ref
         )
 
         # Add fields to store turbine information
@@ -76,9 +76,6 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
                 while x_coord < bounding_box.XMax:
                     # Check if the point is within the polygon
                     if shape.contains(arcpy.Point(x_coord, y_coord)):
-                        # Print turbine coordinates
-                        print(f"Turbine Coordinates: Longitude = {x_coord}, Latitude = {y_coord}")
-
                         turbine_id = f"Turbine_{turbine_count}"
                         capacity = 0.0  # You can set the capacity based on your requirements
 
@@ -92,10 +89,10 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
 
                         turbine_count += 1
 
-                    x_coord += spacing_decimal_degrees
+                    x_coord += turbine_spacing
 
                 x_coord = bounding_box.XMin
-                y_coord += spacing_decimal_degrees
+                y_coord += turbine_spacing
 
         arcpy.AddMessage(f"{turbine_count} turbines created for shapefile '{input_shapefile}'.")
 
