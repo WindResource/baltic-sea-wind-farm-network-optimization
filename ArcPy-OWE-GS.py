@@ -1,7 +1,43 @@
 import arcpy
 import os
 
-def create_shapefiles(input_shapefile: str, output_folder: str, country: str, approved: bool, construction: bool, planned: bool, production: bool) -> list:
+def clear_shapefile(file_path, map_obj):
+    """
+    Attempt to remove a shapefile from the specified map and then unlock and delete
+    the shapefile and its associated lock file.
+
+    Parameters:
+    - file_path (str): The path to the shapefile.
+    - map_obj (arcpy.mp.Map): The ArcGIS Pro map object where the shapefile should be removed.
+
+    Returns:
+    - None
+    """
+    try:
+        # Clear the shapefile from the map
+        for layer in map_obj.listLayers():
+            if layer.isFeatureLayer and layer.name == os.path.splitext(os.path.basename(file_path))[0]:
+                map_obj.removeLayer(layer)
+
+        # Attempt to unlock and delete the shapefile
+        if arcpy.Exists(file_path):
+            arcpy.Delete_management(file_path)
+        else:
+            arcpy.AddMessage(f"The shapefile {file_path} does not exist.")
+
+        # Attempt to unlock and delete the lock file
+        lock_file_path = file_path + ".lock"
+        if arcpy.Exists(lock_file_path):
+            arcpy.Delete_management(lock_file_path)
+        else:
+            arcpy.AddMessage(f"The lock file {lock_file_path} does not exist.")
+
+    except arcpy.ExecuteError as e:
+        arcpy.AddMessage(f"Failed to clear {file_path}: {e}")
+    except Exception as e:
+        arcpy.AddMessage(f"An unexpected error occurred: {e}")
+
+def create_shapefiles(input_shapefile: str, output_folder: str, country: str, approved: bool, construction: bool, planned: bool, production: bool, map_frame_name: str) -> list:
     """
     Create shapefiles for each selected status and country based on the input shapefile.
 
@@ -13,6 +49,7 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
     - construction (bool): True if the Construction status is selected, False otherwise.
     - planned (bool): True if the Planned status is selected, False otherwise.
     - production (bool): True if the Production status is selected, False otherwise.
+    - map_frame_name (str): Name of the map frame to which shapefiles will be added.
 
     Returns:
     - list: List of paths to the created shapefiles.
@@ -34,6 +71,18 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
     # Initialize a list to store paths of created shapefiles
     created_shapefiles = []
 
+    # Get the ArcGIS Pro project
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+
+    # Check if the map with the specified name exists
+    map_list = aprx.listMaps(map_frame_name)
+
+    if not map_list:
+        arcpy.AddError(f"Map '{map_frame_name}' not found in the project.")
+        return created_shapefiles
+
+    map_object = map_list[0]
+
     # Iterate through selected statuses and create shapefile for each
     for status in selected_statuses:
         # Create a SQL expression to select features for the specified combination
@@ -50,60 +99,22 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
                 # Create a new SQL expression for the specific FID
                 fid_sql_expression = "{} = {}".format(arcpy.AddFieldDelimiters(input_shapefile, "FID"), feature_fid)
 
-                # Project the feature class to the desired spatial reference
-                projected_feature_class = os.path.join(output_folder, f"Projected_OWF_{country}_{status}_FID_{feature_fid}.shp")
-                arcpy.Project_management(input_shapefile, projected_feature_class, output_spatial_reference)
+                # Create a feature layer with the specified SQL expression
+                feature_layer = arcpy.management.MakeFeatureLayer(input_shapefile, "temp_layer", where_clause=fid_sql_expression)
 
-                # Create the new shapefile for the specified combination and FID
-                output_shapefile = os.path.join(output_folder, f"OWF_{country}_{status}_FID_{feature_fid}.shp")
-                arcpy.Select_analysis(projected_feature_class, output_shapefile, fid_sql_expression)
+                # Project the feature layer to the desired spatial reference and create the new shapefile
+                output_shapefile = os.path.join(output_folder, f"WFA_{country}_{status}_FID{feature_fid}.shp")
+                arcpy.management.Project(feature_layer, output_shapefile, output_spatial_reference)
 
                 created_shapefiles.append(output_shapefile)
 
+                # Add the shapefile to the map
+                map_object.addDataFromPath(output_shapefile)
+
+    # Refresh the map to apply changes
+    aprx.save()
+
     return created_shapefiles
-
-def add_all_shapefiles_to_map(shapefile_paths: list, map_frame_name: str) -> None:
-    """
-    Add all shapefiles from the specified list to the map.
-
-    Parameters:
-    - shapefile_paths (list): List of paths to shapefiles.
-    - map_frame_name (str): Name of the map frame to which shapefiles will be added.
-    """
-    aprx = arcpy.mp.ArcGISProject("CURRENT")
-
-    # Check if the map with the specified name exists
-    map_list = aprx.listMaps(map_frame_name)
-
-    if not map_list:
-        arcpy.AddError(f"Map '{map_frame_name}' not found in the project.")
-        return
-
-    map_object = map_list[0]
-
-    # Define unique colors for each status
-    status_colors = {
-        "Approved": (0, 255, 0),
-        "Construction": (255, 0, 0),
-        "Planned": (0, 0, 255),
-        "Production": (255, 255, 0),
-    }
-
-    # Iterate through the shapefiles and add each to the map
-    for shapefile_path in shapefile_paths:
-        # Extract the status from the shapefile path
-        status = os.path.basename(shapefile_path).split("_")[2]
-
-        if status in status_colors:
-            # Add the shapefile to the map
-            layer = map_object.addDataFromPath(shapefile_path)
-            # Set the color for the status
-            layer.color = status_colors[status]
-        else:
-            arcpy.AddWarning(f"Status '{status}' is not recognized.")
-            
-            # Refresh the map to apply changes
-            aprx.save()
 
 if __name__ == "__main__":
     # Get the input shapefile, output folder, country, status parameters, and map frame name from the user input
@@ -122,14 +133,15 @@ if __name__ == "__main__":
     elif not os.path.isdir(output_folder):
         arcpy.AddError("Output folder is not valid.")
     else:
+        # Clear existing shapefiles from the map and delete them
+        for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", output_folder):
+            clear_shapefile(existing_shapefile_path, map_object)
+
         # Execute the main function to create shapefiles
         created_shapefiles: list = create_shapefiles(
             input_shapefile, output_folder, selected_country,
-            selected_approved, selected_construction, selected_planned, selected_production
+            selected_approved, selected_construction, selected_planned, selected_production, map_frame_name
         )
-
-        # Add all shapefiles to the map
-        add_all_shapefiles_to_map(created_shapefiles, map_frame_name)
 
         # Set the output message
         arcpy.AddMessage("Shapefiles created and added to the map successfully.")
