@@ -17,6 +17,9 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
     Returns:
     - list: List of paths to the created shapefiles.
     """
+    # Define the output spatial reference (WKID 32633 - WGS 1984 UTM Zone 33N)
+    output_spatial_reference = arcpy.SpatialReference(32633)
+
     # Create a list of selected statuses
     selected_statuses = []
     if approved:
@@ -47,9 +50,13 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
                 # Create a new SQL expression for the specific FID
                 fid_sql_expression = "{} = {}".format(arcpy.AddFieldDelimiters(input_shapefile, "FID"), feature_fid)
 
+                # Project the feature class to the desired spatial reference
+                projected_feature_class = os.path.join(output_folder, f"Projected_OWF_{country}_{status}_FID_{feature_fid}.shp")
+                arcpy.Project_management(input_shapefile, projected_feature_class, output_spatial_reference)
+
                 # Create the new shapefile for the specified combination and FID
                 output_shapefile = os.path.join(output_folder, f"OWF_{country}_{status}_FID_{feature_fid}.shp")
-                arcpy.Select_analysis(input_shapefile, output_shapefile, fid_sql_expression)
+                arcpy.Select_analysis(projected_feature_class, output_shapefile, fid_sql_expression)
 
                 created_shapefiles.append(output_shapefile)
 
