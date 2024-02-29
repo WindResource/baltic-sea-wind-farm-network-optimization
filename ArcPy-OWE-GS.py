@@ -1,19 +1,27 @@
 import arcpy
 import os
 
-def clear_shapefile(file_path, map_obj):
+def clear_shapefile(file_path, map_frame_name):
     """
-    Attempt to remove a shapefile from the specified map and then unlock and delete
+    Attempt to remove a shapefile from the specified map frame and then unlock and delete
     the shapefile and its associated lock file.
 
     Parameters:
     - file_path (str): The path to the shapefile.
-    - map_obj (arcpy.mp.Map): The ArcGIS Pro map object where the shapefile should be removed.
+    - map_frame_name (str): The name of the map frame in ArcGIS Pro where the shapefile should be removed.
 
     Returns:
     - None
     """
     try:
+        # Get a reference to the map object based on the map frame name
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+        map_obj = next((map_frame for map_frame in aprx.listMaps() if map_frame.name == map_frame_name), None)
+
+        if not map_obj:
+            arcpy.AddError(f"Map frame '{map_frame_name}' not found.")
+            return
+
         # Clear the shapefile from the map
         for layer in map_obj.listLayers():
             if layer.isFeatureLayer and layer.name == os.path.splitext(os.path.basename(file_path))[0]:
@@ -135,7 +143,7 @@ if __name__ == "__main__":
     else:
         # Clear existing shapefiles from the map and delete them
         for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", output_folder):
-            clear_shapefile(existing_shapefile_path, map_object)
+            clear_shapefile(existing_shapefile_path, map_frame_name)
 
         # Execute the main function to create shapefiles
         created_shapefiles: list = create_shapefiles(
