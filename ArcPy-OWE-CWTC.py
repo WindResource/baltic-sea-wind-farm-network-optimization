@@ -1,5 +1,6 @@
 import arcpy
 import os
+import numpy as np
 
 def project_raster(input_raster, output_folder, output_spatial_ref):
     """
@@ -120,6 +121,9 @@ def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int
         # List all shapefiles in the workspace
         shapefiles = arcpy.ListFeatureClasses("*.shp")
 
+        # Check existing fields once before entering the loop
+        fields_to_add = ["SuppStruct"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]
+
         for input_shapefile_name in shapefiles:
             input_shapefile_path = os.path.join(input_folder, input_shapefile_name)
             arcpy.AddMessage(f"Processing input shapefile: {input_shapefile_path}")
@@ -136,8 +140,6 @@ def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int
             existing_fields = [field.name for field in arcpy.ListFields(input_shapefile_path)]
 
             # Add new fields only if they don't exist
-            fields_to_add = ["SuppStruct"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]
-
             for field in fields_to_add:
                 if field not in existing_fields:
                     arcpy.AddField_management(input_shapefile_path, field, "TEXT" if "SuppStruct" in field else "DOUBLE")
@@ -174,7 +176,7 @@ def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int
                     row[3] = support_structure
                     cursor.updateRow(row)
 
-            arcpy.AddMessage(f"Support structure and equipment costs added to the attribute table of {input_shapefile_path} successfully.")
+                arcpy.AddMessage(f"Support structure and equipment costs added to the attribute table of {input_shapefile_path} successfully.")
 
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to add support structure and equipment costs: {e}")
@@ -182,7 +184,6 @@ def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int
         arcpy.AddMessage(f"An unexpected error occurred: {e}")
     finally:
         arcpy.env.workspace = None  # Reset the workspace
-
 
 if __name__ == "__main__":
     # Set your parameters (replace these with actual values)
