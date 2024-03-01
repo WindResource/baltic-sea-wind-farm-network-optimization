@@ -147,12 +147,9 @@ def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int
             # Refresh the list of existing fields after adding new ones
             existing_fields = [field.name for field in arcpy.ListFields(input_shapefile_path)]
 
-            # Create an array to store updates
-            update_array = []
-
-            # Open the shapefile and collect the updates
+            # Open the shapefile and update the new fields
             with arcpy.da.UpdateCursor(input_shapefile_path, ["SHAPE@", "TurbineID", "Capacity", "SuppStruct"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]) as cursor:
-                arcpy.AddMessage(f"Collecting updates for {input_shapefile_path}...")
+                arcpy.AddMessage(f"Adding support structure and equipment costs for {input_shapefile_path}...")
 
                 for row in cursor:
                     turbine_location, turbine_id, turbine_capacity, _, _, _, _ = row
@@ -171,23 +168,15 @@ def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int
                     arcpy.AddMessage(f"Support Structure: {support_structure}")
 
                     # Calculate equipment costs for each year
-                    equipment_costs = [calc_equipment_costs(float(water_depth_at_location), year, support_structure, turbine_capacity) for year in ['2020', '2030', '2050']]
+                    for year in ['2020', '2030', '2050']:
+                        equipment_costs = calc_equipment_costs(float(water_depth_at_location), year, support_structure, turbine_capacity)
+                        row[4 + ['2020', '2030', '2050'].index(year)] = equipment_costs
 
                     # Update the SuppStruct and EquipCost fields
                     row[3] = support_structure
-                    row[4:7] = equipment_costs
+                    cursor.updateRow(row)
 
-                    # Append the updated row to the array
-                    update_array.append(row)
-
-            # Use an update cursor to apply batch updates
-            with arcpy.da.UpdateCursor(input_shapefile_path, ["SuppStruct"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]) as update_cursor:
-                arcpy.AddMessage(f"Applying updates for {input_shapefile_path}...")
-
-                for update_row in update_array:
-                    update_cursor.updateRow(update_row)
-
-            arcpy.AddMessage(f"Support structure and equipment costs added to the attribute table of {input_shapefile_path} successfully.")
+                arcpy.AddMessage(f"Support structure and equipment costs added to the attribute table of {input_shapefile_path} successfully.")
 
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to add support structure and equipment costs: {e}")
@@ -204,3 +193,4 @@ if __name__ == "__main__":
 
     # Call the function to iterate over shapefiles in the input_folder and add support structure and equipment costs directly
     add_support_structure_and_costs_fields(bathy_raster_path, utm_zone)
+
