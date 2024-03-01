@@ -104,35 +104,38 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
                 spatial_reference=utm_spatial_ref
             )
 
-            # Add fields
+            # Add fields in the desired order
             arcpy.management.AddFields(output_feature_class, [
                 ["TurbineID", "TEXT", "Turbine ID"],
-                ["Capacity", "DOUBLE", "Capacity"],
-                ["Diameter", "DOUBLE", "Diameter"],
                 ["XCoord", "DOUBLE", "Longitude"],
-                ["YCoord", "DOUBLE", "Latitude"]
+                ["YCoord", "DOUBLE", "Latitude"],
+                ["Capacity", "DOUBLE", "Capacity"],
+                ["Diameter", "DOUBLE", "Diameter"]
             ])
 
             # Calculate the spacing in meters based on the turbine diameter
             spacing = turbine_spacing * turbine_diameter
 
             # Generate grid of points
-            with arcpy.da.InsertCursor(output_feature_class, ["SHAPE@", "TurbineID", "Capacity", "Diameter", "XCoord", "YCoord"]) as cursor:
+            with arcpy.da.InsertCursor(output_feature_class, ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter"]) as cursor:
                 x, y = bounding_box.XMin, bounding_box.YMin
                 turbine_count = 0
                 total_capacity = 0
-                
+
                 while y < bounding_box.YMax:
                     while x < bounding_box.XMax:
                         if shape.contains(arcpy.Point(x, y)):
                             turbine_id, capacity, diameter = f"Turbine_{turbine_count}", turbine_capacity, turbine_diameter
-                            cursor.insertRow((arcpy.Point(x, y), turbine_id, capacity, diameter, x, y))
+                            cursor.insertRow((arcpy.Point(x, y), turbine_id, x, y, capacity, diameter))
                             turbine_count += 1
                             total_capacity += turbine_capacity
 
                         x += spacing
 
                     x, y = bounding_box.XMin, y + spacing
+
+            # Delete the 'Id' column from the attribute table
+            arcpy.management.DeleteField(output_feature_class, "Id")
 
             arcpy.AddMessage(f"'{input_shapefile}': Number of turbines {turbine_count}, Total capacity {total_capacity} MW.")
             map_obj.addDataFromPath(output_feature_class)
