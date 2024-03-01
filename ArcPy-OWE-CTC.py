@@ -93,8 +93,6 @@ def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str
     # Calculate equipment costs
     return turbine_capacity * ((c1 * (raster ** 2)) + (c2 * raster) + (c3 * 1000) + (WT_rated_cost))
 
-import numpy as np
-
 def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int):
     """
     Adds support structure and equipment costs fields to the attribute table of shapefiles in the workspace.
@@ -149,66 +147,47 @@ def add_support_structure_and_costs_fields(bathy_raster_path: str, utm_zone: int
             # Refresh the list of existing fields after adding new ones
             existing_fields = [field.name for field in arcpy.ListFields(input_shapefile_path)]
 
-            # Open the shapefile and update the new fields
-            with arcpy.da.UpdateCursor(input_shapefile_path, ["SHAPE@", "TurbineID", "Capacity", "SuppStruct"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]) as cursor:
-                arcpy.AddMessage(f"Adding support structure and equipment costs for {input_shapefile_path}...")
+            # Create an array to store updates
+            update_array = []
 
-                # Create a list to store turbine locations for batch processing
-                turbine_locations = []
+            # Open the shapefile and collect the updates
+            with arcpy.da.UpdateCursor(input_shapefile_path, ["SHAPE@", "TurbineID", "Capacity", "SuppStruct"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]) as cursor:
+                arcpy.AddMessage(f"Collecting updates for {input_shapefile_path}...")
 
                 for row in cursor:
                     turbine_location, turbine_id, turbine_capacity, _, _, _, _ = row
                     x, y = turbine_location.centroid.X, turbine_location.centroid.Y
-                    turbine_locations.append((x, y))
-
-                # Create a temporary feature class for points
-                temp_points_fc = os.path.join(arcpy.env.scratchGDB, "temp_points_fc")
-                arcpy.management.CreateFeatureclass(arcpy.env.scratchGDB, "temp_points_fc", "POINT")
-
-                # Populate the temporary feature class with turbine locations
-                with arcpy.da.InsertCursor(temp_points_fc, ["SHAPE@XY"]) as cursor:
-                    for x, y in turbine_locations:
-                        cursor.insertRow([(x, y)])
-
-                # Create a separate output feature class for ExtractValuesToPoints
-                extracted_values_fc = os.path.join(arcpy.env.scratchGDB, "extracted_values_fc")
-
-                # Extract raster values to the temporary points feature class
-                arcpy.sa.ExtractValuesToPoints(temp_points_fc, inverted_raster, extracted_values_fc)
-
-                # Read the raster values from the temporary points feature class
-                raster_values = [row[2] for row in arcpy.da.SearchCursor(extracted_values_fc, ["SHAPE@", "TurbineID", "Capacity", "RASTERVALU"])]
-
-                # Clean up temporary feature classes
-                arcpy.management.Delete(temp_points_fc)
-                arcpy.management.Delete(extracted_values_fc)
-
-                # Iterate over cursor again to update the SuppStruct and EquipCost fields
-                for i, row in enumerate(cursor):
-                    _, _, _, _, _, _, _ = row
-                    water_depth_at_location = raster_values[i]
+                    water_depth_at_location = arcpy.GetCellValue_management(inverted_raster, f"{x} {y}").getOutput(0)
 
                     # Skip processing if the value is 'NoData'
                     if water_depth_at_location == 'NoData':
-                        arcpy.AddWarning(f"Water depth at location {turbine_locations[i]} is NoData. Skipping processing.")
+                        arcpy.AddWarning(f"Water depth at location ({x}, {y}) is NoData. Skipping processing.")
                         continue
 
-                    arcpy.AddMessage(f"Water Depth at Location {turbine_locations[i]}: {water_depth_at_location}")
+                    arcpy.AddMessage(f"Water Depth at Location ({x}, {y}): {water_depth_at_location}")
 
                     # Determine support structure type
                     support_structure = determine_support_structure(float(water_depth_at_location))
                     arcpy.AddMessage(f"Support Structure: {support_structure}")
 
                     # Calculate equipment costs for each year
-                    for year in ['2020', '2030', '2050']:
-                        equipment_costs = calc_equipment_costs(float(water_depth_at_location), year, support_structure, turbine_capacity)
-                        row[4 + ['2020', '2030', '2050'].index(year)] = equipment_costs
+                    equipment_costs = [calc_equipment_costs(float(water_depth_at_location), year, support_structure, turbine_capacity) for year in ['2020', '2030', '2050']]
 
                     # Update the SuppStruct and EquipCost fields
                     row[3] = support_structure
-                    cursor.updateRow(row)
+                    row[4:7] = equipment_costs
 
-                arcpy.AddMessage(f"Support structure and equipment costs added to the attribute table of {input_shapefile_path} successfully.")
+                    # Append the updated row to the array
+                    update_array.append(row)
+
+            # Use an update cursor to apply batch updates
+            with arcpy.da.UpdateCursor(input_shapefile_path, ["SuppStruct"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]) as update_cursor:
+                arcpy.AddMessage(f"Applying updates for {input_shapefile_path}...")
+
+                for update_row in update_array:
+                    update_cursor.updateRow(update_row)
+
+            arcpy.AddMessage(f"Support structure and equipment costs added to the attribute table of {input_shapefile_path} successfully.")
 
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to add support structure and equipment costs: {e}")
@@ -225,5 +204,3 @@ if __name__ == "__main__":
 
     # Call the function to iterate over shapefiles in the input_folder and add support structure and equipment costs directly
     add_support_structure_and_costs_fields(bathy_raster_path, utm_zone)
-
-
