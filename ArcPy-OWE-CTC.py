@@ -169,21 +169,23 @@ def update_attribute_table(input_shapefile_path: str, inverted_raster: arcpy.Ras
     """
     try:
         # Define the fields to add to the attribute table
-        fields_to_add = ["SuppStruct", "WaterDepth"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]
-
-        # Get the existing fields in the attribute table
-        existing_fields = [field.name for field in arcpy.ListFields(input_shapefile_path)]
+        fields_to_add = [
+            ("SuppStruct", "TEXT"),
+            ("WaterDepth", "DOUBLE"),
+            ("EC_2020", "DOUBLE"),
+            ("EC_2030", "DOUBLE"),
+            ("EC_2050", "DOUBLE")
+        ]
 
         # Add the required fields if they do not already exist
-        for field in fields_to_add:
-            if field not in existing_fields:
-                arcpy.AddField_management(input_shapefile_path, field, "TEXT" if "SuppStruct" in field else "DOUBLE")
-
-        # Retrieve the updated list of existing fields
-        existing_fields = [field.name for field in arcpy.ListFields(input_shapefile_path)]
+        for field, field_type in fields_to_add:
+            if not arcpy.ListFields(input_shapefile_path, field):
+                arcpy.AddField_management(input_shapefile_path, field, field_type)
 
         # Update the attribute table using an update cursor
-        with arcpy.da.UpdateCursor(input_shapefile_path, ["SHAPE@", "TurbineID", "Capacity", "SuppStruct", "WaterDepth"] + [f"EC_{year}" for year in ['2020', '2030', '2050']]) as cursor:
+        with arcpy.da.UpdateCursor(
+            input_shapefile_path, ["SHAPE@", "TurbineID", "Capacity", "SuppStruct", "WaterDepth", "EC_2020", "EC_2030", "EC_2050"]
+        ) as cursor:
             arcpy.AddMessage(f"Processing shapefile: {input_shapefile_path}...")
 
             # Iterate through each row in the attribute table
@@ -216,7 +218,7 @@ def update_attribute_table(input_shapefile_path: str, inverted_raster: arcpy.Ras
                 # Update the equipment costs for each year
                 for year_index, year in enumerate(['2020', '2030', '2050']):
                     equipment_costs = calc_equipment_costs(float(water_depth_at_location), year, support_structure, turbine_capacity)
-                    row[4 + year_index] = equipment_costs
+                    row[5 + year_index] = equipment_costs
 
                 # Update the support structure and water depth fields in the attribute table
                 row[3] = support_structure
