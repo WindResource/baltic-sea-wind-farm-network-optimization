@@ -1,34 +1,29 @@
 import arcpy
 import os
 
-def clear_shapefile(file_path, map_frame_name):
+def clear_shapefile(file_path):
     """
-    Attempt to remove a shapefile from the specified map frame and then unlock and delete
+    Attempt to remove a shapefile from the currently active map frame and then unlock and delete
     the shapefile and its associated lock file.
 
     Parameters:
     - file_path (str): The path to the shapefile.
-    - map_frame_name (str): The name of the map frame in ArcGIS Pro where the shapefile should be removed.
 
     Returns:
     - None
     """
     try:
-        # Get a reference to the map object based on the map frame name
+        # Get a reference to the currently active map frame
         aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map_obj = None
-        for map_frame in aprx.listMaps():
-            if map_frame.name == map_frame_name:
-                map_obj = map_frame
-                break
+        map_obj = aprx.activeMap
 
         if not map_obj:
-            arcpy.AddError(f"Map frame '{map_frame_name}' not found.")
+            arcpy.AddError("No map frame is currently active.")
             return
 
         # Clear the shapefile from the map
         for layer in map_obj.listLayers():
-            if layer.isFeatureLayer and layer.name == os.path.splitext(os.path.basename(file_path))[0]:
+            if layer.isFeatureLayer and layer.dataSource == file_path:
                 map_obj.removeLayer(layer)
 
         # Attempt to unlock and delete the shapefile
@@ -49,16 +44,15 @@ def clear_shapefile(file_path, map_frame_name):
     except Exception as e:
         arcpy.AddMessage(f"An unexpected error occurred: {e}")
 
-def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, output_folder: str, map_frame_name: str, utm_zone: int, turbine_capacity: float, turbine_diameter: float) -> None:
+def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, output_folder: str, utm_zone: int, turbine_capacity: float, turbine_diameter: float) -> None:
     """
     Create a shapefile feature class containing wind turbine points with a UTM projection
-    and add it to the project map.
+    and add it to the currently active map frame.
 
     Parameters:
     - input_folder (str): The folder containing the input shapefiles representing the wind farm areas.
     - turbine_spacing (float): The desired spacing between wind turbines in terms of turbine diameters.
     - output_folder (str): The name of the output shapefile feature class to store wind turbine locations.
-    - map_frame_name (str): The name of the map frame in ArcGIS Pro where the wind turbines will be visualized.
     - utm_zone (int): The UTM zone for the projection.
     - turbine_capacity (float): The capacity of each wind turbine in MW.
     - turbine_diameter (float): The diameter of each wind turbine.
@@ -76,11 +70,12 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         # Set workspace to the input folder
         arcpy.env.workspace = input_folder
 
-        # Get a reference to the map object based on the map frame name
-        map_obj = next((map_frame for map_frame in arcpy.mp.ArcGISProject("CURRENT").listMaps() if map_frame.name == map_frame_name), None)
+        # Get a reference to the currently active map frame
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+        map_obj = aprx.activeMap
 
         if not map_obj:
-            arcpy.AddError(f"Map frame '{map_frame_name}' not found.")
+            arcpy.AddError("No map frame is currently active.")
             return
 
         # Set the spatial reference to the specified UTM Zone
@@ -148,14 +143,13 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
         arcpy.AddMessage(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
-    # Get the input folder, output folder, map frame name, turbine spacing in diameters, UTM zone, turbine capacity, and turbine diameter from the user input
+    # Get the input folder, output folder, turbine spacing in diameters, UTM zone, turbine capacity, and turbine diameter from the user input
     input_folder: str = arcpy.GetParameterAsText(0)
     output_folder: str = arcpy.GetParameterAsText(1)
-    map_frame_name: str = arcpy.GetParameterAsText(2)
-    utm_zone: int = int(arcpy.GetParameterAsText(3))
-    turbine_capacity: float = float(arcpy.GetParameterAsText(4))
-    turbine_diameter: float = float(arcpy.GetParameterAsText(5))
-    turbine_spacing: float = float(arcpy.GetParameterAsText(6))
+    utm_zone: int = int(arcpy.GetParameterAsText(2))
+    turbine_capacity: float = float(arcpy.GetParameterAsText(3))
+    turbine_diameter: float = float(arcpy.GetParameterAsText(4))
+    turbine_spacing: float = float(arcpy.GetParameterAsText(5))
 
     # Validate input parameters
     if not os.path.isdir(output_folder):
@@ -163,10 +157,10 @@ if __name__ == "__main__":
     else:
         # Clear existing shapefiles from the map and delete them
         for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", output_folder):
-            clear_shapefile(existing_shapefile_path, map_frame_name)
+            clear_shapefile(existing_shapefile_path)
         
         # Create wind turbine shapefiles and add wind turbine points to the map
-        create_wind_turbine_shapefile(input_folder, turbine_spacing, output_folder, map_frame_name, utm_zone, turbine_capacity, turbine_diameter)
+        create_wind_turbine_shapefile(input_folder, turbine_spacing, output_folder, utm_zone, turbine_capacity, turbine_diameter)
 
         # Set the output message
         arcpy.AddMessage("Wind turbine shapefiles created and added to the map successfully.")

@@ -1,30 +1,29 @@
 import arcpy
 import os
 
-def clear_shapefile(file_path, map_frame_name):
+def clear_shapefile(file_path):
     """
-    Attempt to remove a shapefile from the specified map frame and then unlock and delete
+    Attempt to remove a shapefile from the currently active map frame and then unlock and delete
     the shapefile and its associated lock file.
 
     Parameters:
     - file_path (str): The path to the shapefile.
-    - map_frame_name (str): The name of the map frame in ArcGIS Pro where the shapefile should be removed.
 
     Returns:
     - None
     """
     try:
-        # Get a reference to the map object based on the map frame name
+        # Get a reference to the currently active map frame
         aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map_obj = next((map_frame for map_frame in aprx.listMaps() if map_frame.name == map_frame_name), None)
+        map_obj = aprx.activeMap
 
         if not map_obj:
-            arcpy.AddError(f"Map frame '{map_frame_name}' not found.")
+            arcpy.AddError("No map frame is currently active.")
             return
 
         # Clear the shapefile from the map
         for layer in map_obj.listLayers():
-            if layer.isFeatureLayer and layer.name == os.path.splitext(os.path.basename(file_path))[0]:
+            if layer.isFeatureLayer and layer.dataSource == file_path:
                 map_obj.removeLayer(layer)
 
         # Attempt to unlock and delete the shapefile
@@ -45,7 +44,7 @@ def clear_shapefile(file_path, map_frame_name):
     except Exception as e:
         arcpy.AddMessage(f"An unexpected error occurred: {e}")
 
-def create_shapefiles(input_shapefile: str, output_folder: str, country: str, approved: bool, construction: bool, planned: bool, production: bool, map_frame_name: str) -> list:
+def create_shapefiles(input_shapefile: str, output_folder: str, country: str, approved: bool, construction: bool, planned: bool, production: bool) -> list:
     """
     Create shapefiles for each selected status and country based on the input shapefile.
 
@@ -57,7 +56,6 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
     - construction (bool): True if the Construction status is selected, False otherwise.
     - planned (bool): True if the Planned status is selected, False otherwise.
     - production (bool): True if the Production status is selected, False otherwise.
-    - map_frame_name (str): Name of the map frame to which shapefiles will be added.
 
     Returns:
     - list: List of paths to the created shapefiles.
@@ -82,14 +80,12 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
     # Get the ArcGIS Pro project
     aprx = arcpy.mp.ArcGISProject("CURRENT")
 
-    # Check if the map with the specified name exists
-    map_list = aprx.listMaps(map_frame_name)
+    # Get the currently active map frame
+    map_obj = aprx.activeMap
 
-    if not map_list:
-        arcpy.AddError(f"Map '{map_frame_name}' not found in the project.")
+    if not map_obj:
+        arcpy.AddError("No map frame is currently active.")
         return created_shapefiles
-
-    map_object = map_list[0]
 
     # Iterate through selected statuses and create shapefile for each
     for status in selected_statuses:
@@ -117,7 +113,7 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
                 created_shapefiles.append(output_shapefile)
 
                 # Add the shapefile to the map
-                map_object.addDataFromPath(output_shapefile)
+                map_obj.addDataFromPath(output_shapefile)
 
     # Refresh the map to apply changes
     aprx.save()
@@ -125,7 +121,7 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
     return created_shapefiles
 
 if __name__ == "__main__":
-    # Get the input shapefile, output folder, country, status parameters, and map frame name from the user input
+    # Get the input shapefile, output folder, country, status parameters from the user input
     input_shapefile: str = arcpy.GetParameterAsText(0)
     output_folder: str = arcpy.GetParameterAsText(1)
     selected_country: str = arcpy.GetParameterAsText(2)
@@ -133,7 +129,6 @@ if __name__ == "__main__":
     selected_construction: bool = arcpy.GetParameter(4)
     selected_planned: bool = arcpy.GetParameter(5)
     selected_production: bool = arcpy.GetParameter(6)
-    map_frame_name: str = arcpy.GetParameterAsText(7)
 
     # Validate input parameters
     if not arcpy.Exists(input_shapefile):
@@ -143,12 +138,12 @@ if __name__ == "__main__":
     else:
         # Clear existing shapefiles from the map and delete them
         for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", output_folder):
-            clear_shapefile(existing_shapefile_path, map_frame_name)
+            clear_shapefile(existing_shapefile_path)
 
         # Execute the main function to create shapefiles
         created_shapefiles: list = create_shapefiles(
             input_shapefile, output_folder, selected_country,
-            selected_approved, selected_construction, selected_planned, selected_production, map_frame_name
+            selected_approved, selected_construction, selected_planned, selected_production
         )
 
         # Set the output message
