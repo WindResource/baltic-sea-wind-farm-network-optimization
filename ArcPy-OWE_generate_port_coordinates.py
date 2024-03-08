@@ -1,4 +1,5 @@
 import arcpy
+import os
 
 def process_feature_service(feature_service_url: str, output_folder: str, country_name: str, utm_zone: int) -> None:
     """Process the feature service by selecting features based on the specified country, convert to point features,
@@ -25,7 +26,12 @@ def process_feature_service(feature_service_url: str, output_folder: str, countr
             arcpy.management.Project(f"in_memory\\{country_name}_Points", f"in_memory\\{country_name}_Projected", utm_spatial_ref)
 
             # Create a new shapefile in the user-specified output folder
-            output_shapefile = arcpy.ValidateTableName(f"{country_name}_SelectedPorts", output_folder)
+            output_shapefile = os.path.join(output_folder, f"{country_name}_SelectedPorts.shp")
+
+            # Check if the output shapefile already exists and delete it
+            if arcpy.Exists(output_shapefile):
+                arcpy.management.Delete(output_shapefile)
+
             arcpy.management.CopyFeatures(f"in_memory\\{country_name}_Projected", output_shapefile)
 
             # Open the newly created shapefile
