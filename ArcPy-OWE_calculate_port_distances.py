@@ -5,14 +5,14 @@ from typing import Tuple
 def calculate_polygon_centroid(polygon_geometry):
     """Calculate the centroid of a polygon geometry."""
     if polygon_geometry.isMultipart:
-        centroid = polygon_geometry.envelope.centroid
+        centroid = arcpy.PointGeometry(polygon_geometry.envelope.centroid)
     else:
-        centroid = polygon_geometry.centroid
+        centroid = arcpy.PointGeometry(polygon_geometry.centroid)
     return centroid
 
-def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
-    """Calculate the distance between two point geometries."""
-    return ((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)**0.5
+def calculate_distance(point1: arcpy.PointGeometry, point2: arcpy.PointGeometry) -> float:
+    """Calculate the geodetic distance between two point geometries."""
+    return point1.distanceTo(point2)
 
 def find_closest_port(port_file: str, windfarm: str) -> Tuple[str, float]:
     """Find the closest port to the windfarm and return its name and distance."""
@@ -28,7 +28,10 @@ def find_closest_port(port_file: str, windfarm: str) -> Tuple[str, float]:
     windfarm_geometry = windfarm_row[0]
 
     # Calculate the centroid of the windfarm
-    windfarm_centroid = calculate_polygon_centroid(windfarm_geometry)
+    if windfarm_geometry.isMultipart:
+        windfarm_centroid = arcpy.PointGeometry(windfarm_geometry.envelope.centroid)
+    else:
+        windfarm_centroid = arcpy.PointGeometry(windfarm_geometry.centroid)
 
     # Initialize variables to store the closest port and distance
     closest_port = None
@@ -45,10 +48,7 @@ def find_closest_port(port_file: str, windfarm: str) -> Tuple[str, float]:
             continue
 
         # Calculate the distance between windfarm centroid and port geometry centroid
-        distance = calculate_distance(
-            (windfarm_centroid.X, windfarm_centroid.Y),
-            (port_geometry.centroid.X, port_geometry.centroid.Y)
-        )
+        distance = calculate_distance(windfarm_centroid, arcpy.PointGeometry(port_geometry.centroid))
 
         # Update the closest port if the current distance is smaller
         if distance < closest_distance:
