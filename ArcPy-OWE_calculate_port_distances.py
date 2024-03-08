@@ -1,58 +1,98 @@
 import arcpy
+import os
+from typing import Tuple
 
-def find_closest_port(wind_turbine_centroid, port_coords, port_names):
-    """
-    Find the closest port coordinate and name to a given wind turbine centroid.
+def calculate_polygon_centroid(polygon_geometry):
+    """Calculate the centroid of a polygon geometry."""
+    if polygon_geometry.isMultipart:
+        centroid = polygon_geometry.envelope.centroid
+    else:
+        centroid = polygon_geometry.centroid
+    return centroid
 
-    Parameters:
-    - wind_turbine_centroid (tuple): Centroid coordinate of the wind turbine (x, y).
-    - port_coords (list): List of port coordinates.
-    - port_names (list): List of port names.
+def calculate_distance(point1: Tuple[float, float], point2: Tuple[float, float]) -> float:
+    """Calculate the distance between two point geometries."""
+    return ((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)**0.5
 
-    Returns:
-    - tuple: Coordinate of the closest port (x, y), and the name of the closest port.
-    """
-    distances = [arcpy.PointGeometry(wind_turbine_centroid).distanceTo(arcpy.PointGeometry(port_coord)) for port_coord in port_coords]
-    min_index = distances.index(min(distances))
-    closest_port_coord = port_coords[min_index]
-    closest_port_name = port_names[min_index]
-    return closest_port_coord, closest_port_name
+def find_closest_port(port_file: str, windfarm: str) -> Tuple[str, float]:
+    """Find the closest port to the windfarm and return its name and distance."""
+    # Open the windfarm and port shapefiles
+    windfarm_cursor = arcpy.da.SearchCursor(windfarm, ["SHAPE@"])
+    port_cursor = arcpy.da.SearchCursor(port_file, ["SHAPE@", "PORT_NAME"])
 
-def calculate_distance_and_port_name(wind_turbine_shapefile_path, port_shapefile_path):
-    """
-    Calculate the distance between wind turbine centroids and a single closest port coordinate.
-    Also, add the PORT_NAME from the port shapefile to the wind turbine attribute table.
+    # Get the windfarm geometry (assuming there's only one feature)
+    windfarm_row = next(windfarm_cursor, None)
+    if not windfarm_row:
+        arcpy.AddError("No windfarm features found.")
+        quit()
+    windfarm_geometry = windfarm_row[0]
 
-    Parameters:
-    - wind_turbine_shapefile_path (str): Path to the shapefile containing wind turbine centroids.
-    - port_shapefile_path (str): Path to the shapefile containing port coordinates.
+    # Calculate the centroid of the windfarm
+    windfarm_centroid = calculate_polygon_centroid(windfarm_geometry)
 
-    Returns:
-    - dict: Dictionary mapping wind turbine IDs to a tuple containing distance and closest port name.
-    """
-    try:
-        # Use SearchCursor to retrieve wind turbine centroids, port coordinates, and port names
-        with arcpy.da.SearchCursor(wind_turbine_shapefile_path, ["SHAPE@XY", "TurbineID"]) as wind_turbine_cursor:
-            wind_turbine_data = {row[1]: row[0] for row in wind_turbine_cursor}
+    # Initialize variables to store the closest port and distance
+    closest_port = None
+    closest_distance = float('inf')
 
-        with arcpy.da.SearchCursor(port_shapefile_path, ["SHAPE@XY", "PORT_NAME"]) as port_cursor:
-            port_coords = [row[0] for row in port_cursor]
-            port_names = [row[1] for row in port_cursor]
+    # Iterate through port features
+    for port_row in port_cursor:
+        port_geometry = port_row[0]
+        port_name = port_row[1]
 
-        # Find the closest port to all wind turbine centroids (determined only once)
-        closest_port_coord, closest_port_name = find_closest_port(list(wind_turbine_data.values())[0], port_coords, port_names)
+        # Check if port geometry is None
+        if port_geometry is None:
+            arcpy.AddWarning(f"Ignoring port {port_name} with null geometry.")
+            continue
 
-        # Calculate the distance between each wind turbine centroid and the closest port
-        distances_and_port_names_dict = {}
-        for turbine_id, wind_turbine_centroid in wind_turbine_data.items():
-            distance = arcpy.PointGeometry(wind_turbine_centroid).distanceTo(arcpy.PointGeometry(closest_port_coord))
-            distances_and_port_names_dict[turbine_id] = (distance, closest_port_name)
+        # Calculate the distance between windfarm centroid and port geometry centroid
+        distance = calculate_distance(
+            (windfarm_centroid.X, windfarm_centroid.Y),
+            (port_geometry.centroid.X, port_geometry.centroid.Y)
+        )
 
-        return distances_and_port_names_dict
+        # Update the closest port if the current distance is smaller
+        if distance < closest_distance:
+            closest_distance = distance
+            closest_port = port_name
 
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to calculate distances and port names: {e}")
-        return {}
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred: {e}")
-        return {}
+        # Add a message for troubleshooting
+        arcpy.AddMessage(f"Checking port: {port_name}")
+
+    # Close the cursors
+    del windfarm_cursor
+    del port_cursor
+
+    return closest_port, closest_distance
+
+if __name__ == "__main__":
+    # Get user input parameters using arcpy.GetParameterAsText()
+    windfarm_folder: str = arcpy.GetParameterAsText(0)
+    turbine_folder: str = arcpy.GetParameterAsText(1)
+    port_folder: str = arcpy.GetParameterAsText(2)
+
+    # Set the workspace to the folder containing port shapefiles
+    arcpy.env.workspace = port_folder
+    
+    # Get the first shapefile in the folder containing port shapefiles
+    port_path = arcpy.ListFiles("*.shp")
+    if not port_path:
+        arcpy.AddError("No port shapefiles found in the specified folder.")
+        quit()
+    
+    port_path = os.path.join(port_folder, port_path[0])
+    arcpy.AddMessage(f"Port shapefile: {port_path}")
+
+    # Set the workspace to the folder containing windfarm shapefiles
+    arcpy.env.workspace = windfarm_folder
+
+    # Iterate through all windfarm shapefiles in the specified folder
+    for windfarm_file in arcpy.ListFiles("*.shp"):
+        windfarm_path = os.path.join(windfarm_folder, windfarm_file)
+
+        arcpy.AddMessage(f"Processing windfarm shapefile: {windfarm_path}")
+
+        # Find the closest port for each windfarm
+        closest_port_name, closest_distance_value = find_closest_port(port_path, windfarm_path)
+
+        # Print the result
+        arcpy.AddMessage(f"Result for {os.path.basename(windfarm_path)}: Closest port is {closest_port_name}, distance is {closest_distance_value}")
