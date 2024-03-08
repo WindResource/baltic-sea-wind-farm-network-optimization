@@ -1,60 +1,50 @@
 import arcpy
 import os
-from typing import List, Tuple
+from typing import List
 
-def project_raster(input_raster: str, output_folder: str, output_spatial_ref: arcpy.SpatialReference) -> str:
+def project_raster(input_raster: str, output_spatial_ref: arcpy.SpatialReference) -> arcpy.Raster:
     """
     Project the input raster to the specified coordinate system.
 
     Parameters:
     - input_raster (str): Path to the input raster file.
-    - output_folder (str): Path to the output folder for the projected raster.
     - output_spatial_ref (arcpy.SpatialReference): Spatial reference of the desired coordinate system.
 
     Returns:
-    - str: Path to the projected raster file.
+    - arcpy.Raster: Projected raster.
     """
     try:
-        # Get the name of the input raster without extension
-        input_raster_name = os.path.splitext(os.path.basename(input_raster))[0]
-
-        # Create the output raster path
-        output_raster_path = os.path.join(output_folder, f"{input_raster_name}_projected.tif")
-
         arcpy.AddMessage(f"Projecting raster '{input_raster}' to {output_spatial_ref.name}...")
 
         # Project the raster using arcpy.ProjectRaster_management
-        arcpy.ProjectRaster_management(input_raster, output_raster_path, output_spatial_ref)
+        projected_raster = arcpy.ProjectRaster_management(input_raster, "in_memory\\projected_raster", output_spatial_ref).getOutput(0)
 
-        arcpy.AddMessage(f"Raster projection completed. Output raster: {output_raster_path}")
+        arcpy.AddMessage("Raster projection completed.")
 
-        return output_raster_path
+        return projected_raster
 
     except arcpy.ExecuteError as e:
         arcpy.AddError(f"Failed to project raster: {e}")
-        return ""
+        return None
     except Exception as e:
         arcpy.AddError(f"An unexpected error occurred during raster projection: {e}")
-        return ""
+        return None
 
-def calculate_water_depth(input_shapefile: str, bathy_raster: str) -> None:
+def calculate_water_depth(input_shapefile: str, projected_raster: arcpy.Raster) -> None:
     """
     Calculate water depth from a bathymetry raster and add it to the attribute table of a shapefile.
 
     Parameters:
     - input_shapefile (str): Path to the input shapefile.
-    - bathy_raster (str): Path to the bathymetry raster file.
+    - projected_raster (arcpy.Raster): Projected bathymetry raster.
 
     Returns:
     - None
     """
     try:
-        # Check if the input shapefile and raster exist
+        # Check if the input shapefile exists
         if not arcpy.Exists(input_shapefile):
             arcpy.AddError(f"Input shapefile '{input_shapefile}' does not exist.")
-            return
-        if not arcpy.Exists(bathy_raster):
-            arcpy.AddError(f"Bathymetry raster '{bathy_raster}' does not exist.")
             return
 
         # Add 'WaterDepth' field if it does not exist
@@ -68,7 +58,7 @@ def calculate_water_depth(input_shapefile: str, bathy_raster: str) -> None:
                 centroid = row[0].centroid
 
                 # Get the water depth value from the raster
-                water_depth = arcpy.GetCellValue_management(bathy_raster, f"{centroid.X} {centroid.Y}").getOutput(0)
+                water_depth = arcpy.GetCellValue_management(projected_raster, f"{centroid.X} {centroid.Y}").getOutput(0)
 
                 # Update the 'WaterDepth' field
                 row[1] = float(water_depth) if water_depth != "NoData" else None
@@ -94,24 +84,25 @@ if __name__ == "__main__":
         # List all shapefiles in the workspace
         shapefiles: List[str] = arcpy.ListFeatureClasses("*.shp")
 
-        # Iterate through each shapefile and process it
-        for input_shapefile_name in shapefiles:
-            input_shapefile_path: str = os.path.join(input_folder, input_shapefile_name)
-            arcpy.AddMessage(f"Processing input shapefile: {input_shapefile_path}")
+        # Project the bathymetry raster to the specified UTM coordinate system
+        spatial_reference = arcpy.Describe(shapefiles[0]).spatialReference
+        projected_raster: arcpy.Raster = project_raster(bathy_raster, spatial_reference)
 
-            # Check if the shapefile exists
-            if not arcpy.Exists(input_shapefile_path):
-                arcpy.AddError(f"Input shapefile '{input_shapefile_path}' does not exist.")
-                continue
+        if projected_raster is None:
+            arcpy.AddError("Failed to project the bathymetry raster.")
+        else:
+            # Iterate through each shapefile and process it
+            for input_shapefile_name in shapefiles:
+                input_shapefile_path: str = os.path.join(input_folder, input_shapefile_name)
+                arcpy.AddMessage(f"Processing input shapefile: {input_shapefile_path}")
 
-            # Project the bathymetry raster to the specified UTM coordinate system
-            projected_raster_path: str = project_raster(bathy_raster, input_folder, arcpy.Describe(input_shapefile_path).spatialReference)
-            if not projected_raster_path:
-                arcpy.AddError("Failed to project the bathymetry raster.")
-                continue
+                # Check if the shapefile exists
+                if not arcpy.Exists(input_shapefile_path):
+                    arcpy.AddError(f"Input shapefile '{input_shapefile_path}' does not exist.")
+                    continue
 
-            # Calculate water depth and update attribute table
-            calculate_water_depth(input_shapefile_path, projected_raster_path)
+                # Calculate water depth and update attribute table
+                calculate_water_depth(input_shapefile_path, projected_raster)
 
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to process shapefiles: {e}")
