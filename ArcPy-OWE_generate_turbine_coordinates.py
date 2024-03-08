@@ -94,7 +94,7 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
             # Create point feature class with spatial reference
             output_feature_class = arcpy.management.CreateFeatureclass(
                 output_folder,
-                f"WTC_{os.path.splitext(input_shapefile)[0]}.shp",
+                f"WTC_{os.path.splitext(input_shapefile)[0][4:]}.shp",
                 "POINT",
                 spatial_reference=utm_spatial_ref
             )
