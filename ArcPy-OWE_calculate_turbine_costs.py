@@ -1,43 +1,6 @@
 import arcpy
-import os
-from typing import List, Tuple
 
-def project_raster(input_raster, output_folder, output_spatial_ref):
-    """
-    Project the input raster to the specified coordinate system.
-
-    Parameters:
-    - input_raster (str): Path to the input raster file.
-    - output_folder (str): Path to the output folder for the projected raster.
-    - output_spatial_ref (arcpy.SpatialReference): Spatial reference of the desired coordinate system.
-
-    Returns:
-    - str: Path to the projected raster file.
-    """
-    try:
-        # Get the name of the input raster without extension
-        input_raster_name = os.path.splitext(os.path.basename(input_raster))[0]
-
-        # Create the output raster path
-        output_raster_path = os.path.join(output_folder, f"{input_raster_name}_projected.tif")
-
-        arcpy.AddMessage(f"Projecting raster '{input_raster}' to {output_spatial_ref.name}...")
-
-        # Project the raster using arcpy.ProjectRaster_management
-        arcpy.ProjectRaster_management(input_raster, output_raster_path, output_spatial_ref)
-
-        arcpy.AddMessage(f"Raster projection completed. Output raster: {output_raster_path}")
-
-        return output_raster_path
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to project raster: {e}")
-        return None
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred during raster projection: {e}")
-        return None
-
-def determine_support_structure(water_depth: float) -> str:
+def determine_support_structure(water_depth):
     """
     Determines the support structure type based on water depth.
 
@@ -59,14 +22,13 @@ def determine_support_structure(water_depth: float) -> str:
         arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
         return "default"
 
-def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str, turbine_capacity: float) -> float:
+def calc_equipment_costs(water_depth, year, turbine_capacity):
     """
-    Calculates the equipment costs based on raster values, year, support structure, and turbine capacity.
+    Calculates the equipment costs based on water depth values, year, and turbine capacity.
 
     Parameters:
-    - raster (arcpy.Raster): Raster representing water depth values.
+    - water_depth (float): Water depth in meters.
     - year (str): Year for which equipment costs are calculated ('2020', '2030', or '2050').
-    - support_structure (str): Support structure type ('monopile', 'jacket', 'floating', or 'default').
     - turbine_capacity (float): Rated power capacity of the wind turbine.
 
     Returns:
@@ -84,7 +46,7 @@ def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str
         ('2030', 'floating'): (0, 697, 1223),
         ('2050', 'floating'): (0, 658, 844)
     }
-    
+
     # Coefficients for wind turbine rated cost
     wind_turbine_coeff = {
         '2020': 1500,
@@ -92,47 +54,77 @@ def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str
         '2050': 1000
     }
 
+    # Get the support structure type based on water depth
+    support_structure = determine_support_structure(water_depth)
+
     key = (year, support_structure)
     c1, c2, c3 = support_structure_coeff[key]
     WT_rated_cost = wind_turbine_coeff[year]
 
     # Calculate equipment costs using the provided formula
-    return turbine_capacity * ((c1 * (raster ** 2)) + (c2 * raster) + (c3 * 1000) + (WT_rated_cost))
+    return turbine_capacity * ((c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000) + (WT_rated_cost))
 
-def process_shapefiles(input_folder: str, utm_zone: int, bathy_raster_path: str) -> List[Tuple[str, arcpy.Raster]]:
+def update_equipment_costs(input_shapefile):
     """
-    Process shapefiles in the workspace.
+    Update the attribute table of a shapefile with calculated equipment costs.
 
     Parameters:
-    - input_folder (str): Path to the input folder containing shapefiles.
-    - utm_zone (int): UTM Zone number specified by the user.
-    - bathy_raster_path (str): Path to the input bathymetry raster file.
+    - input_shapefile (str): Path to the input shapefile.
 
     Returns:
-    - List[Tuple[str, arcpy.Raster]]: List of processed shapefiles with their paths and corresponding inverted bathymetry rasters.
+    - None
     """
+    try:
+        # Check if the input shapefile exists
+        if not arcpy.Exists(input_shapefile):
+            arcpy.AddError(f"Input shapefile '{input_shapefile}' does not exist.")
+            return
+
+        # Add 'EC_2020', 'EC_2030', and 'EC_2050' fields if they do not exist
+        for year in ['2020', '2030', '2050']:
+            field_name = f"EC_{year}"
+            if not arcpy.ListFields(input_shapefile, field_name):
+                arcpy.AddField_management(input_shapefile, field_name, "DOUBLE")
+
+        # Update the attribute table with equipment costs
+        with arcpy.da.UpdateCursor(input_shapefile, ["WaterDepth", "EC_2020", "EC_2030", "EC_2050", "TurbineID", "Capacity"]) as cursor:
+            for row in cursor:
+                # Get water depth, turbine ID, and turbine capacity from the row
+                water_depth = row[0]
+                turbine_id = row[4]
+                turbine_capacity = row[5]
+
+                # Update equipment costs for each year
+                for year in ['2020', '2030', '2050']:
+                    field_name = f"EC_{year}"
+                    equipment_costs = calc_equipment_costs(water_depth, year, turbine_capacity)
+                    row[cursor.fields.index(field_name)] = equipment_costs
+
+                # Update the row in the attribute table
+                cursor.updateRow(row)
+
+        arcpy.AddMessage(f"Equipment cost calculation and attribute update for {input_shapefile} completed.")
+
+    except arcpy.ExecuteError as e:
+        arcpy.AddError(f"Failed to update equipment costs: {e}")
+    except Exception as e:
+        arcpy.AddError(f"An unexpected error occurred: {e}")
+
+if __name__ == "__main__":
+    # Get input parameters from ArcGIS tool parameters
+    input_folder = arcpy.GetParameterAsText(0)
+
     try:
         # Set the workspace to the input folder
         arcpy.env.workspace = input_folder
         arcpy.AddMessage(f"Setting workspace to: {input_folder}")
 
-        # Determine the UTM spatial reference based on the specified UTM zone
-        utm_wkid = 32600 + utm_zone
-        utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
-
-        # Project the bathymetry raster to the specified UTM coordinate system
-        projected_raster_path = project_raster(bathy_raster_path, input_folder, utm_spatial_ref)
-        if not projected_raster_path:
-            arcpy.AddError("Failed to project the bathymetry raster.")
-            return []
-
         # List all shapefiles in the workspace
         shapefiles = arcpy.ListFeatureClasses("*.shp")
-        processed_shapefiles: List[Tuple[str, arcpy.Raster]] = []
 
         # Iterate through each shapefile and process it
         for input_shapefile_name in shapefiles:
-            input_shapefile_path = os.path.join(input_folder, input_shapefile_name)
+            input_shapefile_path = arcpy.ValidateTableName(input_shapefile_name, input_folder)
             arcpy.AddMessage(f"Processing input shapefile: {input_shapefile_path}")
 
             # Check if the shapefile exists
@@ -140,114 +132,13 @@ def process_shapefiles(input_folder: str, utm_zone: int, bathy_raster_path: str)
                 arcpy.AddError(f"Input shapefile '{input_shapefile_path}' does not exist.")
                 continue
 
-            # Create an inverted bathymetry raster for the shapefile
-            inverted_raster = arcpy.sa.Times(projected_raster_path, -1)
-            processed_shapefiles.append((input_shapefile_path, inverted_raster))
-
-        return processed_shapefiles
+            # Update the attribute table with equipment costs
+            update_equipment_costs(input_shapefile_path)
 
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to process shapefiles: {e}")
-        return []
     except Exception as e:
         arcpy.AddMessage(f"An unexpected error occurred: {e}")
-        return []
     finally:
         # Reset the workspace to None to avoid potential issues
         arcpy.env.workspace = None
-
-def update_attribute_table(input_shapefile_path: str, inverted_raster: arcpy.Raster):
-    """
-    Update the attribute table of a shapefile.
-
-    Parameters:
-    - input_shapefile_path (str): Path to the input shapefile.
-    - inverted_raster (arcpy.Raster): Inverted bathymetry raster.
-
-    Returns:
-    - None
-    """
-    try:
-        # Define the fields to add to the attribute table
-        fields_to_add = [
-            ("SuppStruct", "TEXT"),
-            ("WaterDepth", "DOUBLE"),
-            ("EC_2020", "DOUBLE"),
-            ("EC_2030", "DOUBLE"),
-            ("EC_2050", "DOUBLE")
-        ]
-
-        # Add the required fields if they do not already exist
-        for field, field_type in fields_to_add:
-            if not arcpy.ListFields(input_shapefile_path, field):
-                arcpy.AddField_management(input_shapefile_path, field, field_type)
-
-        # Update the attribute table using an update cursor
-        with arcpy.da.UpdateCursor(
-            input_shapefile_path, ["SHAPE@", "TurbineID", "Capacity", "SuppStruct", "WaterDepth", "EC_2020", "EC_2030", "EC_2050"]
-        ) as cursor:
-            arcpy.AddMessage(f"Processing shapefile: {input_shapefile_path}...")
-
-            # Iterate through each row in the attribute table
-            for row in cursor:
-                # Check if there are enough fields in the row
-                if len(row) < 5:
-                    arcpy.AddWarning(f"Insufficient number of fields retrieved. Skipping row update.")
-                    continue
-
-                # Extract relevant information from the row
-                turbine_location, turbine_id, turbine_capacity, *_ = row[:3]
-
-                # Get the coordinates of the turbine location
-                x, y = turbine_location.centroid.X, turbine_location.centroid.Y
-
-                # Display a message indicating the start of processing for each wind turbine
-                arcpy.AddMessage(f"Processing Wind Turbine {turbine_id} at Location ({x}, {y})...")
-
-                # Get the water depth at the turbine location from the inverted raster
-                water_depth_at_location = arcpy.GetCellValue_management(inverted_raster, f"{x} {y}").getOutput(0)
-
-                # Check if water depth is NoData, and skip processing if it is
-                if water_depth_at_location == 'NoData':
-                    arcpy.AddWarning(f"Water depth at location ({x}, {y}) is NoData. Skipping processing.")
-                    continue
-
-                # Determine the support structure type based on water depth
-                support_structure = determine_support_structure(float(water_depth_at_location))
-
-                # Update the equipment costs for each year
-                for year_index, year in enumerate(['2020', '2030', '2050']):
-                    equipment_costs = calc_equipment_costs(float(water_depth_at_location), year, support_structure, turbine_capacity)
-                    row[5 + year_index] = equipment_costs
-
-                # Update the support structure and water depth fields in the attribute table
-                row[3] = support_structure
-                row[4] = float(water_depth_at_location)  # Add water depth to the attribute table
-                cursor.updateRow(row)
-
-                # Display a message indicating the end of processing for each wind turbine
-                arcpy.AddMessage(f"Processing for Wind Turbine {turbine_id} completed.")
-
-            # Display a message indicating the end of processing for the entire shapefile
-            arcpy.AddMessage(f"Processing of shapefile {input_shapefile_path} completed successfully.")
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddMessage(f"Failed to update attribute table: {e}")
-    except Exception as e:
-        arcpy.AddMessage(f"An unexpected error occurred: {e}")
-
-if __name__ == "__main__":
-    # Get input parameters from ArcGIS tool parameters
-    input_folder: str = arcpy.GetParameterAsText(0)
-    bathy_raster_path: str = arcpy.GetParameterAsText(1)
-    utm_zone: int = int(arcpy.GetParameterAsText(2))
-
-    # Process shapefiles in the specified input folder
-    processed_shapefiles = process_shapefiles(input_folder, utm_zone, bathy_raster_path)
-
-    # Iterate through each processed shapefile and update its attribute table
-    for shapefile_info in processed_shapefiles:
-        input_shapefile_path, inverted_raster = shapefile_info
-        update_attribute_table(input_shapefile_path, inverted_raster)
-
-
