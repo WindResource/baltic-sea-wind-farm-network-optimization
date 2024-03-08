@@ -14,6 +14,21 @@ def calculate_distance(point1: arcpy.PointGeometry, point2: arcpy.PointGeometry)
     """Calculate the geodetic distance between two point geometries."""
     return point1.distanceTo(point2)
 
+def update_turbine_attributes(turbine_file: str, port_name: str, distance: float):
+    """Update turbine attributes with PortName and Distance."""
+    # Add new fields if they don't exist
+    for field in ["PortName", "Distance"]:
+        if field not in [f.name for f in arcpy.ListFields(turbine_file)]:
+            arcpy.AddField_management(turbine_file, field, "TEXT" if field == "PortName" else "DOUBLE")
+
+    # Update attribute values for each turbine point
+    with arcpy.da.UpdateCursor(turbine_file, ["SHAPE@", "PortName", "Distance"]) as cursor:
+        for row in cursor:
+            # Update the PortName and Distance fields for each turbine point
+            row[1] = port_name
+            row[2] = distance
+            cursor.updateRow(row)
+
 def find_closest_port(port_file: str, windfarm: str) -> Tuple[str, float]:
     """Find the closest port to the windfarm and return its name and distance."""
     # Open the windfarm and port shapefiles
@@ -82,10 +97,8 @@ if __name__ == "__main__":
     port_path = os.path.join(port_folder, port_path[0])
     arcpy.AddMessage(f"Port shapefile: {port_path}")
 
-    # Set the workspace to the folder containing windfarm shapefiles
-    arcpy.env.workspace = windfarm_folder
-
     # Iterate through all windfarm shapefiles in the specified folder
+    arcpy.env.workspace = windfarm_folder
     for windfarm_file in arcpy.ListFiles("*.shp"):
         windfarm_path = os.path.join(windfarm_folder, windfarm_file)
 
@@ -93,6 +106,13 @@ if __name__ == "__main__":
 
         # Find the closest port for each windfarm
         closest_port_name, closest_distance_value = find_closest_port(port_path, windfarm_path)
+
+        # Set the workspace to the folder containing turbine shapefiles
+        arcpy.env.workspace = turbine_folder
+
+        # Update turbine attributes with PortName and Distance
+        turbine_file = os.path.join(turbine_folder, windfarm_file.replace("WFA_", "WTC_"))
+        update_turbine_attributes(turbine_file, closest_port_name, closest_distance_value)
 
         # Print the result
         arcpy.AddMessage(f"Result for {os.path.basename(windfarm_path)}: Closest port is {closest_port_name}, distance is {closest_distance_value}")
