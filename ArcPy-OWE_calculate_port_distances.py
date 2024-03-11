@@ -8,9 +8,12 @@ def calculate_distance(point1: arcpy.PointGeometry, point2: arcpy.PointGeometry)
 
 def update_turbine_attributes(turbine_file: str, port_geometry: arcpy.PointGeometry, port_name: str):
     """Update turbine attributes with PortName and Distance."""
+    # Check if the fields already exist
+    existing_fields = [f.name for f in arcpy.ListFields(turbine_file)]
+
     # Add new fields if they don't exist
     for field in ["PortName", "Distance"]:
-        if field not in [f.name for f in arcpy.ListFields(turbine_file)]:
+        if field not in existing_fields:
             arcpy.AddField_management(turbine_file, field, "TEXT" if field == "PortName" else "DOUBLE")
 
     # Update attribute values for each turbine point
