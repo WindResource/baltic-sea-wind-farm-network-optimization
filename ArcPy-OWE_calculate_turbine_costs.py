@@ -1,4 +1,5 @@
 import arcpy
+import os
 
 def determine_support_structure(water_depth):
     """
@@ -80,25 +81,49 @@ def update_equipment_costs(input_shapefile):
             arcpy.AddError(f"Input shapefile '{input_shapefile}' does not exist.")
             return
 
-        # Add 'EC_2020', 'EC_2030', and 'EC_2050' fields if they do not exist
-        for year in ['2020', '2030', '2050']:
-            field_name = f"EC_{year}"
-            if not arcpy.ListFields(input_shapefile, field_name):
-                arcpy.AddField_management(input_shapefile, field_name, "DOUBLE")
+        # Define the fields to be added
+        fields_to_add = [
+            {'name': 'SuppStruct', 'type': 'TEXT'},
+            {'name': 'EC_2020', 'type': 'DOUBLE'},
+            {'name': 'EC_2030', 'type': 'DOUBLE'},
+            {'name': 'EC_2050', 'type': 'DOUBLE'}
+        ]
 
-        # Update the attribute table with equipment costs
-        with arcpy.da.UpdateCursor(input_shapefile, ["WaterDepth", "EC_2020", "EC_2030", "EC_2050", "TurbineID", "Capacity"]) as cursor:
+        # Get the list of fields in the attribute table
+        existing_fields = [field.name for field in arcpy.ListFields(input_shapefile)]
+
+        # Add fields if they do not exist
+        for field in fields_to_add:
+            if field['name'] not in existing_fields:
+                arcpy.AddField_management(input_shapefile, field['name'], field['type'])
+                arcpy.AddMessage(f"Added field '{field['name']}' to the attribute table.")
+
+        # Get the updated list of fields in the attribute table
+        fields = [field.name for field in arcpy.ListFields(input_shapefile)]
+
+        # Update the attribute table with equipment costs and support structure
+        with arcpy.da.UpdateCursor(input_shapefile, fields) as cursor:
             for row in cursor:
-                # Get water depth, turbine ID, and turbine capacity from the row
-                water_depth = row[0]
-                turbine_id = row[4]
-                turbine_capacity = row[5]
+                # Check if 'SuppStruct' exists in the fields list
+                if 'SuppStruct' in fields:
+                    # Get field indices dynamically
+                    water_depth_index = fields.index("WaterDepth")
+                    capacity_index = fields.index("Capacity")
+
+                    # Get water depth and turbine capacity from the row
+                    water_depth = -row[water_depth_index]  # Invert the sign
+                    turbine_capacity = row[capacity_index]
+
+                    # Identify support structure and capitalize the first letter
+                    support_structure = determine_support_structure(water_depth).capitalize()
+                    row[fields.index("SuppStruct")] = support_structure
 
                 # Update equipment costs for each year
                 for year in ['2020', '2030', '2050']:
                     field_name = f"EC_{year}"
-                    equipment_costs = calc_equipment_costs(water_depth, year, turbine_capacity)
-                    row[cursor.fields.index(field_name)] = equipment_costs
+                    if field_name in fields:
+                        equipment_costs = calc_equipment_costs(water_depth, year, turbine_capacity)
+                        row[fields.index(field_name)] = equipment_costs
 
                 # Update the row in the attribute table
                 cursor.updateRow(row)
@@ -124,7 +149,7 @@ if __name__ == "__main__":
 
         # Iterate through each shapefile and process it
         for input_shapefile_name in shapefiles:
-            input_shapefile_path = arcpy.ValidateTableName(input_shapefile_name, input_folder)
+            input_shapefile_path = os.path.join(input_folder, input_shapefile_name)
             arcpy.AddMessage(f"Processing input shapefile: {input_shapefile_path}")
 
             # Check if the shapefile exists
@@ -142,3 +167,4 @@ if __name__ == "__main__":
     finally:
         # Reset the workspace to None to avoid potential issues
         arcpy.env.workspace = None
+
