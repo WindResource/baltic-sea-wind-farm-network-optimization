@@ -65,9 +65,6 @@ def find_closest_port(port_file: str, windfarm: str) -> Tuple[arcpy.PointGeometr
             closest_distance = distance
             closest_port = port_geometry, port_name
 
-        # Add a message for troubleshooting
-        arcpy.AddMessage(f"Checking port: {port_name}")
-
     # Close the cursors
     del windfarm_cursor
     del port_cursor
