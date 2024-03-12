@@ -23,7 +23,7 @@ def determine_support_structure(water_depth):
         arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
         return "default"
 
-def calc_equipment_costs(water_depth, year, turbine_capacity):
+def calc_equip_costs(water_depth, year, turbine_capacity):
     """
     Calculates the equipment costs based on water depth values, year, and turbine capacity.
 
@@ -154,41 +154,40 @@ def update_fields(turbine_file):
         # Get the updated list of fields in the attribute table
         fields = [field.name for field in arcpy.ListFields(turbine_file)]
 
+        # Add 'SuppStruct' field if it doesn't exist
+        if 'SuppStruct' not in fields:
+            arcpy.AddField_management(turbine_file, 'SuppStruct', 'TEXT')
+            arcpy.AddMessage("Added field 'SuppStruct' to the attribute table.")
+
         # Update the attribute table with equipment, installation, and decommissioning costs
         with arcpy.da.UpdateCursor(turbine_file, fields) as cursor:
             for row in cursor:
-                # Check if 'SuppStruct' exists in the fields list
-                if 'SuppStruct' in fields:
-                    # Get field indices dynamically
-                    water_depth_index = fields.index("WaterDepth")
-                    capacity_index = fields.index("Capacity")
+                # Get field indices dynamically
+                water_depth_index = fields.index("WaterDepth")
+                capacity_index = fields.index("Capacity")
 
-                    # Get water depth and turbine capacity from the row
-                    water_depth = -row[water_depth_index]  # Invert the sign
-                    turbine_capacity = row[capacity_index]
+                # Get water depth and turbine capacity from the row
+                water_depth = -row[water_depth_index]  # Invert the sign
+                turbine_capacity = row[capacity_index]
 
-                    # Identify support structure and capitalize the first letter
-                    support_structure = determine_support_structure(water_depth).capitalize()
-                    row[fields.index("SuppStruct")] = support_structure
+                # Identify support structure and capitalize the first letter
+                support_structure = determine_support_structure(water_depth).capitalize()
+                row[fields.index("SuppStruct")] = support_structure
 
-                # Update equipment costs for each year
+                # Update equipment costs for each year using calc_equipment_costs
                 for year in ['2020', '2030', '2050']:
                     field_name_ec = f"EC_{year}"
-                    if field_name_ec in fields:
-                        equi_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, support_structure, 'installation')
+                    field_name_cap = f"CAP_{year}"
+                    if field_name_ec in fields and field_name_cap in fields:
+                        # Calculate equipment costs using calc_equipment_costs
+                        equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
                         row[fields.index(field_name_ec)] = round(equi_costs, 2)
 
-                # Update installation costs
-                field_name_ic = "IC"
-                if field_name_ic in fields:
-                    # Calculate installation costs
-                    inst_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, support_structure, 'installation')
-                    row[fields.index(field_name_ic)] = round(inst_costs, 2)
+                        # Calculate installation costs
+                        inst_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, support_structure, 'installation')
+                        row[fields.index("IC")] = round(inst_costs, 2)
 
-                # Calculate and update capex for each year
-                for year in ['2020', '2030', '2050']:
-                    field_name_cap = f"CAP_{year}"
-                    if field_name_cap in fields:
+                        # Calculate and update capex for the current year
                         capex = equi_costs + inst_costs
                         row[fields.index(field_name_cap)] = round(capex, 2)
 
@@ -205,8 +204,49 @@ def update_fields(turbine_file):
 
     except arcpy.ExecuteError as e:
         arcpy.AddError(f"Failed to update fields: {e}")
+        arcpy.AddError(arcpy.GetMessages(2))  # Log more detailed error messages
     except Exception as e:
         arcpy.AddError(f"An unexpected error occurred: {e}")
+        arcpy.AddError(arcpy.GetMessages(2))  # Log more detailed error messages
+
+def check_updated_fields(turbine_file):
+    """
+    Check if the updated fields exist in the attribute table and if their values are nonzero.
+
+    Parameters:
+    - turbine_file (str): Path to the turbine shapefile.
+
+    Returns:
+    - bool: True if the fields exist and their values are nonzero and updated, False otherwise.
+    """
+    try:
+        # Get the list of fields in the attribute table
+        fields = [field.name for field in arcpy.ListFields(turbine_file)]
+
+        # Check if the updated fields exist
+        required_fields = ['SuppStruct', 'EC_2020', 'EC_2030', 'EC_2050', 'IC', 'CAP_2020', 'CAP_2030', 'CAP_2050', 'DEC']
+        if not all(field in fields for field in required_fields):
+            arcpy.AddWarning("Not all required fields are present in the attribute table.")
+            return False
+
+        # Check if the values of updated fields are nonzero
+        with arcpy.da.SearchCursor(turbine_file, required_fields) as cursor:
+            for row in cursor:
+                for value in row:
+                    if value == None or value == 0:
+                        arcpy.AddWarning("Some updated fields have zero or None values.")
+                        return False
+
+        # All checks passed
+        arcpy.AddMessage("All updated fields exist and have nonzero values in the attribute table.")
+        return True
+
+    except arcpy.ExecuteError as e:
+        arcpy.AddError(f"Failed to check updated fields: {e}")
+        return False
+    except Exception as e:
+        arcpy.AddError(f"An unexpected error occurred: {e}")
+        return False
 
 if __name__ == "__main__":
     # Get input parameters from ArcGIS tool parameters
@@ -246,6 +286,13 @@ if __name__ == "__main__":
             # Update the attribute table with equipment, installation, and decommissioning costs
             update_fields(input_shapefile_path)
 
+            # Check if updated fields exist and have nonzero values
+            check_result = check_updated_fields(input_shapefile_path)
+            if check_result:
+                arcpy.AddMessage("All checks passed.")
+            else:
+                arcpy.AddWarning("One or more checks failed.")
+
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to process shapefiles: {e}")
     except Exception as e:
@@ -253,5 +300,6 @@ if __name__ == "__main__":
     finally:
         # Reset the workspace to None to avoid potential issues
         arcpy.env.workspace = None
+
 
 
