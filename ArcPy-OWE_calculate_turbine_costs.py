@@ -65,37 +65,60 @@ def calc_equip_costs(water_depth, year, turbine_capacity):
     # Calculate equipment costs using the provided formula
     return turbine_capacity * ((c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000) + (WT_rated_cost))
 
-def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float, support_structure: str, operation: str) -> float:
+def calc_inst_deco_costs(water_depth: float, port_distance: float, turbine_capacity: float, operation: str) -> float:
     """
     Calculate installation or decommissioning costs based on the water depth, port distance,
     and rated power of the wind turbines.
 
     Parameters:
     - water_depth (float): Water depth in meters.
-    - port_distance (float): Distance to the port in nautical miles.
-    - turbine_capacity (float): Rated power capacity of the wind turbines.
-    - support_structure (str): Support structure type ('monopile', 'jacket', 'floating', or 'default').
+    - port_distance (float): Distance to the port in meters.
+    - turbine_capacity (float): Rated power capacity of the wind turbines in megawatts (MW).
     - operation (str): Operation type ('installation' or 'decommissioning').
 
+    Coefficients:
+    - Capacity (u/lift): Capacity of the vessel in units per lift.
+    - Speed (km/h): Speed of the vessel in kilometers per hour.
+    - Load time (h/lift): Load time per lift in hours per lift.
+    - Inst. time (h/u): Installation time per unit in hours per unit.
+    - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+
+    Vessels:
+    - SPIV (Self-Propelled Installation Vessel)
+    - AHV (Anchor Handling Vessel)
+    - Tug (Tug Boat)
+
+    Equation:
+    Cost = sum [(1 / Capacity) * ((2 * port_distance / 1000) / Speed + Load time) + Inst. time * (Dayrate * 1000 / 24)]
+
+    Explanation:
+    The cost is calculated as the sum of costs for selected vessels. For each vessel,
+    the equation represents the installation or decommissioning cost, taking into account
+    the vessel's capacity, speed, load time, installation time, and dayrate.
+
     Returns:
-    - float: Calculated costs.
+    - float: Calculated costs in Euros.
     """
+    
     # Installation coefficients for different vehicles
-    installation_coefficients = {
+    inst_coeff = {
         'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
         'Tug': (0.3, 7.5, 5, 0, 0),
         'AHV': (7, 18.5, 30, 90, 40)
     }
 
     # Decommissioning coefficients for different vehicles
-    decommissioning_coefficients = {
+    deco_coeff = {
         'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
         'Tug': (0.3, 7.5, 5, 0, 0),
         'AHV': (7, 18.5, 30, 30, 40)
     }
 
     # Choose the appropriate coefficients based on the operation type
-    coefficients = installation_coefficients if operation == 'installation' else decommissioning_coefficients
+    coeff = inst_coeff if operation == 'installation' else deco_coeff
+
+    # Determine support structure based on water depth
+    support_structure = determine_support_structure(water_depth).capitalize()
 
     # Determine installation vehicle based on support structure
     if support_structure.lower() == 'floating':
@@ -107,10 +130,10 @@ def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float
 
     # Calculate costs for selected vehicles and sum them
     costs = sum(
-        ((1 / c[0]) * ((2 * port_distance) / c[1] + c[2]) + c[3]) * c[4] / 24
-        for c in [coefficients[vehicle] for vehicle in vehicles]
+        ((1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]) * c[4] * 1000 / 24
+        for c in [coeff[vehicle] for vehicle in vehicles]
     )
-
+    
     return costs
 
 def update_fields(turbine_file):
@@ -154,11 +177,6 @@ def update_fields(turbine_file):
         # Get the updated list of fields in the attribute table
         fields = [field.name for field in arcpy.ListFields(turbine_file)]
 
-        # Add 'SuppStruct' field if it doesn't exist
-        if 'SuppStruct' not in fields:
-            arcpy.AddField_management(turbine_file, 'SuppStruct', 'TEXT')
-            arcpy.AddMessage("Added field 'SuppStruct' to the attribute table.")
-
         # Update the attribute table with equipment, installation, and decommissioning costs
         with arcpy.da.UpdateCursor(turbine_file, fields) as cursor:
             for row in cursor:
@@ -174,17 +192,17 @@ def update_fields(turbine_file):
                 support_structure = determine_support_structure(water_depth).capitalize()
                 row[fields.index("SuppStruct")] = support_structure
 
-                # Update equipment costs for each year using calc_equipment_costs
+                # Update equipment costs for each year
                 for year in ['2020', '2030', '2050']:
                     field_name_ec = f"EC_{year}"
                     field_name_cap = f"CAP_{year}"
                     if field_name_ec in fields and field_name_cap in fields:
-                        # Calculate equipment costs using calc_equipment_costs
+                        # Calculate equipment costs
                         equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
                         row[fields.index(field_name_ec)] = round(equi_costs, 2)
 
                         # Calculate installation costs
-                        inst_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, support_structure, 'installation')
+                        inst_costs = calc_inst_deco_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'installation')
                         row[fields.index("IC")] = round(inst_costs, 2)
 
                         # Calculate and update capex for the current year
@@ -194,7 +212,7 @@ def update_fields(turbine_file):
                 # Update decommissioning costs (DEC)
                 field_name_dec = "DEC"
                 if field_name_dec in fields:
-                    deco_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, support_structure, 'decommissioning')
+                    deco_costs = calc_inst_deco_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'decommissioning')
                     row[fields.index(field_name_dec)] = round(deco_costs, 2)
 
                 # Update the row in the attribute table
@@ -263,7 +281,7 @@ if __name__ == "__main__":
         # Check if there are any shapefiles in the folder
         if not shapefiles:
             arcpy.AddError(f"No shapefiles found in the specified folder: {turbine_folder}")
-            sys.exit()
+            exit()
 
         # Iterate through each shapefile and process it
         for input_shapefile_name in shapefiles:
