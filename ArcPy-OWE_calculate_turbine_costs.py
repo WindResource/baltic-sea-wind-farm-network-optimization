@@ -117,10 +117,10 @@ def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float
     coeff = inst_coeff if operation == 'installation' else deco_coeff
 
     # Determine support structure based on water depth
-    support_structure = determine_support_structure(water_depth).capitalize()
+    support_structure = determine_support_structure(water_depth).lower()
 
     # Determine installation vehicles based on support structure
-    if support_structure.lower() == 'floating':
+    if support_structure == 'floating':
         # For floating support structure, use both Tug and AHV
         vehicles = ['Tug', 'AHV']
     else:
@@ -142,9 +142,56 @@ def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float
 
     return total_hours, total_costs
 
+def logi_costs(water_depth: float, port_distance: float, failure_rate: float = 0.08) -> tuple:
+    """
+    Calculate logistics time and costs based on water depth, port distance, and failure rate for major wind turbine repairs.
+
+    Parameters:
+    - water_depth (float): Water depth in meters.
+    - port_distance (float): Distance to the port in meters.
+    - failure_rate (float, optional): Failure rate for the wind turbines (/yr). Default is 0.08.
+
+    Coefficients:
+    - Speed (km/h): Speed of the vessel in kilometers per hour.
+    - Repair time (h): Repair time in hours.
+    - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+    - Roundtrips: Number of roundtrips for the logistics operation.
+
+    Equations:
+    - Logistics Time: labda * ((2 * c4 * port_distance) / c1 + c2)
+    - Logistics Costs: Logistics Time * c4 / 24
+
+    Returns:
+    - tuple: Logistics time in hours per year and logistics costs in Euros.
+    """
+    
+    # Logistics coefficients for different vessels
+    logi_coeff = {
+        'JUV': (18.5, 50, 150, 1),
+        'Tug': (7.5, 50, 2.5, 2)
+    }
+
+    # Determine support structure based on water depth
+    support_structure = determine_support_structure(water_depth).capitalize()
+
+    # Determine logistics vessel based on support structure
+    vessel = 'Tug' if support_structure.lower() == 'floating' else 'JUV'
+
+    # Choose the appropriate coefficients based on the selected vessel
+    coeff = logi_coeff[vessel]
+
+    # Calculate logistics time in hours per year
+    logistics_time = failure_rate * ((2 * coeff[3] * port_distance / 1000) / coeff[0] + coeff[1])
+
+    # Calculate logistics costs using the provided equation
+    logistics_costs = logistics_time * coeff[3] * 1000 / 24
+
+    return logistics_time, logistics_costs
+
 def update_fields(turbine_file):
     """
-    Update the attribute table of a shapefile with calculated equipment, installation, and decommissioning costs.
+    Update the attribute table of a shapefile with calculated equipment, installation, decommissioning, logistics costs,
+    logistics time, and Opex.
 
     Parameters:
     - turbine_file (str): Path to the turbine shapefile.
@@ -161,16 +208,21 @@ def update_fields(turbine_file):
         # Define the fields to be added if they don't exist
         fields_to_add = [
             {'name': 'SuppStruct', 'type': 'TEXT'},
-            {'name': 'EC_2020', 'type': 'DOUBLE'},
-            {'name': 'EC_2030', 'type': 'DOUBLE'},
-            {'name': 'EC_2050', 'type': 'DOUBLE'},
-            {'name': 'IC', 'type': 'DOUBLE'},
-            {'name': 'IT', 'type': 'DOUBLE'},  # Installation Time
-            {'name': 'CAP_2020', 'type': 'DOUBLE'},
-            {'name': 'CAP_2030', 'type': 'DOUBLE'},
-            {'name': 'CAP_2050', 'type': 'DOUBLE'},
-            {'name': 'DEC', 'type': 'DOUBLE'},
-            {'name': 'DT', 'type': 'DOUBLE'}   # Decommissioning Time
+            {'name': 'EquiC20', 'type': 'DOUBLE'},
+            {'name': 'EquiC30', 'type': 'DOUBLE'},
+            {'name': 'EquiC50', 'type': 'DOUBLE'},
+            {'name': 'InstC', 'type': 'DOUBLE'},
+            {'name': 'InstT', 'type': 'DOUBLE'},  # Installation Time
+            {'name': 'Capex20', 'type': 'DOUBLE'},
+            {'name': 'Capex30', 'type': 'DOUBLE'},
+            {'name': 'Capex50', 'type': 'DOUBLE'},
+            {'name': 'Decex', 'type': 'DOUBLE'},
+            {'name': 'DecT', 'type': 'DOUBLE'},  # Decommissioning Time
+            {'name': 'LogiC', 'type': 'DOUBLE'},  # Logistics Costs
+            {'name': 'LogiT', 'type': 'DOUBLE'},  # Logistics Time
+            {'name': 'Opex20', 'type': 'DOUBLE'},  # Operational Expenditure for 2020
+            {'name': 'Opex30', 'type': 'DOUBLE'},  # Operational Expenditure for 2030
+            {'name': 'Opex50', 'type': 'DOUBLE'}   # Operational Expenditure for 2050
         ]
 
         # Get the list of fields in the attribute table
@@ -185,7 +237,7 @@ def update_fields(turbine_file):
         # Get the updated list of fields in the attribute table
         fields = [field.name for field in arcpy.ListFields(turbine_file)]
 
-        # Update the attribute table with equipment, installation, and decommissioning costs
+        # Update the attribute table with calculated values
         with arcpy.da.UpdateCursor(turbine_file, fields) as cursor:
             for row in cursor:
                 # Get field indices dynamically
@@ -202,8 +254,8 @@ def update_fields(turbine_file):
 
                 # Update equipment costs for each year using calc_equipment_costs
                 for year in ['2020', '2030', '2050']:
-                    field_name_ec = f"EC_{year}"
-                    field_name_cap = f"CAP_{year}"
+                    field_name_ec = f"EquiC{year[2:]}"  # Remove the first two numbers of the year
+                    field_name_cap = f"Capex{year[2:]}"  # Remove the first two numbers of the year
                     if field_name_ec in fields and field_name_cap in fields:
                         # Calculate equipment costs using calc_equipment_costs
                         equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
@@ -213,26 +265,40 @@ def update_fields(turbine_file):
                         inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'installation')
                         deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'decommissioning')
 
-                        # Update installation and decommissioning times (IT and DT) in hours
-                        row[fields.index("IT")] = round(inst_hours, 2)
-                        row[fields.index("DT")] = round(deco_hours, 2)
+                        # Update installation and decommissioning times (InstT and DecT) in hours
+                        row[fields.index("InstT")] = round(inst_hours, 2)
+                        row[fields.index("DecT")] = round(deco_hours, 2)
 
                         # Update installation costs
-                        row[fields.index("IC")] = round(inst_costs, 2)
+                        row[fields.index("InstC")] = round(inst_costs, 2)
 
                         # Calculate and update capex for the current year
                         capex = equi_costs + inst_costs
                         row[fields.index(field_name_cap)] = round(capex, 2)
 
-                        # Update decommissioning costs (DEC)
-                        field_name_dec = "DEC"
+                        # Calculate decommissioning costs and update the Decex field
+                        field_name_dec = "Decex"
                         if field_name_dec in fields:
                             row[fields.index(field_name_dec)] = round(deco_costs, 2)
+
+                        # Calculate logistics costs and update the LogiC field
+                        logi_costs_value = logi_costs(water_depth, row[fields.index("Distance")])[1]
+                        row[fields.index("LogiC")] = round(logi_costs_value, 2)
+
+                        # Calculate logistics time and update the LogiT field
+                        logi_time = logi_costs(water_depth, row[fields.index("Distance")])[0]
+                        row[fields.index("LogiT")] = round(logi_time, 2)
+
+                        # Calculate material costs (0.025 * equipment costs) and update Opex for each year
+                        material_costs = 0.025 * equi_costs
+                        field_name_opex = f"Opex{year[2:]}"
+                        if field_name_opex in fields:
+                            row[fields.index(field_name_opex)] = round(material_costs + logi_costs_value, 2)
 
                 # Update the row in the attribute table
                 cursor.updateRow(row)
 
-        arcpy.AddMessage(f"Equipment, installation, and decommissioning cost calculation for {turbine_file} completed.")
+        arcpy.AddMessage(f"Attribute table of {turbine_file} updated successfully.")
 
     except arcpy.ExecuteError as e:
         arcpy.AddError(f"Failed to update fields: {e}")
