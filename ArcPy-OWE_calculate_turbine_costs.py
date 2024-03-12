@@ -65,7 +65,7 @@ def calc_equip_costs(water_depth, year, turbine_capacity):
     # Calculate equipment costs using the provided formula
     return turbine_capacity * ((c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000) + (WT_rated_cost))
 
-def calc_inst_deco_costs(water_depth: float, port_distance: float, turbine_capacity: float, operation: str) -> float:
+def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float, operation: str) -> tuple:
     """
     Calculate installation or decommissioning costs based on the water depth, port distance,
     and rated power of the wind turbines.
@@ -89,15 +89,14 @@ def calc_inst_deco_costs(water_depth: float, port_distance: float, turbine_capac
     - Tug (Tug Boat)
 
     Equation:
-    Cost = sum [(1 / Capacity) * ((2 * port_distance / 1000) / Speed + Load time) + Inst. time * (Dayrate * 1000 / 24)]
+    Hours = (1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]
+    Cost = Hours * c[4] * 1000 / 24
 
     Explanation:
-    The cost is calculated as the sum of costs for selected vessels. For each vessel,
-    the equation represents the installation or decommissioning cost, taking into account
-    the vessel's capacity, speed, load time, installation time, and dayrate.
+    The hours are calculated first, and then the cost is calculated using the determined hours.
 
     Returns:
-    - float: Calculated costs in Euros.
+    - tuple: Calculated hours and costs in Euros.
     """
     
     # Installation coefficients for different vehicles
@@ -120,7 +119,7 @@ def calc_inst_deco_costs(water_depth: float, port_distance: float, turbine_capac
     # Determine support structure based on water depth
     support_structure = determine_support_structure(water_depth).capitalize()
 
-    # Determine installation vehicle based on support structure
+    # Determine installation vehicles based on support structure
     if support_structure.lower() == 'floating':
         # For floating support structure, use both Tug and AHV
         vehicles = ['Tug', 'AHV']
@@ -128,13 +127,20 @@ def calc_inst_deco_costs(water_depth: float, port_distance: float, turbine_capac
         # For other support structures, use only PSIV
         vehicles = ['PSIV']
 
-    # Calculate costs for selected vehicles and sum them
-    costs = sum(
-        ((1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]) * c[4] * 1000 / 24
-        for c in [coeff[vehicle] for vehicle in vehicles]
-    )
+    # Calculate hours separately for each vessel
+    hours_per_vessel = [((1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]) for c in [coeff[vehicle] for vehicle in vehicles]
+    ]
     
-    return costs
+    # For floating support structure, use the maximum hours of Tug and AHV
+    total_hours = max(hours_per_vessel) if support_structure.lower() == 'floating' else sum(hours_per_vessel)
+
+    # Calculate costs based on the determined hours
+    total_costs = sum([
+        hours * c[4] * 1000 / 24
+        for hours, c in zip(hours_per_vessel, [coeff[vehicle] for vehicle in vehicles])
+    ]) if support_structure.lower() == 'floating' else hours_per_vessel[0] * coeff[vehicles[0]][4] * 1000 / 24
+
+    return total_hours, total_costs
 
 def update_fields(turbine_file):
     """
@@ -159,10 +165,12 @@ def update_fields(turbine_file):
             {'name': 'EC_2030', 'type': 'DOUBLE'},
             {'name': 'EC_2050', 'type': 'DOUBLE'},
             {'name': 'IC', 'type': 'DOUBLE'},
+            {'name': 'IT', 'type': 'DOUBLE'},  # Installation Time
             {'name': 'CAP_2020', 'type': 'DOUBLE'},
             {'name': 'CAP_2030', 'type': 'DOUBLE'},
             {'name': 'CAP_2050', 'type': 'DOUBLE'},
-            {'name': 'DEC', 'type': 'DOUBLE'}
+            {'name': 'DEC', 'type': 'DOUBLE'},
+            {'name': 'DT', 'type': 'DOUBLE'}   # Decommissioning Time
         ]
 
         # Get the list of fields in the attribute table
@@ -192,28 +200,34 @@ def update_fields(turbine_file):
                 support_structure = determine_support_structure(water_depth).capitalize()
                 row[fields.index("SuppStruct")] = support_structure
 
-                # Update equipment costs for each year
+                # Update equipment costs for each year using calc_equipment_costs
                 for year in ['2020', '2030', '2050']:
                     field_name_ec = f"EC_{year}"
                     field_name_cap = f"CAP_{year}"
                     if field_name_ec in fields and field_name_cap in fields:
-                        # Calculate equipment costs
+                        # Calculate equipment costs using calc_equipment_costs
                         equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
                         row[fields.index(field_name_ec)] = round(equi_costs, 2)
 
-                        # Calculate installation costs
-                        inst_costs = calc_inst_deco_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'installation')
+                        # Calculate installation and decommissioning costs and times
+                        inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'installation')
+                        deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'decommissioning')
+
+                        # Update installation and decommissioning times (IT and DT) in hours
+                        row[fields.index("IT")] = round(inst_hours, 2)
+                        row[fields.index("DT")] = round(deco_hours, 2)
+
+                        # Update installation costs
                         row[fields.index("IC")] = round(inst_costs, 2)
 
                         # Calculate and update capex for the current year
                         capex = equi_costs + inst_costs
                         row[fields.index(field_name_cap)] = round(capex, 2)
 
-                # Update decommissioning costs (DEC)
-                field_name_dec = "DEC"
-                if field_name_dec in fields:
-                    deco_costs = calc_inst_deco_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'decommissioning')
-                    row[fields.index(field_name_dec)] = round(deco_costs, 2)
+                        # Update decommissioning costs (DEC)
+                        field_name_dec = "DEC"
+                        if field_name_dec in fields:
+                            row[fields.index(field_name_dec)] = round(deco_costs, 2)
 
                 # Update the row in the attribute table
                 cursor.updateRow(row)
