@@ -144,23 +144,23 @@ def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, out
 
 if __name__ == "__main__":
     # Get the input folder, output folder, turbine spacing in diameters, UTM zone, turbine capacity, and turbine diameter from the user input
-    input_folder: str = arcpy.GetParameterAsText(0)
-    output_folder: str = arcpy.GetParameterAsText(1)
+    windfarm_folder: str = arcpy.GetParameterAsText(0)
+    turbine_folder: str = arcpy.GetParameterAsText(1)
     utm_zone: int = int(arcpy.GetParameterAsText(2))
     turbine_capacity: float = float(arcpy.GetParameterAsText(3))
     turbine_diameter: float = float(arcpy.GetParameterAsText(4))
     turbine_spacing: float = float(arcpy.GetParameterAsText(5))
 
     # Validate input parameters
-    if not os.path.isdir(output_folder):
-        arcpy.AddError("Output folder is not valid.")
+    if not os.path.isdir(turbine_folder):
+        arcpy.AddError("Turbine folder is not valid.")
     else:
         # Clear existing shapefiles from the map and delete them
-        for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", output_folder):
+        for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", turbine_folder):
             clear_shapefile(existing_shapefile_path)
         
         # Create wind turbine shapefiles and add wind turbine points to the map
-        create_wind_turbine_shapefile(input_folder, turbine_spacing, output_folder, utm_zone, turbine_capacity, turbine_diameter)
+        create_wind_turbine_shapefile(windfarm_folder, turbine_spacing, turbine_folder, utm_zone, turbine_capacity, turbine_diameter)
 
         # Set the output message
         arcpy.AddMessage("Wind turbine shapefiles created and added to the map successfully.")

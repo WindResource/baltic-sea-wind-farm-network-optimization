@@ -123,7 +123,7 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
 if __name__ == "__main__":
     # Get the input shapefile, output folder, country, status parameters from the user input
     input_shapefile: str = arcpy.GetParameterAsText(0)
-    output_folder: str = arcpy.GetParameterAsText(1)
+    windfarm_folder: str = arcpy.GetParameterAsText(1)
     selected_country: str = arcpy.GetParameterAsText(2)
     selected_approved: bool = arcpy.GetParameter(3)
     selected_construction: bool = arcpy.GetParameter(4)
@@ -133,16 +133,16 @@ if __name__ == "__main__":
     # Validate input parameters
     if not arcpy.Exists(input_shapefile):
         arcpy.AddError("Input shapefile does not exist.")
-    elif not os.path.isdir(output_folder):
-        arcpy.AddError("Output folder is not valid.")
+    elif not os.path.isdir(windfarm_folder):
+        arcpy.AddError("Wind farm folder is not valid.")
     else:
         # Clear existing shapefiles from the map and delete them
-        for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", output_folder):
+        for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", windfarm_folder):
             clear_shapefile(existing_shapefile_path)
 
         # Execute the main function to create shapefiles
         created_shapefiles: list = create_shapefiles(
-            input_shapefile, output_folder, selected_country,
+            input_shapefile, windfarm_folder, selected_country,
             selected_approved, selected_construction, selected_planned, selected_production
         )
 

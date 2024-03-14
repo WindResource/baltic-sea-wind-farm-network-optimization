@@ -62,9 +62,9 @@ def process_feature_service(feature_service_url: str, output_folder: str, countr
 if __name__ == "__main__":
     # Input parameters
     feature_service_url: str = arcpy.GetParameterAsText(0)  # Feature service URL
-    output_folder: str = arcpy.GetParameterAsText(1)  # User-specified output folder
+    port_folder: str = arcpy.GetParameterAsText(1)  # User-specified output folder
     country_name: str = arcpy.GetParameterAsText(2)  # User input parameter for the country name
     utm_zone: int = int(arcpy.GetParameterAsText(3))  # User input parameter for the UTM Zone
 
     # Call the main processing function
-    process_feature_service(feature_service_url, output_folder, country_name, utm_zone)
+    process_feature_service(feature_service_url, port_folder, country_name, utm_zone)
