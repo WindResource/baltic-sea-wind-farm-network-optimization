@@ -87,6 +87,9 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
         arcpy.AddError("No map frame is currently active.")
         return created_shapefiles
 
+    # Fields to include in the feature layer
+    fields_to_include = ["FID", "Shape", "country", "name"]
+
     # Iterate through selected statuses and create shapefile for each
     for status in selected_statuses:
         # Create a SQL expression to select features for the specified combination
@@ -95,7 +98,7 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
             arcpy.AddFieldDelimiters(input_shapefile, "Status") + " = '{}'").format(country, status)
 
         # Create a search cursor to get unique FID values
-        with arcpy.da.SearchCursor(input_shapefile, "FID", where_clause=sql_expression) as cursor:
+        with arcpy.da.SearchCursor(input_shapefile, fields_to_include, where_clause=sql_expression) as cursor:
             for row in cursor:
                 # Get the FID value
                 feature_fid = row[0]
@@ -104,13 +107,17 @@ def create_shapefiles(input_shapefile: str, output_folder: str, country: str, ap
                 fid_sql_expression = "{} = {}".format(arcpy.AddFieldDelimiters(input_shapefile, "FID"), feature_fid)
 
                 # Create a feature layer with the specified SQL expression
-                feature_layer = arcpy.management.MakeFeatureLayer(input_shapefile, "temp_layer", where_clause=fid_sql_expression)
+                feature_layer = arcpy.management.MakeFeatureLayer(input_shapefile, "temp_layer", where_clause=fid_sql_expression, field_info=",".join(fields_to_include))
 
                 # Project the feature layer to the desired spatial reference and create the new shapefile
                 output_shapefile = os.path.join(output_folder, f"WFA_{country}_{status}_FID{feature_fid}.shp")
                 arcpy.management.Project(feature_layer, output_shapefile, output_spatial_reference)
 
                 created_shapefiles.append(output_shapefile)
+
+                # Delete unwanted fields from the newly created shapefile
+                fields_to_delete = [field.name for field in arcpy.ListFields(output_shapefile) if field.name not in fields_to_include]
+                arcpy.management.DeleteField(output_shapefile, fields_to_delete)
 
                 # Add the shapefile to the map
                 map_obj.addDataFromPath(output_shapefile)
