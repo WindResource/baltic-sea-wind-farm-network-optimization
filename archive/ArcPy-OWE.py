@@ -2,9 +2,10 @@ import arcpy
 import os
 import shutil
 import time
+from typing import Optional, Tuple, List
 
-def clear_output_folder(output_folder):
-    def remove_raster_layers_from_project():
+def clear_output_folder(output_folder: str) -> None:
+    def remove_raster_layers_from_project() -> None:
         # Get the current ArcGIS Pro project
         aprx = arcpy.mp.ArcGISProject("CURRENT")
 
@@ -32,55 +33,9 @@ def clear_output_folder(output_folder):
     # Create the output folder again (in case it wasn't removed successfully)
     os.makedirs(output_folder, exist_ok=True)
 
-
-def create_coordinate_rasters(shapefile, output_folder):
-    # Create raster files for X and Y coordinates based on a point shapefile
-    arcpy.env.workspace = output_folder
-
-    # Create a temporary feature layer from the shapefile
-    temp_feature_layer = "in_memory/temp_layer"
-    arcpy.management.MakeFeatureLayer(shapefile, temp_feature_layer)
-
-    # Specify the Web Mercator coordinate system
-    spatial_ref = arcpy.SpatialReference(3857)  # WGS 1984 Web Mercator (auxiliary sphere)
-
-    # Get extent based on the shapefile
-    extent = arcpy.management.GetRasterProperties(temp_feature_layer, "MAXIMUM_EXTENT")
-
-    # Create raster for X (horizontal) coordinates
-    x_raster_path = os.path.join(output_folder, "x_coordinates.tif")
-    arcpy.management.CreateFeatureclass(output_folder, "x_points.shp", "POINT", spatial_reference=spatial_ref)
-    arcpy.management.AddField("x_points.shp", "X", "DOUBLE")
-    arcpy.management.CalculateField("x_points.shp", "X", "!SHAPE!.firstPoint.X", "PYTHON3")
-    arcpy.analysis.PointToRaster("x_points.shp", "X", x_raster_path, "CELL_CENTER", "", extent)
-
-    # Create raster for Y (vertical) coordinates
-    y_raster_path = os.path.join(output_folder, "y_coordinates.tif")
-    arcpy.management.CreateFeatureclass(output_folder, "y_points.shp", "POINT", spatial_reference=spatial_ref)
-    arcpy.management.AddField("y_points.shp", "Y", "DOUBLE")
-    arcpy.management.CalculateField("y_points.shp", "Y", "!SHAPE!.firstPoint.Y", "PYTHON3")
-    arcpy.analysis.PointToRaster("y_points.shp", "Y", y_raster_path, "CELL_CENTER", "", extent)
-
-    return x_raster_path, y_raster_path
-
-
-def calculate_port_distance(x_raster, y_raster, port_location):
-    # Calculate the distance between each pixel in the rasters and the port location
-    x_array = arcpy.RasterToNumPyArray(x_raster)
-    y_array = arcpy.RasterToNumPyArray(y_raster)
-
-    port_x, port_y = port_location
-    distances = ((x_array - port_x)**2 + (y_array - port_y)**2)**0.5
-
-    # Save the distance raster to a file
-    distance_raster_path = os.path.join(os.path.dirname(x_raster), "port_distance.tif")
-    distance_raster = arcpy.NumPyArrayToRaster(distances, arcpy.Point(*arcpy.PointGeometry(x_raster).extent.lowerLeft), x_raster)
-    distance_raster.save(distance_raster_path)
-
-    return distance_raster_path
-
-
-def calc_vehicle_installation_costs(vehicle, port_distance_raster, n_wind_turbines, WT_rated_power):
+def calc_vehicle_installation_costs(vehicle: str, port_distance: float,
+                                    n_wind_turbines: int, WT_rated_power: float,
+                                    raster: arcpy.Raster) -> arcpy.Raster:
     # Installation coefficients for different vehicles
     installation_coeff = {
         'PSIV': (40 / WT_rated_power, 18.5, 24, 144, 200),
@@ -88,43 +43,41 @@ def calc_vehicle_installation_costs(vehicle, port_distance_raster, n_wind_turbin
         'AHV': (7, 18.5, 30, 90, 40)
     }
     
-    # Extract coefficients based on the vehicle
+    # Extract coefficients based on the support structure
     vehicle_coefficients = installation_coeff.get(vehicle)
     
     if vehicle_coefficients is None:
-        raise ValueError(f"Invalid vehicle type: {vehicle}")
+        raise ValueError(f"Invalid support structure: {vehicle}")
 
     vehicle_capacity, vehicle_speed, t_load, t_inst, day_rate = vehicle_coefficients
     
+    # Create a raster with the same extent as masked_raster, and all values set to 1
+    ones_raster = arcpy.Raster(raster) * 0 + 1
+
     # Calculate installation costs
     n_lifts = n_wind_turbines / vehicle_capacity
+    vehicle_installation_costs = (n_lifts * ((2 * port_distance) / vehicle_speed + t_load) + t_inst * n_wind_turbines) * day_rate * 1000 / 24 * ones_raster
 
-    # Use port_distance raster to adjust the installation costs based on distance
-    distance_array = arcpy.RasterToNumPyArray(port_distance_raster)
-    adjusted_costs = (n_lifts * (distance_array / vehicle_speed + t_load) + t_inst * n_wind_turbines) * day_rate * 1000 / 24
+    return vehicle_installation_costs
 
-    # Save the adjusted costs raster to a file
-    adjusted_costs_raster_path = os.path.join(os.path.dirname(port_distance_raster), f"{vehicle}_adjusted_costs.tif")
-    adjusted_costs_raster = arcpy.NumPyArrayToRaster(adjusted_costs, arcpy.Point(*arcpy.PointGeometry(port_distance_raster).extent.lowerLeft), port_distance_raster)
-    adjusted_costs_raster.save(adjusted_costs_raster_path)
-
-    return adjusted_costs_raster_path
-
-def calc_installation_costs(support_structure, port_distance, n_wind_turbines, WT_rated_power):
+def calc_installation_costs(raster: arcpy.Raster, support_structure: str,
+                            port_distance: float, n_wind_turbines: int,
+                            WT_rated_power: float) -> arcpy.Raster:
     # Check if the support structure is floating
     if support_structure == 'floating':
         # Calculate installation costs for both Tug and AHV and sum them
         vehicles = ['Tug', 'AHV']
-        installation_costs = sum(calc_vehicle_installation_costs(vehicle, port_distance, n_wind_turbines, WT_rated_power) for vehicle in vehicles)
+        installation_costs = sum(calc_vehicle_installation_costs(vehicle, port_distance, n_wind_turbines, WT_rated_power, raster) for vehicle in vehicles)
     else:
         # For other support structures
         vehicle = 'PSIV'
         # Calculate installation costs using the specified vehicle
-        installation_costs = calc_vehicle_installation_costs(vehicle, port_distance, n_wind_turbines, WT_rated_power)
+        installation_costs = calc_vehicle_installation_costs(vehicle, port_distance, n_wind_turbines, WT_rated_power, raster)
 
     return installation_costs
 
-def calc_equipment_costs(year, support_structure, in_raster, n_wind_turbines, WT_rated_power):
+def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str,
+                         n_wind_turbines: int, WT_rated_power: float) -> float:
     # Coefficients for different support structures and wind turbine costs
     support_structure_coeff = {
         ('2020', 'monopile'): (201, 613, 812),
@@ -147,24 +100,34 @@ def calc_equipment_costs(year, support_structure, in_raster, n_wind_turbines, WT
     c1, c2, c3 = support_structure_coeff[key]
     WT_rated_cost = wind_turbine_coeff[year]
     # Calculate equipment costs
-    return n_wind_turbines * WT_rated_power * ((c1 * (in_raster ** 2)) + (c2 * in_raster) + (c3 * 1000) + (WT_rated_cost))
+    return n_wind_turbines * WT_rated_power * ((c1 * (raster ** 2)) + (c2 * raster) + (c3 * 1000) + (WT_rated_cost))
 
-def calc_total_costs(year, support_structure, in_raster, port_distance, n_wind_turbines, WT_rated_power, include_install_costs):
+def calc_total_costs(masked_raster: arcpy.Raster, year: str,
+                     support_structure: str, port_distance: float,
+                     n_wind_turbines: int, WT_rated_power: float,
+                     include_install_costs: bool) -> Tuple[float, float, float]:
     installation_costs = 0
     if include_install_costs:
-        installation_costs = calc_installation_costs(support_structure, port_distance, n_wind_turbines, WT_rated_power)
+        installation_costs = calc_installation_costs(masked_raster, support_structure, port_distance, n_wind_turbines, WT_rated_power)
 
-    equipment_costs = calc_equipment_costs(year, support_structure, in_raster, n_wind_turbines, WT_rated_power)
+    equipment_costs = calc_equipment_costs(masked_raster, year, support_structure, n_wind_turbines, WT_rated_power)
 
-    return installation_costs + equipment_costs
+    total_costs = equipment_costs + installation_costs
+    return equipment_costs, installation_costs, total_costs
 
-def save_raster(output_folder, base_name, data, suffix):
+def save_raster(output_folder: str, base_name: str, data: arcpy.Raster, suffix: str) -> None:
     # Save raster to a file
     filename = os.path.splitext(base_name)[0] + suffix + ".tif"
     output_path = os.path.join(output_folder, filename)
     data.save(output_path)
 
-def calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs):
+def calc_raster(year: str, raster_path: str, output_folder: str, shapefile: str,
+                water_depth_1: float, water_depth_2: float, water_depth_3: float,
+                water_depth_4: float, WT_rated_power: float,
+                n_wind_turbines: int, include_install_costs: bool) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    # Clear the output folder
+    clear_output_folder(output_folder)
+    
     # Clip the input raster based on the shapefile
     clipped_raster = os.path.join(output_folder, "clipped_raster.tif")
     arcpy.Clip_management(raster_path, "#", clipped_raster, shapefile, "-9999", "ClippingGeometry")
@@ -174,7 +137,9 @@ def calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, wate
     water_depth = -raster
 
     # Initialize variables
-    clipped_raster_paths = []
+    equipment_total_raster_paths: List[str] = []
+    installation_total_raster_paths: List[str] = []
+    total_total_raster_paths: List[str] = []
     valid_rasters_found = False  # Flag to track if any valid rasters were found
 
     # Define support structures
@@ -199,32 +164,69 @@ def calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, wate
             if masked_raster is not None:
                 # Check if the masked raster contains valid values
                 if masked_raster.maximum is not None and masked_raster.maximum > -9999:
-                    # Calculate total costs for the support structure
-                    costs = calc_total_costs(year, support_structure, masked_raster, port_distance, n_wind_turbines, WT_rated_power, include_install_costs)
-                    if costs is not None:
+                    # Calculate total costs for the support structure 
+                    equipment_costs, installation_costs, total_costs = calc_total_costs(masked_raster, year, support_structure, port_distance, n_wind_turbines, WT_rated_power, include_install_costs)
+                    
+                    if total_costs is not None:
                         # Apply additional conditions to the costs raster
-                        costs = arcpy.sa.Con((costs >= 0) & (costs <= 1E9), costs)
-                        # Define the output path for the clipped raster
-                        clipped_output_raster = os.path.join(output_folder, f"{support_structure}_costs.tif")
-                        # Clip the costs raster based on the shapefile
-                        arcpy.Clip_management(costs, "#", clipped_output_raster, shapefile, "0", "ClippingGeometry")
-                        # Append the path of the clipped raster to the list
-                        clipped_raster_paths.append(clipped_output_raster)
+                        total_costs = arcpy.sa.Con((total_costs >= 0) & (total_costs <= 1E9), total_costs)
+                        # Define output paths for separate raster layers
+                        equipment_output_raster = os.path.join(output_folder, f"{support_structure}_equipment_costs.tif")
+                        total_output_raster = os.path.join(output_folder, f"{support_structure}_total_costs.tif")
+                        
+                        # Save separate raster layers for equipment costs and total costs
+                        arcpy.Clip_management(total_costs, "#", total_output_raster, shapefile, "0", "ClippingGeometry")
+                        arcpy.Clip_management(equipment_costs, "#", equipment_output_raster, shapefile, "0", "ClippingGeometry")
+                        
+                        # Append paths to the respective lists
+                        equipment_total_raster_paths.append(equipment_output_raster)
+                        total_total_raster_paths.append(total_output_raster)
+                        
+                        # Check if installation costs should be included
+                        if include_install_costs:
+                            # Save separate raster layer for installation costs
+                            installation_output_raster = os.path.join(output_folder, f"{support_structure}_installation_costs.tif")
+                            arcpy.Clip_management(installation_costs, "#", installation_output_raster, shapefile, "0", "ClippingGeometry")
+                            installation_total_raster_paths.append(installation_output_raster)
+                        
                         # Set the flag to indicate a valid raster was found
                         valid_rasters_found = True
 
-    # If any valid rasters were found, calculate the total raster
     if valid_rasters_found:
-        total_raster = arcpy.sa.CellStatistics(clipped_raster_paths, "SUM", "DATA")
-        # Define the output path for the total raster
-        total_output_raster = os.path.join(output_folder, "support_structure_costs.tif")
-        # Clip the total raster based on the shapefile
-        arcpy.Clip_management(total_raster, "#", total_output_raster, shapefile, "0", "ClippingGeometry")
-        return total_output_raster
-    else:
-        return None
+        # Combine separate raster layers into a single total raster layer
+        equipment_total_raster = arcpy.sa.CellStatistics(equipment_total_raster_paths, "SUM", "DATA")
+        total_total_raster = arcpy.sa.CellStatistics(total_total_raster_paths, "SUM", "DATA")
 
-def add_all_rasters_to_map(output_folder, map_frame_name):
+        # Define the output paths for the total raster layers
+        equipment_total_output_raster = os.path.join(output_folder, "support_structure_equipment_costs.tif")
+        total_total_output_raster = os.path.join(output_folder, "support_structure_total_costs.tif")
+
+        # Save the combined raster layers
+        arcpy.Clip_management(equipment_total_raster, "#", equipment_total_output_raster, shapefile, "0", "ClippingGeometry")
+        arcpy.Clip_management(total_total_raster, "#", total_total_output_raster, shapefile, "0", "ClippingGeometry")
+
+        # Check if installation costs should be included
+        if include_install_costs:
+            # Combine installation raster layers into a single total raster layer
+            installation_total_raster = arcpy.sa.CellStatistics(installation_total_raster_paths, "SUM", "DATA")
+
+            # Define the output path for the installation total raster layer
+            installation_total_output_raster = os.path.join(output_folder, "support_structure_installation_costs.tif")
+
+            # Save the combined installation raster layer
+            arcpy.Clip_management(installation_total_raster, "#", installation_total_output_raster, shapefile, "0", "ClippingGeometry")
+
+            # Return the paths of the total raster layers, including installation costs
+            return equipment_total_output_raster, installation_total_output_raster, total_total_output_raster
+        else:
+            # Return the paths of the total raster layers without installation costs
+            return equipment_total_output_raster, None, total_total_output_raster
+    else:
+        # Return None for all paths if no valid rasters were found
+        return None, None, None
+
+
+def add_all_rasters_to_map(output_folder: str, map_frame_name: str) -> None:
     # Add all raster files from the output folder to the map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     
@@ -252,36 +254,20 @@ def add_all_rasters_to_map(output_folder, map_frame_name):
 
 
 if __name__ == "__main__":
-    # Parameters from user input in ArcGIS Pro
-    year, raster_path, output_folder, shapefile = [arcpy.GetParameterAsText(i) for i in range(4)]
+    # Prompt the user for the necessary parameters
+    year = arcpy.GetParameterAsText(0)
+    raster_path = arcpy.GetParameterAsText(1)
+    output_folder = arcpy.GetParameterAsText(2)
+    shapefile = arcpy.GetParameterAsText(3)
     water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
     n_wind_turbines = int(arcpy.GetParameterAsText(8))
-    project_path = arcpy.GetParameterAsText(9)
+    project_path = arcpy.GetParameterAsText(9) 
     map_frame_name = arcpy.GetParameterAsText(10)
     port_distance = float(arcpy.GetParameterAsText(11))
     WT_rated_power = float(arcpy.GetParameterAsText(12))
     include_install_costs = arcpy.GetParameter(13)
-    port_location_x = float(arcpy.GetParameterAsText(14).replace(',', '.'))
-    port_location_y = float(arcpy.GetParameterAsText(15).replace(',', '.'))
-    port_location = (port_location_x, port_location_y)
-    
+    group_layer_name = arcpy.GetParameterAsText(14)
 
-    # Create rasters for X and Y coordinates
-    x_raster, y_raster = create_coordinate_rasters(shapefile, output_folder)
-
-    # Calculate port distance raster
-    port_distance_raster = calculate_port_distance(x_raster, y_raster, port_location)
-
-    # Calculate installation costs
-    installation_costs = calc_installation_costs(port_distance_raster, n_wind_turbines, WT_rated_power)
-    arcpy.AddMessage(f"Installation costs for {support_structure}: {installation_costs}")
-
-    # Calculate and print equipment costs for each support structure
-    for structure in ['monopile', 'jacket', 'floating']:
-        equipment_costs = calc_equipment_costs(year, structure, port_distance_raster, n_wind_turbines, WT_rated_power)
-        arcpy.AddMessage(f"Equipment costs for {structure}: {equipment_costs}")
-
-    # Rest of your script...
     result_raster = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
 
     if result_raster is not None:
