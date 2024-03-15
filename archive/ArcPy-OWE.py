@@ -102,18 +102,37 @@ def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str
     # Calculate equipment costs
     return n_wind_turbines * WT_rated_power * ((c1 * (raster ** 2)) + (c2 * raster) + (c3 * 1000) + (WT_rated_cost))
 
-def calc_total_costs(masked_raster: arcpy.Raster, year: str,
-                     support_structure: str, port_distance: float,
-                     n_wind_turbines: int, WT_rated_power: float,
-                     include_install_costs: bool) -> Tuple[float, float, float]:
-    installation_costs = 0
-    if include_install_costs:
-        installation_costs = calc_installation_costs(masked_raster, support_structure, port_distance, n_wind_turbines, WT_rated_power)
+def calc_operation_costs(support_structure: str, n_wind_turbines: int, DP_WF: float, labda: float) -> arcpy.Raster:
+    # Operation coefficients for different vessels
+    operation_coeff = {
+        'JUV': (18.5, 50, 150, 1),
+        'Tug': (7.5, 50, 2.5, 2)
+    }
+    
+    # Determine the vessel based on the support structure
+    if support_structure in ['jacket', 'monopile']:
+        vessel_type = 'JUV'
+    elif support_structure == 'floating':
+        vessel_type = 'Tug'
+    else:
+        raise ValueError(f"Invalid support structure: {support_structure}")
 
-    equipment_costs = calc_equipment_costs(masked_raster, year, support_structure, n_wind_turbines, WT_rated_power)
+    # Extract coefficients based on the determined vessel type
+    vessel_coefficients = operation_coeff.get(vessel_type)
+    
+    if vessel_coefficients is None:
+        raise ValueError(f"Invalid vessel: {vessel_type}")
 
-    total_costs = equipment_costs + installation_costs
-    return equipment_costs, installation_costs, total_costs
+    v, t_rep, DR, n = vessel_coefficients
+    
+    # Create a raster with the same extent as DP_WF, and all values set to 1
+    ones_raster = arcpy.Raster(DP_WF) * 0 + 1
+
+    # Calculate operation costs
+    operation_costs = n_wind_turbines * labda * ((2 * n * DP_WF) / v + t_rep) * DR / 24 * ones_raster
+
+    return operation_costs
+
 
 def save_raster(output_folder: str, base_name: str, data: arcpy.Raster, suffix: str) -> None:
     # Save raster to a file
@@ -121,13 +140,41 @@ def save_raster(output_folder: str, base_name: str, data: arcpy.Raster, suffix: 
     output_path = os.path.join(output_folder, filename)
     data.save(output_path)
 
+def calc_total_costs(raster: arcpy.Raster, year: str, support_structure: str,
+                     port_distance: float, n_wind_turbines: int,
+                     WT_rated_power: float, include_capex_equipment: bool,
+                     include_capex_installation: bool, include_opex: bool,
+                     labda: float) -> Tuple[arcpy.Raster, arcpy.Raster, arcpy.Raster, arcpy.Raster]:
+    # Calculate Capex Equipment, Capex Installation, Opex, and Capex
+    capex_equipment = arcpy.sa.Null()
+    capex_installation = arcpy.sa.Null()
+    opex = arcpy.sa.Null()
+    capex = arcpy.sa.Null()
+
+    if include_capex_equipment:
+        capex_equipment = calc_equipment_costs(raster, year, support_structure, n_wind_turbines, WT_rated_power)
+
+    if include_capex_installation:
+        capex_installation = calc_installation_costs(raster, support_structure, port_distance, n_wind_turbines, WT_rated_power)
+
+    if include_opex:
+        opex = calc_operation_costs(support_structure, n_wind_turbines, raster, labda)
+
+    if include_capex_equipment and include_capex_installation:
+        capex = capex_equipment + capex_installation
+
+    return capex_equipment, capex_installation, opex, capex
+
+
 def calc_raster(year: str, raster_path: str, output_folder: str, shapefile: str,
                 water_depth_1: float, water_depth_2: float, water_depth_3: float,
                 water_depth_4: float, WT_rated_power: float,
-                n_wind_turbines: int, include_install_costs: bool) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+                n_wind_turbines: int, include_capex_equipment: bool,
+                include_capex_installation: bool, include_opex: bool,
+                labda: float) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     # Clear the output folder
     clear_output_folder(output_folder)
-    
+
     # Clip the input raster based on the shapefile
     clipped_raster = os.path.join(output_folder, "clipped_raster.tif")
     arcpy.Clip_management(raster_path, "#", clipped_raster, shapefile, "-9999", "ClippingGeometry")
@@ -137,9 +184,6 @@ def calc_raster(year: str, raster_path: str, output_folder: str, shapefile: str,
     water_depth = -raster
 
     # Initialize variables
-    equipment_total_raster_paths: List[str] = []
-    installation_total_raster_paths: List[str] = []
-    total_total_raster_paths: List[str] = []
     valid_rasters_found = False  # Flag to track if any valid rasters were found
 
     # Define support structures
@@ -164,66 +208,62 @@ def calc_raster(year: str, raster_path: str, output_folder: str, shapefile: str,
             if masked_raster is not None:
                 # Check if the masked raster contains valid values
                 if masked_raster.maximum is not None and masked_raster.maximum > -9999:
-                    # Calculate total costs for the support structure 
-                    equipment_costs, installation_costs, total_costs = calc_total_costs(masked_raster, year, support_structure, port_distance, n_wind_turbines, WT_rated_power, include_install_costs)
-                    
-                    if total_costs is not None:
+                    # Calculate total costs for the support structure
+                    capex_equipment, capex_installation, opex, capex = calc_total_costs(masked_raster, year, support_structure, port_distance, n_wind_turbines, WT_rated_power, include_capex_equipment, include_opex, include_capex_installation, labda)
+
+                    if capex is not None:
                         # Apply additional conditions to the costs raster
-                        total_costs = arcpy.sa.Con((total_costs >= 0) & (total_costs <= 1E9), total_costs)
+                        capex = arcpy.sa.Con((capex >= 0) & (capex <= 1E9), capex)
                         # Define output paths for separate raster layers
-                        equipment_output_raster = os.path.join(output_folder, f"{support_structure}_equipment_costs.tif")
-                        total_output_raster = os.path.join(output_folder, f"{support_structure}_total_costs.tif")
-                        
-                        # Save separate raster layers for equipment costs and total costs
-                        arcpy.Clip_management(total_costs, "#", total_output_raster, shapefile, "0", "ClippingGeometry")
-                        arcpy.Clip_management(equipment_costs, "#", equipment_output_raster, shapefile, "0", "ClippingGeometry")
-                        
-                        # Append paths to the respective lists
-                        equipment_total_raster_paths.append(equipment_output_raster)
-                        total_total_raster_paths.append(total_output_raster)
-                        
-                        # Check if installation costs should be included
-                        if include_install_costs:
-                            # Save separate raster layer for installation costs
-                            installation_output_raster = os.path.join(output_folder, f"{support_structure}_installation_costs.tif")
-                            arcpy.Clip_management(installation_costs, "#", installation_output_raster, shapefile, "0", "ClippingGeometry")
-                            installation_total_raster_paths.append(installation_output_raster)
-                        
+                        capex_equipment_output_raster = os.path.join(output_folder, f"{support_structure}_capex_equipment.tif")
+                        capex_installation_output_raster = os.path.join(output_folder, f"{support_structure}_capex_installation.tif")
+                        opex_output_raster = os.path.join(output_folder, f"{support_structure}_opex.tif")
+                        capex_output_raster = os.path.join(output_folder, f"{support_structure}_capex.tif")
+
+                        # Save separate raster layers for Capex Equipment, Capex Installation, and Opex
+                        if include_capex_equipment:
+                            arcpy.Clip_management(capex_equipment, "#", capex_equipment_output_raster, shapefile, "0", "ClippingGeometry")
+                        if include_capex_installation:
+                            arcpy.Clip_management(capex_installation, "#", capex_installation_output_raster, shapefile, "0", "ClippingGeometry")
+                        if include_opex:
+                            arcpy.Clip_management(opex, "#", opex_output_raster, shapefile, "0", "ClippingGeometry")
+
+                        # Calculate and save Capex (sum of Capex Equipment and Capex Installation)
+                        if include_capex_equipment and include_capex_installation:
+                            capex = capex_equipment + capex_installation
+                            arcpy.Clip_management(capex, "#", capex_output_raster, shapefile, "0", "ClippingGeometry")
+
                         # Set the flag to indicate a valid raster was found
                         valid_rasters_found = True
 
     if valid_rasters_found:
         # Combine separate raster layers into a single total raster layer
-        equipment_total_raster = arcpy.sa.CellStatistics(equipment_total_raster_paths, "SUM", "DATA")
-        total_total_raster = arcpy.sa.CellStatistics(total_total_raster_paths, "SUM", "DATA")
+        capex_equipment_total_raster = arcpy.sa.CellStatistics([capex_equipment_output_raster], "SUM", "DATA") if include_capex_equipment else None
+        capex_installation_total_raster = arcpy.sa.CellStatistics([capex_installation_output_raster], "SUM", "DATA") if include_capex_installation else None
+        opex_total_raster = arcpy.sa.CellStatistics([opex_output_raster], "SUM", "DATA") if include_opex else None
+        capex_total_raster = arcpy.sa.CellStatistics([capex_output_raster], "SUM", "DATA") if include_capex_equipment and include_capex_installation else None
 
         # Define the output paths for the total raster layers
-        equipment_total_output_raster = os.path.join(output_folder, "support_structure_equipment_costs.tif")
-        total_total_output_raster = os.path.join(output_folder, "support_structure_total_costs.tif")
+        capex_equipment_total_output_raster = os.path.join(output_folder, "support_structure_capex_equipment.tif") if include_capex_equipment else None
+        capex_installation_total_output_raster = os.path.join(output_folder, "support_structure_capex_installation.tif") if include_capex_installation else None
+        opex_total_output_raster = os.path.join(output_folder, "support_structure_opex.tif") if include_opex else None
+        capex_total_output_raster = os.path.join(output_folder, "support_structure_capex.tif") if include_capex_equipment and include_capex_installation else None
 
         # Save the combined raster layers
-        arcpy.Clip_management(equipment_total_raster, "#", equipment_total_output_raster, shapefile, "0", "ClippingGeometry")
-        arcpy.Clip_management(total_total_raster, "#", total_total_output_raster, shapefile, "0", "ClippingGeometry")
+        if include_capex_equipment:
+            arcpy.Clip_management(capex_equipment_total_raster, "#", capex_equipment_total_output_raster, shapefile, "0", "ClippingGeometry")
+        if include_capex_installation:
+            arcpy.Clip_management(capex_installation_total_raster, "#", capex_installation_total_output_raster, shapefile, "0", "ClippingGeometry")
+        if include_opex:
+            arcpy.Clip_management(opex_total_raster, "#", opex_total_output_raster, shapefile, "0", "ClippingGeometry")
+        if include_capex_equipment and include_capex_installation:
+            arcpy.Clip_management(capex_total_raster, "#", capex_total_output_raster, shapefile, "0", "ClippingGeometry")
 
-        # Check if installation costs should be included
-        if include_install_costs:
-            # Combine installation raster layers into a single total raster layer
-            installation_total_raster = arcpy.sa.CellStatistics(installation_total_raster_paths, "SUM", "DATA")
-
-            # Define the output path for the installation total raster layer
-            installation_total_output_raster = os.path.join(output_folder, "support_structure_installation_costs.tif")
-
-            # Save the combined installation raster layer
-            arcpy.Clip_management(installation_total_raster, "#", installation_total_output_raster, shapefile, "0", "ClippingGeometry")
-
-            # Return the paths of the total raster layers, including installation costs
-            return equipment_total_output_raster, installation_total_output_raster, total_total_output_raster
-        else:
-            # Return the paths of the total raster layers without installation costs
-            return equipment_total_output_raster, None, total_total_output_raster
+        # Return the paths of the total raster layers
+        return capex_equipment_total_output_raster, capex_installation_total_output_raster, opex_total_output_raster, capex_total_output_raster
     else:
         # Return None for all paths if no valid rasters were found
-        return None, None, None
+        return None, None, None, None
 
 
 def add_all_rasters_to_map(output_folder: str, map_frame_name: str) -> None:
@@ -266,7 +306,6 @@ if __name__ == "__main__":
     port_distance = float(arcpy.GetParameterAsText(11))
     WT_rated_power = float(arcpy.GetParameterAsText(12))
     include_install_costs = arcpy.GetParameter(13)
-    group_layer_name = arcpy.GetParameterAsText(14)
 
     result_raster = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
 
