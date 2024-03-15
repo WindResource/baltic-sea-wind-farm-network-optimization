@@ -1,43 +1,72 @@
 import arcpy
 import os
 
-# Define a dictionary to map year to c1, c2, and c3 values for each support structure
-support_structure_coeff = {
-    ('2020', 'monopile'): (201, 613, 812),
-    ('2030', 'monopile'): (181, 552, 370),
-    ('2050', 'monopile'): (171, 521, 170),
-    ('2020', 'jacket'): (114, -2270, 932),
-    ('2030', 'jacket'): (103, -2043, 478),
-    ('2050', 'jacket'): (97, -1930, 272),
-    ('2020', 'floating'): (0, 774, 1481),
-    ('2030', 'floating'): (0, 697, 1223),
-    ('2050', 'floating'): (0, 658, 844)
-}
+def calc_installation_costs_for_vehicle(vehicle, port_distance, n_wind_turbines, WT_rated_power):
+    # Installation coefficients for different vehicles
+    installation_coeff = {
+        'PSIV': (40 / WT_rated_power, 18.5, 24, 144, 200),
+        'Tug': (0.3, 7.5, 5, 0, 0),
+        'AHV': (7, 18.5, 30, 90, 40)
+    }
+    # Extract coefficients based on the vehicle
+    coefficients = installation_coeff[vehicle]
+    vehicle_capacity, vehicle_speed, t_load, t_inst, day_rate = coefficients
+    # Calculate installation costs
+    n_lifts = n_wind_turbines / vehicle_capacity
+    return (n_lifts * ((2 * port_distance) / vehicle_speed + t_load) + t_inst * n_wind_turbines) * day_rate / 24
 
-wind_turbine_coeff = {
-    '2020': (8, 1500),
-    '2030': (15, 1200),
-    '2050': (20, 1000)
-}
+def calc_installation_costs(support_structure, port_distance, n_wind_turbines, WT_rated_power):
+    # Check if the support structure is floating
+    if support_structure == 'floating':
+        # Calculate installation costs for both Tug and AHV and sum them
+        return sum(calc_installation_costs_for_vehicle(vehicle, port_distance, n_wind_turbines, WT_rated_power) for vehicle in ['Tug', 'AHV'])
+    else:
+        # For other support structures
+        vehicle = 'PSIV'
+        # Calculate installation costs using the specified vehicle
+        return calc_installation_costs_for_vehicle(vehicle, port_distance, n_wind_turbines, WT_rated_power)
 
-# Function to calculate equipment costs based on year, support structure, and input raster
-def calculate_equipment_costs(year, support_structure, in_raster):
-    # Get the coefficients for the support structure based on the year
+def calc_equipment_costs(year, support_structure, in_raster, n_wind_turbines, WT_rated_power):
+    # Coefficients for different support structures and wind turbine costs
+    support_structure_coeff = {
+        ('2020', 'monopile'): (201, 613, 812),
+        ('2030', 'monopile'): (181, 552, 370),
+        ('2050', 'monopile'): (171, 521, 170),
+        ('2020', 'jacket'): (114, -2270, 932),
+        ('2030', 'jacket'): (103, -2043, 478),
+        ('2050', 'jacket'): (97, -1930, 272),
+        ('2020', 'floating'): (0, 774, 1481),
+        ('2030', 'floating'): (0, 697, 1223),
+        ('2050', 'floating'): (0, 658, 844)
+    }
+    wind_turbine_coeff = {
+        '2020': (1500),
+        '2030': (1200),
+        '2050': (1000)
+    }
+
     key = (year, support_structure)
     c1, c2, c3 = support_structure_coeff[key]
-    
-    # Get the rated power and cost of wind turbine based on the year
-    rated_power, WT_rated_cost = wind_turbine_coeff[year]
-    
-    # Calculate the equipment costs
-    return n_wind_turbines * rated_power * ((c1 * (in_raster ** 2)) + (c2 * in_raster) + (c3 * 1000) + (WT_rated_cost))
+    WT_rated_cost = wind_turbine_coeff[year]
+    # Calculate equipment costs
+    return n_wind_turbines * WT_rated_power * ((c1 * (in_raster ** 2)) + (c2 * in_raster) + (c3 * 1000) + (WT_rated_cost))
+
+def calc_total_costs(year, support_structure, in_raster, port_distance, n_wind_turbines, WT_rated_power, include_install_costs):
+    installation_costs = 0
+    if include_install_costs:
+        installation_costs = calc_installation_costs(support_structure, port_distance, n_wind_turbines, WT_rated_power)
+
+    equipment_costs = calc_equipment_costs(year, support_structure, in_raster, n_wind_turbines, WT_rated_power)
+
+    return installation_costs + equipment_costs
 
 def save_raster(output_folder, base_name, data, suffix):
+    # Save raster to a file
     filename = os.path.splitext(base_name)[0] + suffix + ".tif"
     output_path = os.path.join(output_folder, filename)
     data.save(output_path)
 
-def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4):
+def calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs):
     # Clip the input raster based on the shapefile
     clipped_raster = os.path.join(output_folder, "clipped_raster.tif")
     arcpy.Clip_management(raster_path, "#", clipped_raster, shapefile, "-9999", "ClippingGeometry")
@@ -72,8 +101,8 @@ def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, 
             if masked_raster is not None:
                 # Check if the masked raster contains valid values
                 if masked_raster.maximum is not None and masked_raster.maximum > -9999:
-                    # Calculate equipment costs for the support structure
-                    costs = calculate_equipment_costs(year, support_structure, masked_raster)
+                    # Calculate total costs for the support structure
+                    costs = calc_total_costs(year, support_structure, masked_raster, port_distance, n_wind_turbines, WT_rated_power, include_install_costs)
                     if costs is not None:
                         # Apply additional conditions to the costs raster
                         costs = arcpy.sa.Con((costs >= 0) & (costs <= 1E9), costs)
@@ -123,66 +152,21 @@ def add_all_rasters_to_map(output_folder, map_frame_name):
         # Add the temporary raster layer to the map
         map_object.addLayer(temp_raster_layer, "AUTO_ARRANGE")
 
-
-def define_parameters():
-    # Parameter properties: label, name, data type, default
-    parameters = [
-        ("Year", "year", "GPLong", 2020),
-        ("Raster Path", "raster_path", "DEFile", ""),
-        ("Output Folder", "output_folder", "DEFolder", ""),
-        ("Shapefile", "shapefile", "DEShapefile", ""),
-        ("Water Depth 1", "water_depth_1", "GPLong", 0),
-        ("Water Depth 2", "water_depth_2", "GPLong", 25),
-        ("Water Depth 3", "water_depth_3", "GPLong", 55),
-        ("Water Depth 4", "water_depth_4", "GPLong", 100),
-        ("Number of Wind Turbines", "n_wind_turbines", "GPLong", 20),
-        ("Project Path", "project_path", "DEFile", ""),
-        ("Map Frame Name", "map_frame_name", "GPString", "MapFrame"),
-    ]
-
-    for index, (label, name, data_type, default) in enumerate(parameters):
-        param = arcpy.Parameter(
-            displayName=label,
-            name=name,
-            datatype=data_type,
-            parameterType="Required",
-            direction="Input",
-            multiValue=False,
-            enabled=True
-        )
-        param.value = default
-        arcpy.SetParameter(index, param)
-
-def get_parameters():
-    # Retrieve parameter values using the specified way
-    year = arcpy.GetParameterAsText(0)
-    raster_path = arcpy.GetParameterAsText(1)
-    output_folder = arcpy.GetParameterAsText(2)
-    shapefile = arcpy.GetParameterAsText(3)
-    water_depth_1 = float(arcpy.GetParameterAsText(4))
-    water_depth_2 = float(arcpy.GetParameterAsText(5))
-    water_depth_3 = float(arcpy.GetParameterAsText(6))
-    water_depth_4 = float(arcpy.GetParameterAsText(7))
-    n_wind_turbines = int(arcpy.GetParameterAsText(8))
-    project_path = arcpy.GetParameterAsText(9)
-    map_frame_name = arcpy.GetParameterAsText(10)
-
-    return year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, n_wind_turbines, project_path, map_frame_name
-
-def calculate_and_add_to_map():
-    # Retrieve parameter values
-    year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, n_wind_turbines, project_path, map_frame_name = get_parameters()
-
-    # Call the function
-    calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, n_wind_turbines)
-
-    # Call the function to add all raster files to the map
-    add_all_rasters_to_map(output_folder, map_frame_name)
-    arcpy.AddMessage("All raster layers added to the map.")
-
 if __name__ == "__main__":
-    # Step 1: Define parameters
-    define_parameters()
+    # Parameters from user input in ArcGIS Pro
+    year, raster_path, output_folder, shapefile = [arcpy.GetParameterAsText(i) for i in range(4)]
+    water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
+    n_wind_turbines = int(arcpy.GetParameterAsText(8))
+    project_path = arcpy.GetParameterAsText(9) 
+    map_frame_name = arcpy.GetParameterAsText(10)
+    port_distance = float(arcpy.GetParameterAsText(11))
+    WT_rated_power = float(arcpy.GetParameterAsText(12))
+    include_install_costs = arcpy.GetParameter(13)
 
-    # Step 2: Perform calculations based on user-defined parameters
-    #calculate_and_add_to_map()
+    result_raster = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
+
+    if result_raster is not None:
+        add_all_rasters_to_map(output_folder, map_frame_name)
+        arcpy.AddMessage("All raster layers added to the map.")
+    else:
+        arcpy.AddMessage("No valid rasters found.")
