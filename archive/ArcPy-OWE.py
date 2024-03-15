@@ -55,7 +55,7 @@ def calc_vehicle_installation_costs(vehicle: str, port_distance: float,
     ones_raster = arcpy.Raster(raster) * 0 + 1
 
     # Calculate installation costs
-    n_lifts = n_wind_turbines / vehicle_capacity
+    n_lifts = 1 / vehicle_capacity
     vehicle_installation_costs = (n_lifts * ((2 * port_distance) / vehicle_speed + t_load) + t_inst * n_wind_turbines) * day_rate * 1000 / 24 * ones_raster
 
     return vehicle_installation_costs
@@ -76,7 +76,7 @@ def calc_installation_costs(raster: arcpy.Raster, support_structure: str,
 
     return installation_costs
 
-def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str,
+def calc_equipment_costs(water_depth: float, year: str, support_structure: str,
                          n_wind_turbines: int, WT_rated_power: float) -> float:
     # Coefficients for different support structures and wind turbine costs
     support_structure_coeff = {
@@ -91,16 +91,17 @@ def calc_equipment_costs(raster: arcpy.Raster, year: str, support_structure: str
         ('2050', 'floating'): (0, 658, 844)
     }
     wind_turbine_coeff = {
-        '2020': (1500),
-        '2030': (1200),
-        '2050': (1000)
+        '2020': 1500,
+        '2030': 1200,
+        '2050': 1000
     }
 
     key = (year, support_structure)
     c1, c2, c3 = support_structure_coeff[key]
     WT_rated_cost = wind_turbine_coeff[year]
+    
     # Calculate equipment costs
-    return n_wind_turbines * WT_rated_power * ((c1 * (raster ** 2)) + (c2 * raster) + (c3 * 1000) + (WT_rated_cost))
+    return n_wind_turbines * WT_rated_power * ((c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000) + (WT_rated_cost))
 
 def calc_operation_costs(support_structure: str, n_wind_turbines: int, DP_WF: float, labda: float) -> arcpy.Raster:
     # Operation coefficients for different vessels
@@ -124,9 +125,6 @@ def calc_operation_costs(support_structure: str, n_wind_turbines: int, DP_WF: fl
         raise ValueError(f"Invalid vessel: {vessel_type}")
 
     v, t_rep, DR, n = vessel_coefficients
-    
-    # Create a raster with the same extent as DP_WF, and all values set to 1
-    ones_raster = arcpy.Raster(DP_WF) * 0 + 1
 
     # Calculate operation costs
     operation_costs = n_wind_turbines * labda * ((2 * n * DP_WF) / v + t_rep) * DR / 24 * ones_raster
@@ -295,19 +293,19 @@ def add_all_rasters_to_map(output_folder: str, map_frame_name: str) -> None:
 
 if __name__ == "__main__":
     # Prompt the user for the necessary parameters
-    year = arcpy.GetParameterAsText(0)
-    raster_path = arcpy.GetParameterAsText(1)
-    output_folder = arcpy.GetParameterAsText(2)
-    shapefile = arcpy.GetParameterAsText(3)
+    year: str = arcpy.GetParameterAsText(0)
+    raster_path: str = arcpy.GetParameterAsText(1)
+    output_folder: str = arcpy.GetParameterAsText(2)
+    shapefile: str = arcpy.GetParameterAsText(3)
     water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
-    n_wind_turbines = int(arcpy.GetParameterAsText(8))
-    project_path = arcpy.GetParameterAsText(9) 
-    map_frame_name = arcpy.GetParameterAsText(10)
-    port_distance = float(arcpy.GetParameterAsText(11))
-    WT_rated_power = float(arcpy.GetParameterAsText(12))
-    include_install_costs = arcpy.GetParameter(13)
+    n_wind_turbines: int = int(arcpy.GetParameterAsText(8))
+    project_path: str = arcpy.GetParameterAsText(9) 
+    map_frame_name: str = arcpy.GetParameterAsText(10)
+    port_distance: float = float(arcpy.GetParameterAsText(11))
+    WT_rated_power: float = float(arcpy.GetParameterAsText(12))
+    include_install_costs: bool = arcpy.GetParameter(13)
 
-    result_raster = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
+    result_raster: Tuple[Optional[str], Optional[str], Optional[str], Optional[str]] = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
 
     if result_raster is not None:
         add_all_rasters_to_map(output_folder, map_frame_name)
