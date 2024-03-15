@@ -2,7 +2,7 @@ import arcpy
 import os
 
 # Define a dictionary to map year to c1, c2, and c3 values for each support structure
-coefficients = {
+support_structure_coeff = {
     ('2020', 'monopile'): (201, 613, 812),
     ('2030', 'monopile'): (181, 552, 370),
     ('2050', 'monopile'): (171, 521, 170),
@@ -14,13 +14,26 @@ coefficients = {
     ('2050', 'floating'): (0, 658, 844)
 }
 
-def calculate_support_structure_costs(year, support_structure, in_raster):
+wind_turbine_coeff = {
+    '2020': (8, 1500),
+    '2030': (15, 1200),
+    '2050': (20, 1000)
+}
+
+
+# Function to calculate equipment costs based on year, support structure, and input raster
+def calculate_equipment_costs(year, support_structure, in_raster):
+    # Get the coefficients for the support structure based on the year
     key = (year, support_structure)
-    if key not in coefficients:
-        arcpy.AddError(f"No matching data found for year {year} and support structure {support_structure}.")
-        return None
-    c1, c2, c3 = coefficients[key]
-    return (c1 * (in_raster ** 2)) + (c2 * in_raster) + (c3 * 1000)
+    c1, c2, c3 = support_structure_coeff[key]
+    
+    # Get the rated power and cost of wind turbine based on the year
+    rated_power, WT_rated_cost = wind_turbine_coeff[year]
+    
+    # Calculate the equipment costs
+    return n_wind_turbines * rated_power * ((c1 * (in_raster ** 2)) + (c2 * in_raster) + (c3 * 1000) + (WT_rated_cost))
+
+
 
 def save_raster(output_folder, base_name, data, suffix):
     filename = os.path.splitext(base_name)[0] + suffix + ".tif"
@@ -28,70 +41,83 @@ def save_raster(output_folder, base_name, data, suffix):
     data.save(output_path)
 
 def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4):
-    # Clip the raster based on the shapefile
-    clipped_raster = arcpy.sa.ExtractByMask(raster_path, shapefile)
-    
-    # Calculate water depth based on the clipped raster data (negative of raster values)
-    water_depth = -clipped_raster
+    # Clip the input raster based on the shapefile
+    clipped_raster = os.path.join(output_folder, "clipped_raster.tif")
+    arcpy.Clip_management(raster_path, "#", clipped_raster, shapefile, "-9999", "ClippingGeometry")
 
-    # Create an empty cumulative raster with the same extent and spatial reference as the clipped raster
-    cumulative_raster = arcpy.sa.Raster(raster_path) * 0
+    # Load the clipped raster and calculate the negative water depth
+    raster = arcpy.sa.Raster(clipped_raster)
+    water_depth = -raster
 
-    # List to store paths of all clipped rasters
+    # Initialize variables
     clipped_raster_paths = []
+    valid_rasters_found = False  # Flag to track if any valid rasters were found
 
-    # Loop through each support structure and calculate costs
+    # Define support structures
     support_structures = ['monopile', 'jacket', 'floating']
 
+    # Loop through each support structure
     for support_structure in support_structures:
-        # Mask the clipped raster based on the water depth condition for the current support structure
+        # Determine the mask condition based on the support structure
+        mask_condition = None
         if support_structure == 'monopile':
             mask_condition = (water_depth_1 <= water_depth) & (water_depth < water_depth_2)
         elif support_structure == 'jacket':
             mask_condition = (water_depth_2 <= water_depth) & (water_depth <= water_depth_3)
-        else:  # support_structure == 'floating'
+        elif support_structure == 'floating':
             mask_condition = (water_depth_3 <= water_depth) & (water_depth <= water_depth_4)
-        
-        # Check if the mask condition is satisfied
+
+        # Check if the mask condition contains any valid values
         if arcpy.RasterToNumPyArray(mask_condition).any():
-            masked_raster = arcpy.sa.Con(mask_condition, clipped_raster)
-            # Check if there are any valid cells within the masked area
-            if arcpy.RasterToNumPyArray(masked_raster).any():
-                # Calculate costs for the masked raster
-                costs = calculate_support_structure_costs(year, support_structure, masked_raster)
-                if costs is not None:
-                    # Set NoData for values below 0 and above 1E9
-                    costs = arcpy.sa.Con((costs >= 0) & (costs <= 1E9), costs)
-                    # Clip the raster
-                    clipped_output_raster = os.path.join(output_folder, f"{os.path.splitext(os.path.basename(raster_path))[0]}_{support_structure}_costs_clipped.tif")
-                    arcpy.Clip_management(costs, "#", clipped_output_raster, shapefile, "0", "ClippingGeometry")
-                    clipped_raster_paths.append(clipped_output_raster)
-                    # Add the costs to the cumulative raster
-                    cumulative_raster += costs
+            # Apply the mask condition to the raster
+            masked_raster = arcpy.sa.Con(mask_condition, raster)
+            # Check if the masked raster is not None
+            if masked_raster is not None:
+                # Check if the masked raster contains valid values
+                if masked_raster.maximum is not None and masked_raster.maximum > -9999:
+                    # Calculate equipment costs for the support structure
+                    costs = calculate_equipment_costs(year, support_structure, masked_raster)
+                    if costs is not None:
+                        # Apply additional conditions to the costs raster
+                        costs = arcpy.sa.Con((costs >= 0) & (costs <= 1E9), costs)
+                        # Define the output path for the clipped raster
+                        clipped_output_raster = os.path.join(output_folder, f"{support_structure}_costs.tif")
+                        # Clip the costs raster based on the shapefile
+                        arcpy.Clip_management(costs, "#", clipped_output_raster, shapefile, "0", "ClippingGeometry")
+                        # Append the path of the clipped raster to the list
+                        clipped_raster_paths.append(clipped_output_raster)
+                        # Set the flag to indicate a valid raster was found
+                        valid_rasters_found = True
 
-    # Clip the cumulative raster
-    cumulative_output_raster = os.path.join(output_folder, "cumulative_costs_clipped.tif")
-    arcpy.Clip_management(cumulative_raster, "#", cumulative_output_raster, shapefile, "0", "ClippingGeometry")
-    clipped_raster_paths.append(cumulative_output_raster)
+    # If any valid rasters were found, calculate the total raster
+    if valid_rasters_found:
+        total_raster = arcpy.sa.CellStatistics(clipped_raster_paths, "SUM", "DATA")
+        # Define the output path for the total raster
+        total_output_raster = os.path.join(output_folder, "support_structure_costs.tif")
+        # Clip the total raster based on the shapefile
+        arcpy.Clip_management(total_raster, "#", total_output_raster, shapefile, "0", "ClippingGeometry")
+        return total_output_raster
+    else:
+        return None
 
-    return clipped_raster_paths
+
+
 
 
 
 
 if __name__ == "__main__":
     # Parameters from user input in ArcGIS Pro
-    year = arcpy.GetParameterAsText(0)
-    raster_path = arcpy.GetParameterAsText(1)
-    output_folder = arcpy.GetParameterAsText(2)
-    shapefile = arcpy.GetParameterAsText(3)
-    water_depth_1 = float(arcpy.GetParameterAsText(4))
-    water_depth_2 = float(arcpy.GetParameterAsText(5))
-    water_depth_3 = float(arcpy.GetParameterAsText(6))
-    water_depth_4 = float(arcpy.GetParameterAsText(7))
-
+    year, raster_path, output_folder, shapefile = [arcpy.GetParameterAsText(i) for i in range(4)]
+    water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
+    n_wind_turbines = int(arcpy.GetParameterAsText(8))
+    project_path = arcpy.GetParameterAsText(9)
+    
     # Call the function
-    result_rasters = calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4)
+    result_raster = calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4)
 
-    for result in result_rasters:
-        arcpy.AddMessage(f"Raster saved to: {result}")
+    if result_raster is not None:
+        arcpy.AddMessage(f"Raster saved to: {result_raster}")
+    else:
+        arcpy.AddMessage("No valid rasters found.")
+
