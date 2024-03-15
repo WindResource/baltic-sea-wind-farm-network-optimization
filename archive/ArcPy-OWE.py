@@ -27,7 +27,7 @@ def save_raster(output_folder, base_name, data, suffix):
     output_path = os.path.join(output_folder, filename)
     data.save(output_path)
 
-def calculate_costs(year, raster_path, output_folder, shapefile):
+def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_min, water_depth_max):
     # Create Raster object
     in_raster = arcpy.Raster(raster_path)
     
@@ -41,20 +41,20 @@ def calculate_costs(year, raster_path, output_folder, shapefile):
     for support_structure in support_structures:
         costs = calculate_support_structure_costs(year, support_structure, in_raster)
         if costs is not None:
-            output_rasters.append(costs)
+            # Mask the raster based on the water depth condition
+            if support_structure == 'monopile':
+                masked_costs = arcpy.sa.Con(water_depth < water_depth_min, costs)
+            elif support_structure == 'jacket':
+                masked_costs = arcpy.sa.Con((water_depth_min <= water_depth) & (water_depth <= water_depth_max), costs)
+            else:  # support_structure == 'floating'
+                masked_costs = arcpy.sa.Con(water_depth > water_depth_max, costs)
 
-    # Save the result rasters in the specified output folder
-    base_name = os.path.basename(raster_path)
-    for i, support_structure in enumerate(support_structures):
-        save_raster(output_folder, base_name, output_rasters[i], f"_{support_structure}_costs")
+            output_rasters.append(masked_costs)
 
-    # Create a raster where each cell is assigned values 1 for monopile, 2 for jacket, and 3 for floating based on water depth
-    support_structure_raster = arcpy.sa.Con(water_depth < 25, 1, arcpy.sa.Con((25 <= water_depth) & (water_depth <= 55), 2, 3))
+            # Save the masked raster
+            save_raster(output_folder, os.path.basename(raster_path), masked_costs, f"_{support_structure}_costs")
 
-    # Save the support structure raster
-    save_raster(output_folder, base_name, support_structure_raster, "_support_structure")
-
-    return [os.path.join(output_folder, os.path.splitext(base_name)[0] + f"_{support_structure}_costs.tif") for support_structure in support_structures] + [os.path.join(output_folder, os.path.splitext(base_name)[0] + "_support_structure.tif")]
+    return [os.path.join(output_folder, os.path.splitext(os.path.basename(raster_path))[0] + f"_{support_structure}_costs.tif") for support_structure in support_structures]
 
 if __name__ == "__main__":
     # Parameters from user input in ArcGIS Pro
@@ -62,10 +62,12 @@ if __name__ == "__main__":
     raster_path = arcpy.GetParameterAsText(1)
     output_folder = arcpy.GetParameterAsText(2)
     shapefile = arcpy.GetParameterAsText(3)
+    water_depth_min = float(arcpy.GetParameterAsText(4))  # Min water depth parameter
+    water_depth_max = float(arcpy.GetParameterAsText(5))  # Max water depth parameter
 
     # Call the function
-    result_rasters = calculate_costs(year, raster_path, output_folder, shapefile)
+    result_rasters = calculate_costs(year, raster_path, output_folder, shapefile, water_depth_min, water_depth_max)
 
     for i, result in enumerate(result_rasters):
-        support_structure = ['monopile', 'jacket', 'floating', 'support_structure'][i]
+        support_structure = ['monopile', 'jacket', 'floating'][i]
         arcpy.AddMessage(f"{support_structure.capitalize()} costs saved to: {result}")
