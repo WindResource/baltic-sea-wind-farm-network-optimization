@@ -34,9 +34,14 @@ def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, 
     # Calculate water depth based on the clipped raster data (negative of raster values)
     water_depth = -clipped_raster
 
+    # Create an empty cumulative raster with the same extent and spatial reference as the clipped raster
+    cumulative_raster = arcpy.sa.Raster(raster_path) * 0
+
+    # List to store paths of all clipped rasters
+    clipped_raster_paths = []
+
     # Loop through each support structure and calculate costs
     support_structures = ['monopile', 'jacket', 'floating']
-    output_rasters = []
 
     for support_structure in support_structures:
         # Mask the clipped raster based on the water depth condition for the current support structure
@@ -55,18 +60,24 @@ def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, 
                 # Calculate costs for the masked raster
                 costs = calculate_support_structure_costs(year, support_structure, masked_raster)
                 if costs is not None:
-                    output_rasters.append(costs)
-                    # Clip the masked raster to the calculated data cells
+                    # Set NoData for values below 0 and above 1E9
+                    costs = arcpy.sa.Con((costs >= 0) & (costs <= 1E9), costs)
+                    # Clip the raster
                     clipped_output_raster = os.path.join(output_folder, f"{os.path.splitext(os.path.basename(raster_path))[0]}_{support_structure}_costs_clipped.tif")
                     arcpy.Clip_management(costs, "#", clipped_output_raster, shapefile, "0", "ClippingGeometry")
-                    # Save the clipped raster
-                    output_rasters.append(clipped_output_raster)
-            else:
-                arcpy.AddMessage(f"No valid data available for {support_structure} within specified water depth conditions.")
-        else:
-            arcpy.AddMessage(f"No data available for {support_structure} within specified water depth conditions.")
+                    clipped_raster_paths.append(clipped_output_raster)
+                    # Add the costs to the cumulative raster
+                    cumulative_raster += costs
 
-    return output_rasters
+    # Clip the cumulative raster
+    cumulative_output_raster = os.path.join(output_folder, "cumulative_costs_clipped.tif")
+    arcpy.Clip_management(cumulative_raster, "#", cumulative_output_raster, shapefile, "0", "ClippingGeometry")
+    clipped_raster_paths.append(cumulative_output_raster)
+
+    return clipped_raster_paths
+
+
+
 
 if __name__ == "__main__":
     # Parameters from user input in ArcGIS Pro
@@ -82,5 +93,5 @@ if __name__ == "__main__":
     # Call the function
     result_rasters = calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4)
 
-    for result, support_structure in zip(result_rasters, ['monopile', 'jacket', 'floating']):
-        arcpy.AddMessage(f"{support_structure.capitalize()} costs saved to: {result}")
+    for result in result_rasters:
+        arcpy.AddMessage(f"Raster saved to: {result}")
