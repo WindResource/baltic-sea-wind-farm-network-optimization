@@ -56,8 +56,11 @@ def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, 
                 costs = calculate_support_structure_costs(year, support_structure, masked_raster)
                 if costs is not None:
                     output_rasters.append(costs)
-                    # Save the masked and calculated raster
-                    save_raster(output_folder, os.path.basename(raster_path), costs, f"_{support_structure}_costs")
+                    # Clip the masked raster to the calculated data cells
+                    clipped_output_raster = os.path.join(output_folder, f"{os.path.splitext(os.path.basename(raster_path))[0]}_{support_structure}_costs_clipped.tif")
+                    arcpy.Clip_management(costs, "#", clipped_output_raster, shapefile, "0", "ClippingGeometry")
+                    # Save the clipped raster
+                    output_rasters.append(clipped_output_raster)
             else:
                 arcpy.AddMessage(f"No valid data available for {support_structure} within specified water depth conditions.")
         else:
