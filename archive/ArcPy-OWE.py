@@ -101,10 +101,31 @@ def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, 
         return None
 
 
+def add_all_rasters_to_map(output_folder, map_frame_name):
+    # Add all raster files from the output folder to the map
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    
+    # Check if the map with the specified name exists
+    map_list = aprx.listMaps(map_frame_name)
+    
+    if not map_list:
+        arcpy.AddError(f"Map '{map_frame_name}' not found in the project.")
+        return
 
+    map_object = map_list[0]
 
+    # Get a list of all .tif raster files in the output folder
+    raster_files = [f for f in os.listdir(output_folder) if f.endswith(".tif")]
 
-
+    # Iterate through the raster files and add each to the map
+    for raster_file in raster_files:
+        raster_path = os.path.join(output_folder, raster_file)
+        
+        # Create a temporary raster layer in memory
+        temp_raster_layer = arcpy.management.MakeRasterLayer(raster_path, raster_file[:-4])[0]  # Use the file name without extension as layer name
+        
+        # Add the temporary raster layer to the map
+        map_object.addLayer(temp_raster_layer, "AUTO_ARRANGE")
 
 if __name__ == "__main__":
     # Parameters from user input in ArcGIS Pro
@@ -112,12 +133,14 @@ if __name__ == "__main__":
     water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
     n_wind_turbines = int(arcpy.GetParameterAsText(8))
     project_path = arcpy.GetParameterAsText(9)
-    
+    map_frame_name = arcpy.GetParameterAsText(10)
+
     # Call the function
     result_raster = calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4)
 
     if result_raster is not None:
-        arcpy.AddMessage(f"Raster saved to: {result_raster}")
+        # Call the function to add all raster files to the map
+        add_all_rasters_to_map(output_folder, map_frame_name)
+        arcpy.AddMessage("All raster layers added to the map.")
     else:
         arcpy.AddMessage("No valid rasters found.")
-
