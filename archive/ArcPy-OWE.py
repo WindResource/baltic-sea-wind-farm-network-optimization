@@ -66,6 +66,25 @@ def save_raster(output_folder, base_name, data, suffix):
     output_path = os.path.join(output_folder, filename)
     data.save(output_path)
 
+def add_raster_to_map(raster_path, map_frame_name, layer_name):
+    # Add a raster file to the specified map frame
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    
+    # Check if the map with the specified name exists
+    map_list = aprx.listMaps(map_frame_name)
+    
+    if not map_list:
+        arcpy.AddError(f"Map '{map_frame_name}' not found in the project.")
+        return
+
+    map_object = map_list[0]
+
+    # Create a temporary raster layer in memory
+    temp_raster_layer = arcpy.management.MakeRasterLayer(raster_path, layer_name)[0]
+
+    # Add the temporary raster layer to the map
+    map_object.addLayer(temp_raster_layer, "AUTO_ARRANGE")
+
 def calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs):
     # Clip the input raster based on the shapefile
     clipped_raster = os.path.join(output_folder, "clipped_raster.tif")
@@ -76,7 +95,8 @@ def calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, wate
     water_depth = -raster
 
     # Initialize variables
-    clipped_raster_paths = []
+    equipment_raster_paths = []
+    installation_raster_paths = []
     valid_rasters_found = False  # Flag to track if any valid rasters were found
 
     # Define support structures
@@ -111,20 +131,41 @@ def calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, wate
                         # Clip the costs raster based on the shapefile
                         arcpy.Clip_management(costs, "#", clipped_output_raster, shapefile, "0", "ClippingGeometry")
                         # Append the path of the clipped raster to the list
-                        clipped_raster_paths.append(clipped_output_raster)
+                        if support_structure in ['monopile', 'jacket']:
+                            equipment_raster_paths.append(clipped_output_raster)
+                        elif support_structure == 'floating':
+                            installation_raster_paths.append(clipped_output_raster)
                         # Set the flag to indicate a valid raster was found
                         valid_rasters_found = True
+                        print(f"Valid raster found for {support_structure}")
 
-    # If any valid rasters were found, calculate the total raster
+    # Print information about the generated raster paths
+    print("Equipment Raster Paths:")
+    print(equipment_raster_paths)
+    print("Installation Raster Paths:")
+    print(installation_raster_paths)
+
+    # If any valid rasters were found, calculate the total rasters for equipment and installation costs
     if valid_rasters_found:
-        total_raster = arcpy.sa.CellStatistics(clipped_raster_paths, "SUM", "DATA")
-        # Define the output path for the total raster
-        total_output_raster = os.path.join(output_folder, "support_structure_costs.tif")
-        # Clip the total raster based on the shapefile
-        arcpy.Clip_management(total_raster, "#", total_output_raster, shapefile, "0", "ClippingGeometry")
-        return total_output_raster
+        equipment_raster = arcpy.sa.CellStatistics(equipment_raster_paths, "SUM", "DATA")
+        installation_raster = arcpy.sa.CellStatistics(installation_raster_paths, "SUM", "DATA")
+
+        # Define the output paths for the equipment and installation rasters
+        equipment_output_raster = os.path.join(output_folder, "equipment_costs.tif")
+        installation_output_raster = os.path.join(output_folder, "installation_costs.tif")
+
+        # Clip the equipment and installation rasters based on the shapefile
+        arcpy.Clip_management(equipment_raster, "#", equipment_output_raster, shapefile, "0", "ClippingGeometry")
+        arcpy.Clip_management(installation_raster, "#", installation_output_raster, shapefile, "0", "ClippingGeometry")
+
+        # Print information about the clipped rasters
+        print(f"Equipment Output Raster: {equipment_output_raster}")
+        print(f"Installation Output Raster: {installation_output_raster}")
+
+        return equipment_output_raster, installation_output_raster
     else:
-        return None
+        print("No valid rasters found.")
+        return None, None
 
 def add_all_rasters_to_map(output_folder, map_frame_name):
     # Add all raster files from the output folder to the map
@@ -163,10 +204,18 @@ if __name__ == "__main__":
     WT_rated_power = float(arcpy.GetParameterAsText(12))
     include_install_costs = arcpy.GetParameter(13)
 
-    result_raster = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
+    # Calculate equipment and installation rasters
+    equipment_raster, installation_raster = calc_raster(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, WT_rated_power, n_wind_turbines, include_install_costs)
 
-    if result_raster is not None:
-        add_all_rasters_to_map(output_folder, map_frame_name)
+    if equipment_raster is not None and installation_raster is not None:
+        # Add equipment raster to the map
+        arcpy.AddMessage("Adding equipment raster layer to the map.")
+        add_raster_to_map(equipment_raster, map_frame_name, "equipment_costs")
+
+        # Add installation raster to the map
+        arcpy.AddMessage("Adding installation raster layer to the map.")
+        add_raster_to_map(installation_raster, map_frame_name, "installation_costs")
+
         arcpy.AddMessage("All raster layers added to the map.")
     else:
         arcpy.AddMessage("No valid rasters found.")
