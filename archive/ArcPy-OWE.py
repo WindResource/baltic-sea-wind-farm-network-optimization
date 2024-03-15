@@ -20,7 +20,6 @@ wind_turbine_coeff = {
     '2050': (20, 1000)
 }
 
-
 # Function to calculate equipment costs based on year, support structure, and input raster
 def calculate_equipment_costs(year, support_structure, in_raster):
     # Get the coefficients for the support structure based on the year
@@ -32,8 +31,6 @@ def calculate_equipment_costs(year, support_structure, in_raster):
     
     # Calculate the equipment costs
     return n_wind_turbines * rated_power * ((c1 * (in_raster ** 2)) + (c2 * in_raster) + (c3 * 1000) + (WT_rated_cost))
-
-
 
 def save_raster(output_folder, base_name, data, suffix):
     filename = os.path.splitext(base_name)[0] + suffix + ".tif"
@@ -100,7 +97,6 @@ def calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, 
     else:
         return None
 
-
 def add_all_rasters_to_map(output_folder, map_frame_name):
     # Add all raster files from the output folder to the map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -127,20 +123,66 @@ def add_all_rasters_to_map(output_folder, map_frame_name):
         # Add the temporary raster layer to the map
         map_object.addLayer(temp_raster_layer, "AUTO_ARRANGE")
 
-if __name__ == "__main__":
-    # Parameters from user input in ArcGIS Pro
-    year, raster_path, output_folder, shapefile = [arcpy.GetParameterAsText(i) for i in range(4)]
-    water_depth_1, water_depth_2, water_depth_3, water_depth_4 = map(float, [arcpy.GetParameterAsText(i) for i in range(4, 8)])
+
+def define_parameters():
+    # Parameter properties: label, name, data type, default
+    parameters = [
+        ("Year", "year", "GPLong", 2020),
+        ("Raster Path", "raster_path", "DEFile", ""),
+        ("Output Folder", "output_folder", "DEFolder", ""),
+        ("Shapefile", "shapefile", "DEShapefile", ""),
+        ("Water Depth 1", "water_depth_1", "GPLong", 0),
+        ("Water Depth 2", "water_depth_2", "GPLong", 25),
+        ("Water Depth 3", "water_depth_3", "GPLong", 55),
+        ("Water Depth 4", "water_depth_4", "GPLong", 100),
+        ("Number of Wind Turbines", "n_wind_turbines", "GPLong", 20),
+        ("Project Path", "project_path", "DEFile", ""),
+        ("Map Frame Name", "map_frame_name", "GPString", "MapFrame"),
+    ]
+
+    for index, (label, name, data_type, default) in enumerate(parameters):
+        param = arcpy.Parameter(
+            displayName=label,
+            name=name,
+            datatype=data_type,
+            parameterType="Required",
+            direction="Input",
+            multiValue=False,
+            enabled=True
+        )
+        param.value = default
+        arcpy.SetParameter(index, param)
+
+def get_parameters():
+    # Retrieve parameter values using the specified way
+    year = arcpy.GetParameterAsText(0)
+    raster_path = arcpy.GetParameterAsText(1)
+    output_folder = arcpy.GetParameterAsText(2)
+    shapefile = arcpy.GetParameterAsText(3)
+    water_depth_1 = float(arcpy.GetParameterAsText(4))
+    water_depth_2 = float(arcpy.GetParameterAsText(5))
+    water_depth_3 = float(arcpy.GetParameterAsText(6))
+    water_depth_4 = float(arcpy.GetParameterAsText(7))
     n_wind_turbines = int(arcpy.GetParameterAsText(8))
     project_path = arcpy.GetParameterAsText(9)
     map_frame_name = arcpy.GetParameterAsText(10)
 
-    # Call the function
-    result_raster = calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4)
+    return year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, n_wind_turbines, project_path, map_frame_name
 
-    if result_raster is not None:
-        # Call the function to add all raster files to the map
-        add_all_rasters_to_map(output_folder, map_frame_name)
-        arcpy.AddMessage("All raster layers added to the map.")
-    else:
-        arcpy.AddMessage("No valid rasters found.")
+def calculate_and_add_to_map():
+    # Retrieve parameter values
+    year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, n_wind_turbines, project_path, map_frame_name = get_parameters()
+
+    # Call the function
+    calculate_costs(year, raster_path, output_folder, shapefile, water_depth_1, water_depth_2, water_depth_3, water_depth_4, n_wind_turbines)
+
+    # Call the function to add all raster files to the map
+    add_all_rasters_to_map(output_folder, map_frame_name)
+    arcpy.AddMessage("All raster layers added to the map.")
+
+if __name__ == "__main__":
+    # Step 1: Define parameters
+    define_parameters()
+
+    # Step 2: Perform calculations based on user-defined parameters
+    #calculate_and_add_to_map()
