@@ -1,5 +1,51 @@
 import arcpy
 import os
+import arcpy
+import numpy as np
+
+def calculate_total_costs(turbine_file, windfarm_file):
+    """
+    Calculate the total costs for each category by summing the corresponding values in each row of the turbine attribute table.
+
+    Parameters:
+    - turbine_file (str): Path to the turbine shapefile.
+    - windfarm_file (str): Path to the wind farm shapefile.
+
+    Returns:
+    - dict: A dictionary containing total costs for each category.
+    """
+    try:
+        # Define the list of columns including Capacity and cost columns
+        cost_columns = ['Capacity', 'Capex20', 'Capex30', 'Capex50', 'Opex20', 'Opex30', 'Opex50', 'Decex']
+
+        # Add fields to windfarm_file if they do not exist
+        for field in cost_columns:
+            if field not in [f.name for f in arcpy.ListFields(windfarm_file)]:
+                arcpy.AddField_management(windfarm_file, field, "DOUBLE")
+                arcpy.AddMessage(f"Added field '{field}' to {windfarm_file}")
+
+        # Convert turbine attribute table to a NumPy array
+        turbine_array = arcpy.da.FeatureClassToNumPyArray(turbine_file, cost_columns)
+
+        # Calculate total costs
+        total_costs = {col: np.sum(turbine_array[col]) for col in cost_columns}
+
+        # Update the wind farm shapefile's attribute table with the calculated total costs
+        with arcpy.da.UpdateCursor(windfarm_file, cost_columns) as cursor:
+            for row in cursor:
+                for i, column in enumerate(cost_columns):
+                    row[i] = total_costs[column]
+                cursor.updateRow(row)
+
+        return total_costs
+
+    except arcpy.ExecuteError as e:
+        arcpy.AddError(f"Failed to calculate total costs: {e}")
+        return None
+    except Exception as e:
+        arcpy.AddError(f"An unexpected error occurred: {e}")
+        return None
+
 
 def determine_support_structure(water_depth):
     """
@@ -347,49 +393,81 @@ def check_updated_fields(turbine_file):
         return False
 
 if __name__ == "__main__":
-    # Get input parameters from ArcGIS tool parameters
     turbine_folder = arcpy.GetParameterAsText(0)
+    windfarm_folder = arcpy.GetParameterAsText(1)
 
     try:
         # Set the workspace to the turbine folder
         arcpy.env.workspace = turbine_folder
         arcpy.AddMessage(f"Setting workspace to: {turbine_folder}")
 
-        # List all shapefiles in the workspace
-        shapefiles = arcpy.ListFeatureClasses("*.shp")
+        # List all shapefiles in the turbine folder
+        turbine_shapefiles = arcpy.ListFeatureClasses("*.shp")
 
-        # Check if there are any shapefiles in the folder
-        if not shapefiles:
-            arcpy.AddError(f"No shapefiles found in the specified folder: {turbine_folder}")
+        # Check if there are any shapefiles in the turbine folder
+        if not turbine_shapefiles:
+            arcpy.AddError(f"No shapefiles found in the turbine folder: {turbine_folder}")
             exit()
 
-        # Iterate through each shapefile and process it
-        for input_shapefile_name in shapefiles:
-            input_shapefile_path = os.path.join(turbine_folder, input_shapefile_name)
-            arcpy.AddMessage(f"Processing input shapefile: {input_shapefile_path}")
+        # Iterate through each turbine shapefile and process it
+        for turbine_shapefile_name in turbine_shapefiles:
+            turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
+            arcpy.AddMessage(f"Processing turbine shapefile: {turbine_shapefile_path}")
 
             # Check if the shapefile exists
-            if not arcpy.Exists(input_shapefile_path):
-                arcpy.AddError(f"Input shapefile '{input_shapefile_path}' does not exist.")
+            if not arcpy.Exists(turbine_shapefile_path):
+                arcpy.AddError(f"Turbine shapefile '{turbine_shapefile_path}' does not exist.")
                 continue
 
             # Check if 'WaterDepth' and 'Distance' fields exist
-            field_names = [field.name for field in arcpy.ListFields(input_shapefile_path)]
-            required_fields = ['WaterDepth', 'Distance']
+            turbine_field_names = [field.name for field in arcpy.ListFields(turbine_shapefile_path)]
+            required_turbine_fields = ['WaterDepth', 'Distance']
 
-            if not all(field in field_names for field in required_fields):
-                arcpy.AddError(f"Missing required fields ('WaterDepth' and/or 'Distance') in {input_shapefile_path}. Aborting.")
+            if not all(field in turbine_field_names for field in required_turbine_fields):
+                arcpy.AddError(f"Missing required fields ('WaterDepth' and/or 'Distance') in turbine shapefile '{turbine_shapefile_path}'. Aborting.")
                 continue
 
             # Update the attribute table with equipment, installation, and decommissioning costs
-            update_fields(input_shapefile_path)
+            update_fields(turbine_shapefile_path)
 
             # Check if updated fields exist and have nonzero values
-            check_result = check_updated_fields(input_shapefile_path)
+            check_result = check_updated_fields(turbine_shapefile_path)
             if check_result:
-                arcpy.AddMessage("All checks passed.")
+                arcpy.AddMessage("All checks passed for turbine shapefile.")
             else:
-                arcpy.AddWarning("One or more checks failed.")
+                arcpy.AddWarning("One or more checks failed for turbine shapefile.")
+
+        # Now, set the workspace to the wind farm folder
+        arcpy.env.workspace = windfarm_folder
+        arcpy.AddMessage(f"Setting workspace to: {windfarm_folder}")
+
+        # List all shapefiles in the wind farm folder
+        windfarm_shapefiles = arcpy.ListFeatureClasses("*.shp")
+
+        # Check if there are any shapefiles in the wind farm folder
+        if not windfarm_shapefiles:
+            arcpy.AddError(f"No shapefiles found in the wind farm folder: {windfarm_folder}")
+            exit()
+
+        # Iterate through each wind farm shapefile and process it
+        for windfarm_shapefile_name in windfarm_shapefiles:
+            windfarm_shapefile_path = os.path.join(windfarm_folder, windfarm_shapefile_name)
+            arcpy.AddMessage(f"Processing wind farm shapefile: {windfarm_shapefile_path}")
+
+            # Check if the shapefile exists
+            if not arcpy.Exists(windfarm_shapefile_path):
+                arcpy.AddError(f"Wind farm shapefile '{windfarm_shapefile_path}' does not exist.")
+                continue
+
+            # Calculate total costs for each category for the corresponding turbine shapefile
+            turbine_shapefile_name = f"WTC_{os.path.basename(windfarm_shapefile_name).replace('WFA_', '')}"
+            turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
+
+            total_costs = calculate_total_costs(turbine_shapefile_path, windfarm_shapefile_path)
+            if total_costs:
+                arcpy.AddMessage(f"Total costs for each category updated in wind farm shapefile '{windfarm_shapefile_name}'.")
+            else:
+                arcpy.AddWarning(f"Failed to update total costs in wind farm shapefile '{windfarm_shapefile_name}'.")
 
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to process shapefiles: {e}")
@@ -398,6 +476,7 @@ if __name__ == "__main__":
     finally:
         # Reset the workspace to None to avoid potential issues
         arcpy.env.workspace = None
+
 
 
 
