@@ -1,6 +1,7 @@
 import arcpy
 import os
 from typing import List
+import numpy as np
 
 def project_raster(bathy_file: str, output_spatial_ref: arcpy.SpatialReference) -> arcpy.Raster:
     """
@@ -30,13 +31,13 @@ def project_raster(bathy_file: str, output_spatial_ref: arcpy.SpatialReference) 
         arcpy.AddError(f"An unexpected error occurred during bathymetry raster projection: {e}")
         return None
 
-def calculate_water_depth(turbine_file: str, projected_raster: arcpy.Raster) -> None:
+def calculate_water_depth(turbine_file: str, projected_raster_path: str) -> None:
     """
     Calculate water depth from a bathymetry raster and add it to the attribute table of a wind turbine coordinate file.
 
     Parameters:
     - turbine_file (str): Path to the wind turbine coordinate file.
-    - projected_raster (arcpy.Raster): Projected bathymetry raster.
+    - projected_raster_path (str): Path to the projected bathymetry raster.
 
     Returns:
     - None
@@ -47,28 +48,48 @@ def calculate_water_depth(turbine_file: str, projected_raster: arcpy.Raster) -> 
             arcpy.AddError(f"Wind turbine coordinate file '{turbine_file}' does not exist.")
             return
 
+        # Check if the input projected raster exists
+        if not arcpy.Exists(projected_raster_path):
+            arcpy.AddError(f"Projected bathymetry raster '{projected_raster_path}' does not exist.")
+            return
+
         # Add 'WaterDepth' field if it does not exist
         field_name = "WaterDepth"
         if field_name not in [field.name for field in arcpy.ListFields(turbine_file)]:
             arcpy.AddField_management(turbine_file, field_name, "DOUBLE")
+
+        # Convert raster to numpy array
+        projected_raster = arcpy.Raster(projected_raster_path)
+        raster_array = arcpy.RasterToNumPyArray(projected_raster, nodata_to_value=np.nan)
+
+        # Get raster properties
+        extent = projected_raster.extent
+        cell_width = projected_raster.meanCellWidth
+        cell_height = projected_raster.meanCellHeight
 
         # Update the attribute table with water depth values
         with arcpy.da.UpdateCursor(turbine_file, ["SHAPE@", field_name]) as cursor:
             for row in cursor:
                 # Get the centroid of the shape
                 centroid = row[0].centroid
-
-                # Get the water depth value from the raster
-                water_depth = arcpy.GetCellValue_management(projected_raster, f"{centroid.X} {centroid.Y}").getOutput(0)
-
+                
+                # Get the cell indices
+                col = int((centroid.X - extent.XMin) / cell_width)
+                row_index = int((extent.YMax - centroid.Y) / cell_height)
+                
+                # Get the water depth value from the numpy array
+                water_depth = raster_array[row_index, col]
+                
                 # Update the 'WaterDepth' field
-                row[1] = float(water_depth) if water_depth != "NoData" else None
+                row[1] = float(water_depth) if not np.isnan(water_depth) else None
                 cursor.updateRow(row)
 
         arcpy.AddMessage(f"Water depth calculation and attribute update for {turbine_file} completed.")
 
     except arcpy.ExecuteError as e:
         arcpy.AddError(f"Failed to calculate water depth: {e}")
+    except arcpy.AddError as e:
+        arcpy.AddError(f"Failed to add field 'WaterDepth' to {turbine_file}: {e}")
     except Exception as e:
         arcpy.AddError(f"An unexpected error occurred: {e}")
 
