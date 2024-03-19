@@ -20,7 +20,7 @@ def update_turbine_attributes(turbine_file: str, port_geometry: arcpy.PointGeome
     with arcpy.da.UpdateCursor(turbine_file, ["SHAPE@", "PortName", "Distance"]) as cursor:
         for row in cursor:
             # Calculate distance between turbine point and port
-            distance = calculate_distance(row[0], port_geometry)
+            distance = round(calculate_distance(row[0], port_geometry))
 
             # Update the PortName and Distance fields for each turbine point
             row[1] = port_name
