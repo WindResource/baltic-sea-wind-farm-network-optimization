@@ -48,11 +48,12 @@ def calculate_water_depth(turbine_file: str, projected_raster: arcpy.Raster) -> 
             return
 
         # Add 'WaterDepth' field if it does not exist
-        if not arcpy.ListFields(turbine_file, "WaterDepth"):
-            arcpy.AddField_management(turbine_file, "WaterDepth", "DOUBLE")
+        field_name = "WaterDepth"
+        if field_name not in [field.name for field in arcpy.ListFields(turbine_file)]:
+            arcpy.AddField_management(turbine_file, field_name, "DOUBLE")
 
         # Update the attribute table with water depth values
-        with arcpy.da.UpdateCursor(turbine_file, ["SHAPE@", "WaterDepth"]) as cursor:
+        with arcpy.da.UpdateCursor(turbine_file, ["SHAPE@", field_name]) as cursor:
             for row in cursor:
                 # Get the centroid of the shape
                 centroid = row[0].centroid
