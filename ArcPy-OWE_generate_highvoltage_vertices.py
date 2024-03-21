@@ -6,33 +6,34 @@ import numpy as np
 
 def lon_lat_to_utm(lon_array, lat_array):
     """
-    Convert longitude and latitude coordinates to UTM (Universal Transverse Mercator) coordinates.
+    Convert longitude and latitude coordinates to UTM coordinates.
 
     Parameters:
-        lon_array (array-like): Array-like object containing longitude values.
-        lat_array (array-like): Array-like object containing latitude values.
+        lon_array (numpy.ndarray): Array of longitude values.
+        lat_array (numpy.ndarray): Array of latitude values.
 
     Returns:
-        tuple: Two arrays containing UTM x and y coordinates respectively.
+        tuple: Tuple containing arrays of UTM x-coordinates and y-coordinates.
     """
     # Define the projection from WGS84 (EPSG:4326) to UTM Zone 33N (EPSG:32633)
     wgs84 = pyproj.Proj(init='epsg:4326')
     utm33n = pyproj.Proj(init='epsg:32633')
 
-    # Perform the transformation
-    x_array, y_array = pyproj.transform(wgs84, utm33n, lon_array, lat_array)
-    return x_array, y_array
+    try:
+        # Perform the transformation
+        x_array, y_array = pyproj.transform(wgs84, utm33n, lon_array, lat_array)
+        return x_array, y_array
+    except Exception as e:
+        print(f"Error occurred during coordinate transformation: {e}")
+        return None, None
 
 def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> None:
     """
-    Convert data from an Excel file to a shapefile containing high voltage vertices.
+    Convert data from an Excel file to a shapefile.
 
     Parameters:
-        excel_file (str): Path to the Excel file containing the data.
-        highvoltage_vertices_folder (str): Path to the folder where the output shapefile will be stored.
-
-    Returns:
-        None
+        excel_file (str): Path to the Excel file.
+        highvoltage_vertices_folder (str): Path to the output folder for the shapefile.
     """
     start_time = time.time()
     try:
@@ -50,20 +51,20 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
 
     # Define the output shapefile path
     output_shapefile = highvoltage_vertices_folder + "\\highvoltage_vertices.shp"
-
-    # Create a new shapefile to store the point features
-    create_shapefile_start = time.time()
-    arcpy.CreateFeatureclass_management(highvoltage_vertices_folder, "highvoltage_vertices.shp", "POINT", spatial_reference=arcpy.SpatialReference(4326))
-    create_shapefile_end = time.time()
-    arcpy.AddMessage(f"Creating shapefile took {create_shapefile_end - create_shapefile_start} seconds")
     
+    # Define the spatial reference for EPSG:32633
+    spatial_ref = arcpy.SpatialReference(32633)
+
+    # Create a new shapefile to store the point features with EPSG:32633 spatial reference
+    arcpy.CreateFeatureclass_management(highvoltage_vertices_folder, "highvoltage_vertices.shp", "POINT", spatial_reference=spatial_ref)
+
     # Define fields to store attributes
     fields = [
+        ("Type", "TEXT"),
         ("Xcoord", "DOUBLE"),
         ("Ycoord", "DOUBLE"),
-        ("voltage", "TEXT"),
-        ("frequency", "TEXT"),
-        ("typ", "TEXT")
+        ("Voltage", "TEXT"),
+        ("Frequency", "TEXT")
     ]
 
     # Add fields to the shapefile
@@ -92,16 +93,18 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
         # Check if voltage is null
         if pd.isnull(voltage):
             # Replace null voltage with a default value (e.g., "Unknown")
-            voltage = "Unknown"
+            voltage = ""
 
         # Check if frequency is null
         if pd.isnull(frequency):
             # Replace null frequency with a default value (e.g., "Unknown")
-            frequency = "Unknown"
+            frequency = ""
 
         # Create a point geometry
         point = arcpy.Point(x, y)
         point_geometry = arcpy.PointGeometry(point)
+        # # Add a message to display point coordinates for diagnostic purposes
+        # arcpy.AddMessage(f"Point geometry coordinates: {point_geometry.centroid.X}, {point_geometry.centroid.Y}")
 
         # Create a feature
         feature = (x, y, voltage, frequency, typ)
@@ -109,9 +112,20 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
 
     # Insert all features into the shapefile in a single operation
     insert_features_start = time.time()
-    with arcpy.da.InsertCursor(output_shapefile, ["SHAPE@XY", "voltage", "frequency", "typ"]) as cursor:
+    with arcpy.da.InsertCursor(output_shapefile, ["SHAPE@XY", "Xcoord", "Ycoord", "Voltage", "Frequency", "Type"]) as cursor:
         for feature in features:
-            cursor.insertRow([(feature[0], feature[1]), feature[2], feature[3], feature[4]])
+            # Extract coordinate data
+            x_coord = float(feature[0])
+            y_coord = float(feature[1])
+
+            # Create a point object
+            point = arcpy.Point(x_coord, y_coord)
+
+            # Create a point geometry object
+            point_geometry = arcpy.PointGeometry(point)
+
+            # Insert the row with the geometry and attributes
+            cursor.insertRow([feature[:2]] + list(feature))
     insert_features_end = time.time()
     arcpy.AddMessage(f"Inserting features took {insert_features_end - insert_features_start} seconds")
 
