@@ -35,36 +35,31 @@ def identify_countries(point_features):
         point_features (str): Path to the point features.
 
     Returns:
-        list: List containing country names corresponding to each point.
+        str: Path to the modified point features shapefile.
     """
     feature_layer_url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World_Countries_(Generalized)/FeatureServer/0"
     
-    country_list = []  # Initialize an empty list to store country names
-    
     # UTM Zone
     utm_wkid = 32633  # UTM Zone 33N
-
+    
     try:
         # Create feature layer from URL
         countries_layer = arcpy.management.MakeFeatureLayer(feature_layer_url, "countries_layer").getOutput(0)
-
+        
         # Convert the feature layer to a polygon feature layer
         arcpy.management.CopyFeatures(countries_layer, "in_memory\\countries_polygon")
 
         # Project the feature layer to the specified UTM Zone
         arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", utm_wkid)
 
-        # Perform a spatial join between the point features and the country polygons
+        # Perform a spatial join between the point features and the projected country polygons
         arcpy.analysis.SpatialJoin(point_features, "in_memory\\countries_projected", "in_memory\\point_country_join", 
-                                    join_type="KEEP_ALL", match_option="COMPLETELY_CONTAINS")
+                                    join_type="KEEP_ALL", match_option="WITHIN")
 
-        # Iterate through the features to extract country names
-        with arcpy.da.SearchCursor("in_memory\\point_country_join", ["Country"]) as cursor:
-            for row in cursor:
-                country_name = row[0] if row[0] else 'Unknown'  # If no country is found, set it to Unknown
-                country_list.append(country_name)
-
-        return country_list
+        # Add the country field to the original point features
+        arcpy.management.JoinField(point_features, "FID", "in_memory\\point_country_join", "FID", "COUNTRY")
+        
+        return point_features
 
     except Exception as e:
         arcpy.AddMessage(f"An error occurred: {e}")
@@ -102,8 +97,7 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
             ("Ycoord", "DOUBLE"),
             ("Type", "TEXT"),
             ("Voltage", "TEXT"),
-            ("Frequency", "TEXT"),
-            ("Country", "TEXT")
+            ("Frequency", "TEXT")
         ]
 
         # Add fields to the shapefile
@@ -118,7 +112,7 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
 
         arcpy.AddMessage("Creating point features and adding to feature class...")
         # Open an insert cursor to add features to the output shapefile
-        with arcpy.da.InsertCursor(output_shapefile, ["SHAPE@XY", "Xcoord", "Ycoord", "Type", "Voltage", "Frequency", "Country"]) as cursor:
+        with arcpy.da.InsertCursor(output_shapefile, ["SHAPE@XY", "Xcoord", "Ycoord", "Type", "Voltage", "Frequency"]) as cursor:
             for i, row in enumerate(df.iterrows()):
                 voltage, frequency = row[1]['voltage'], row[1]['frequency']
                 typ = row[1]['typ'].capitalize()
@@ -133,17 +127,11 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
                     frequency = ""
 
                 # Insert the row with the geometry and attributes
-                cursor.insertRow([(x, y), x, y, typ, voltage, frequency, ""])
+                cursor.insertRow([(x, y), x, y, typ, voltage, frequency])
 
         arcpy.AddMessage("Identifying countries...")
-        # Identify countries for all points and get the list of country names
-        country_names = identify_countries(output_shapefile)
-
-        arcpy.AddMessage("Updating Country field...")
-        # Open an update cursor to update the Country field with country names
-        with arcpy.da.UpdateCursor(output_shapefile, "Country") as cursor:
-            for country_name in country_names:
-                cursor.updateRow([country_name])
+        # Identify countries and add the country field to the point features
+        output_shapefile = identify_countries(output_shapefile)
 
         arcpy.AddMessage("Adding shapefile to the map...")
         # Add the shapefile to the map
@@ -164,4 +152,3 @@ if __name__ == "__main__":
 
     # Call the function to convert Excel to shapefile
     excel_to_shapefile(highvoltage_vertices, highvoltage_vertices_folder)
-
