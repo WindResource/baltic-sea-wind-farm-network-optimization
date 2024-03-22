@@ -24,43 +24,49 @@ def lon_lat_to_utm(lon_array, lat_array):
         x_array, y_array = pyproj.transform(wgs84, utm33n, lon_array, lat_array)
         return x_array, y_array
     except Exception as e:
-        print(f"Error occurred during coordinate transformation: {e}")
+        arcpy.Addmessage(f"Error occurred during coordinate transformation: {e}")
         return None, None
 
 def identify_countries(point_features, feature_layer_url):
     """
-    Identify the countries based on point features using a feature service.
+    Identify the countries based on point features using a feature service and update the 'Country' field in the attribute table.
 
     Parameters:
         point_features (str): Path to the point features.
         feature_layer_url (str): URL of the feature layer containing country boundaries.
-
-    Returns:
-        list: List of country names.
     """
     try:
         # Create feature layer from URL
         countries_layer = arcpy.management.MakeFeatureLayer(feature_layer_url, "countries_layer").getOutput(0)
+        
+        # Add countries_layer to the map
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+        map_object = aprx.activeMap
+        map_object.addLayer(countries_layer)
+
+        # Add point_features to the map
+        map_object.addDataFromPath(point_features)
 
         # Check if the target feature class exists
         if not arcpy.Exists(point_features):
-            return []
+            return
 
         # Perform a spatial join between the point features and the country polygons
         arcpy.analysis.SpatialJoin(point_features, countries_layer, "in_memory\\point_country_join", 
-                                    join_type="KEEP_COMMON", match_option="COMPLETELY_WITHIN")
+                                    join_type="KEEP_ALL", match_option="COMPLETELY_CONTAINS")
 
-        # Extract the country names from the spatial join result
-        country_names = []
-        with arcpy.da.SearchCursor("in_memory\\point_country_join", ["COUNTRY"]) as cursor:
+        # Update the 'Country' field for each point
+        with arcpy.da.UpdateCursor(point_features, ["OID@", "Country"]) as cursor:
             for row in cursor:
-                country_names.append(row[0])
+                country_name = row[1] if row[1] else 'Unknown'
+                row[1] = country_name
+                cursor.updateRow(row)
 
-        return country_names
+        # Print message indicating the completion of updating
+        arcpy.AddMessage("Country names updated successfully.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        return []
 
 def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str, feature_layer_url: str) -> None:
     """
@@ -130,13 +136,6 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str, featur
         arcpy.AddMessage("Identifying countries...")
         # Identify countries for all points
         country_names = identify_countries(output_shapefile, feature_layer_url)
-
-        arcpy.AddMessage("Updating country names...")
-        # Update the 'Country' field in the shapefile
-        with arcpy.da.UpdateCursor(output_shapefile, "Country") as cursor:
-            for i, row in enumerate(cursor):
-                row[0] = country_names[i]
-                cursor.updateRow(row)
 
         arcpy.AddMessage("Adding shapefile to the map...")
         # Add the shapefile to the map
