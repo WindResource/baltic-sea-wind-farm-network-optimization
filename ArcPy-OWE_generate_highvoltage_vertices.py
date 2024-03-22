@@ -55,9 +55,19 @@ def identify_countries(point_features):
         # Perform a spatial join between the point features and the projected country polygons
         arcpy.analysis.SpatialJoin(point_features, "in_memory\\countries_projected", "in_memory\\point_country_join", 
                                     join_type="KEEP_ALL", match_option="WITHIN")
-
-        # Add the country field to the original point features
-        arcpy.management.JoinField(point_features, "FID", "in_memory\\point_country_join", "FID", "COUNTRY")
+        
+        # Add the country and ISO_CC fields to the original point features
+        arcpy.management.AddField(point_features, "COUNTRY", "TEXT")
+        arcpy.management.AddField(point_features, "ISO", "TEXT")
+        
+        # Update the country and ISO_CC fields with values
+        with arcpy.da.UpdateCursor(point_features, ["COUNTRY", "ISO"]) as update_cursor:
+            with arcpy.da.SearchCursor("in_memory\\point_country_join", ["COUNTRY", "ISO"]) as search_cursor:
+                for country_value, iso_cc_value in search_cursor:
+                    update_row = next(update_cursor)  # Get the next row from the update cursor
+                    update_row[0] = country_value
+                    update_row[1] = iso_cc_value
+                    update_cursor.updateRow(update_row)
         
         return point_features
 
