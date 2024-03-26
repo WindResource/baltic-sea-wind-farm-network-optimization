@@ -13,25 +13,25 @@ def project_raster() -> arcpy.Raster:
         utm_wkid = 32633  # UTM Zone 33N
         utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
 
-        # Get the active map
+        # Get the current map
         aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map = aprx.listMaps()[0]
+        map = aprx.activeMap
 
-        # Find the bathymetry raster
-        bathy_raster_path = None
-        for lyr in map.listLayers():
-            if lyr.name.lower().endswith("bathymetry") and lyr.isRasterLayer:
-                bathy_raster_path = lyr.dataSource
+        # Get the first layer in the map that starts with 'WTC'
+        input_layer = None
+        for layer in map.listLayers():
+            if layer.name.endswith('bathymetry.tif'):
+                input_layer = layer
                 break
 
-        if bathy_raster_path is None:
+        if input_layer is None:
             arcpy.AddError("No bathymetry raster ending with 'bathymetry' found in the active map.")
             return None
 
-        arcpy.AddMessage(f"Projecting bathymetry raster '{bathy_raster_path}' to UTM Zone 33N...")
+        arcpy.AddMessage(f"Projecting bathymetry raster '{input_layer}' to UTM Zone 33N...")
 
         # Project the raster using arcpy.ProjectRaster_management
-        projected_raster = arcpy.management.ProjectRaster(bathy_raster_path, "in_memory\\projected_raster", utm_spatial_ref).getOutput(0)
+        projected_raster = arcpy.management.ProjectRaster(input_layer, "in_memory\\projected_raster", utm_spatial_ref).getOutput(0)
 
         arcpy.AddMessage("Raster projection completed.")
 
@@ -55,38 +55,38 @@ def calculate_water_depth(projected_raster: arcpy.Raster) -> None:
     - None
     """
     try:
-        # Get the active map
+        # Get the current map
         aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map = aprx.listMaps()[0]
+        map = aprx.activeMap
 
-        # Find the turbine layer
-        turbine_layer_obj = None
-        for lyr in map.listLayers():
-            if lyr.name.startswith("WTC") and lyr.isFeatureLayer:
-                turbine_layer_obj = lyr
+        # Get the first layer in the map that starts with 'WTC'
+        input_layer = None
+        for layer in map.listLayers():
+            if layer.name.startswith('WTC'):
+                input_layer = layer
                 break
-
-        if turbine_layer_obj is None:
-            arcpy.AddError("No wind turbine feature layer starting with 'WTC' found in the active map.")
+        
+        if input_layer is None:
+            arcpy.AddError("No layer starting with 'WTC' found in the current map.")
             return
 
-        # Retrieve the extent of the turbine layer
-        extent = turbine_layer_obj.getExtent()
-
+        arcpy.AddMessage(f"Processing layer: {input_layer.name}")
+        
         # Convert raster to numpy array
         raster_array = arcpy.RasterToNumPyArray(projected_raster, nodata_to_value=np.nan)
 
         # Get raster properties
+        extent = projected_raster.extent
         cell_width = projected_raster.meanCellWidth
         cell_height = projected_raster.meanCellHeight
 
         # Add 'WaterDepth' field if it does not exist in the turbine layer
         field_name = "WaterDepth"
-        if field_name not in [field.name for field in turbine_layer_obj.fields]:
-            arcpy.management.AddField(turbine_layer_obj, field_name, "DOUBLE")
+        if field_name not in [field.name for field in input_layer.fields]:
+            arcpy.management.AddField(input_layer, field_name, "DOUBLE")
 
         # Update the attribute table with water depth values
-        with arcpy.da.UpdateCursor(turbine_layer_obj, ["SHAPE@", field_name]) as cursor:
+        with arcpy.da.UpdateCursor(input_layer, ["SHAPE@", field_name]) as cursor:
             for row in cursor:
                 # Get the centroid of the shape
                 centroid = row[0].centroid
@@ -102,7 +102,7 @@ def calculate_water_depth(projected_raster: arcpy.Raster) -> None:
                 row[1] = float(water_depth) if not np.isnan(water_depth) else None
                 cursor.updateRow(row)
 
-        arcpy.AddMessage(f"Water depth calculation and attribute update for {turbine_layer_obj.name} completed.")
+        arcpy.AddMessage(f"Water depth calculation and attribute update for {input_layer.name} completed.")
 
     except arcpy.ExecuteError as e:
         arcpy.AddError(f"Failed to calculate water depth: {e}")
