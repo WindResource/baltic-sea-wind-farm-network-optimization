@@ -1,166 +1,103 @@
 import arcpy
 import os
 
-def clear_shapefile(file_path):
+def create_wind_turbine_shapefile(input_folder: str, output_folder: str, turbine_capacity: float, turbine_diameter: float, turbine_spacing: float) -> None:
     """
-    Attempt to remove a shapefile from the currently active map frame and then unlock and delete
-    the shapefile and its associated lock file.
+    Generates a point feature class for wind turbines based on the areas defined in the shapefiles within a specified folder. 
+    Each point represents a wind turbine, placed according to specified spacing, and includes attributes for identification and characteristics.
 
     Parameters:
-    - file_path (str): The path to the shapefile.
-
-    Returns:
-    - None
+    - input_folder: Path to the folder containing input shapefiles representing wind farm areas.
+    - turbine_spacing: Desired spacing between turbines, in terms of turbine diameters.
+    - output_folder: Path where the output shapefile will be saved.
+    - turbine_capacity: Capacity of each wind turbine in megawatts (MW).
+    - turbine_diameter: Diameter of each wind turbine in meters.
     """
-    try:
-        # Get a reference to the currently active map frame
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map_obj = aprx.activeMap
-
-        if not map_obj:
-            arcpy.AddError("No map frame is currently active.")
-            return
-
-        # Clear the shapefile from the map
-        for layer in map_obj.listLayers():
-            if layer.isFeatureLayer and layer.dataSource == file_path:
-                map_obj.removeLayer(layer)
-
-        # Attempt to unlock and delete the shapefile
-        if arcpy.Exists(file_path):
-            arcpy.Delete_management(file_path)
-        else:
-            arcpy.AddMessage(f"The shapefile {file_path} does not exist.")
-
-        # Attempt to unlock and delete the lock file
-        lock_file_path = file_path + ".lock"
-        if arcpy.Exists(lock_file_path):
-            arcpy.Delete_management(lock_file_path)
-        else:
-            arcpy.AddMessage(f"The lock file {lock_file_path} does not exist.")
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddMessage(f"Failed to clear {file_path}: {e}")
-    except Exception as e:
-        arcpy.AddMessage(f"An unexpected error occurred: {e}")
-
-def create_wind_turbine_shapefile(input_folder: str, turbine_spacing: float, output_folder: str, utm_zone: int, turbine_capacity: float, turbine_diameter: float) -> None:
-    """
-    Create a shapefile feature class containing wind turbine points with a UTM projection
-    and add it to the currently active map frame.
-
-    Parameters:
-    - input_folder (str): The folder containing the input shapefiles representing the wind farm areas.
-    - turbine_spacing (float): The desired spacing between wind turbines in terms of turbine diameters.
-    - output_folder (str): The name of the output shapefile feature class to store wind turbine locations.
-    - utm_zone (int): The UTM zone for the projection.
-    - turbine_capacity (float): The capacity of each wind turbine in MW.
-    - turbine_diameter (float): The diameter of each wind turbine.
-
-    Returns:
-    - None
-    """
+    
+    # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
+    utm_wkid = 32633  # Example: UTM Zone 33N
+    utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
 
     try:
-        # Validate input folder
+        # Ensure the input folder exists
         if not os.path.exists(input_folder):
             arcpy.AddError(f"Input folder '{input_folder}' does not exist.")
             return
 
-        # Set workspace to the input folder
+        # Set the ArcPy environment workspace to the input folder
         arcpy.env.workspace = input_folder
 
-        # Get a reference to the currently active map frame
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map_obj = aprx.activeMap
-
-        if not map_obj:
-            arcpy.AddError("No map frame is currently active.")
+        # Get the first shapefile in the folder to process
+        shapefiles = arcpy.ListFeatureClasses()
+        if not shapefiles:
+            arcpy.AddError("No shapefiles found in the input folder.")
             return
 
-        # Set the spatial reference to the specified UTM Zone
-        utm_wkid = 32600 + utm_zone  # UTM Zone 33N is WKID 32633
-        utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
+        first_shapefile = shapefiles[0]
+        arcpy.AddMessage(f"Processing shapefile: {first_shapefile}")
 
-        for input_shapefile in arcpy.ListFeatureClasses():
-            arcpy.AddMessage(f"Processing shapefile: {input_shapefile}")
+        # Create one output feature class for all turbine points
+        output_feature_class = os.path.join(output_folder, "AllWindTurbines.shp")
+        arcpy.CreateFeatureclass_management(output_folder, "AllWindTurbines.shp", "POINT", spatial_reference=utm_spatial_ref)
 
-            # Get extent and centroid
-            shape, centroid = arcpy.da.SearchCursor(input_shapefile, ["SHAPE@", "SHAPE@XY"]).next()
+        # Add necessary fields to the output feature class
+        arcpy.AddFields_management(output_feature_class, [
+            ["TurbineID", "TEXT", "", "", 50, "Turbine ID"],
+            ["XCoord", "DOUBLE", "", "", "", "Longitude"],
+            ["YCoord", "DOUBLE", "", "", "", "Latitude"],
+            ["Capacity", "DOUBLE", "", "", "", "Capacity (MW)"],
+            ["Diameter", "DOUBLE", "", "", "", "Diameter (m)"],
+            ["FeatureFID", "LONG", "", "", "", "Feature FID"],
+            ["Country", "TEXT", "", "", 100, "Country"],
+            ["Name", "TEXT", "", "", 100, "Name"]
+        ])
 
-            # Create bounding box
-            bounding_box = shape.extent
+        # Prepare to insert new turbine point features
+        insert_cursor_fields = ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter", "FeatureFID", "Country", "Name"]
+        insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
 
-            # Create point feature class with spatial reference
-            output_feature_class = arcpy.management.CreateFeatureclass(
-                output_folder,
-                f"WTC_{os.path.splitext(input_shapefile)[0][4:]}.shp",
-                "POINT",
-                spatial_reference=utm_spatial_ref
-            )
-
-            # Add fields in the desired order
-            arcpy.management.AddFields(output_feature_class, [
-                ["TurbineID", "TEXT", "Turbine ID"],
-                ["XCoord", "DOUBLE", "Longitude"],
-                ["YCoord", "DOUBLE", "Latitude"],
-                ["Capacity", "DOUBLE", "Capacity"],
-                ["Diameter", "DOUBLE", "Diameter"]
-            ])
-
-            # Calculate the spacing in meters based on the turbine diameter
-            spacing = turbine_spacing * turbine_diameter
-
-            # Generate grid of points
-            with arcpy.da.InsertCursor(output_feature_class, ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter"]) as cursor:
-                x, y = bounding_box.XMin, bounding_box.YMin
-                turbine_count = 0
-                total_capacity = 0
-
-                while y < bounding_box.YMax:
-                    while x < bounding_box.XMax:
-                        if shape.contains(arcpy.Point(x, y)):
-                            turbine_id, capacity, diameter = f"Turbine_{turbine_count}", turbine_capacity, turbine_diameter
-                            cursor.insertRow((arcpy.Point(x, y), turbine_id, x, y, capacity, diameter))
-                            turbine_count += 1
-                            total_capacity += turbine_capacity
-
+        # Iterate through each feature in the first shapefile
+        search_fields = ["SHAPE@", "OID@", "Country", "Name"]
+        with arcpy.da.SearchCursor(first_shapefile, search_fields) as feature_cursor:
+            for feature_index, (shape, fid, country, name) in enumerate(feature_cursor):
+                # Calculate the spacing in meters
+                spacing = turbine_spacing * turbine_diameter
+                # Generate points within the feature's bounding box
+                bounding_box = shape.extent
+                y = bounding_box.YMin
+                while y <= bounding_box.YMax:
+                    x = bounding_box.XMin
+                    while x <= bounding_box.XMax:
+                        point = arcpy.Point(x, y)
+                        if shape.contains(point):  # Check if the point is inside the feature's polygon
+                            turbine_id = f"Turbine_{feature_index}_{len(list(arcpy.da.SearchCursor(output_feature_class, 'TurbineID')))}"
+                            # Insert the new turbine point with its attributes
+                            row_values = (point, turbine_id, x, y, turbine_capacity, turbine_diameter, fid, country, name)
+                            insert_cursor.insertRow(row_values)
                         x += spacing
+                    y += spacing
 
-                    x, y = bounding_box.XMin, y + spacing
-
-            # Delete the 'Id' column from the attribute table
-            arcpy.management.DeleteField(output_feature_class, "Id")
-
-            arcpy.AddMessage(f"'{input_shapefile}': Number of turbines {turbine_count}, Total capacity {total_capacity} MW.")
-            map_obj.addDataFromPath(output_feature_class)
-
-        arcpy.AddMessage("Wind turbine shapefiles created and added to the map successfully.")
+                arcpy.AddMessage(f"Processed feature with FID {fid}, Country {country}, and Name {name} with turbines.")
 
     except arcpy.ExecuteError as e:
-        arcpy.AddMessage(f"Failed to create wind turbine shapefiles: {e}")
+        arcpy.AddError(f"Failed to process the shapefile: {e}")
     except Exception as e:
-        arcpy.AddMessage(f"An unexpected error occurred: {e}")
+        arcpy.AddError(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
-    # Get the input folder, output folder, turbine spacing in diameters, UTM zone, turbine capacity, and turbine diameter from the user input
-    windfarm_folder: str = arcpy.GetParameterAsText(0)
-    turbine_folder: str = arcpy.GetParameterAsText(1)
-    utm_zone: int = int(arcpy.GetParameterAsText(2))
-    turbine_capacity: float = float(arcpy.GetParameterAsText(3))
-    turbine_diameter: float = float(arcpy.GetParameterAsText(4))
-    turbine_spacing: float = float(arcpy.GetParameterAsText(5))
+    # Example user inputs
+    windfarm_folder = arcpy.GetParameterAsText(0)  # The folder containing the input shapefiles representing the wind farm areas
+    turbine_folder = arcpy.GetParameterAsText(1)  # The folder where the output shapefile will be saved
+    turbine_capacity = float(arcpy.GetParameterAsText(2))  # Capacity of each wind turbine in MW
+    turbine_diameter = float(arcpy.GetParameterAsText(3))  # Diameter of each wind turbine in meters
+    turbine_spacing = float(arcpy.GetParameterAsText(4))  # Desired spacing between turbines, in terms of turbine diameters
 
-    # Validate input parameters
-    if not os.path.isdir(turbine_folder):
-        arcpy.AddError("Turbine folder is not valid.")
-    else:
-        # Clear existing shapefiles from the map and delete them
-        for existing_shapefile_path in arcpy.ListFeatureClasses("*", "", turbine_folder):
-            clear_shapefile(existing_shapefile_path)
-        
-        # Create wind turbine shapefiles and add wind turbine points to the map
-        create_wind_turbine_shapefile(windfarm_folder, turbine_spacing, turbine_folder, utm_zone, turbine_capacity, turbine_diameter)
+    # Ensure the output directory exists, create it if not
+    if not os.path.exists(turbine_folder):
+        os.makedirs(turbine_folder)
 
-        # Set the output message
-        arcpy.AddMessage("Wind turbine shapefiles created and added to the map successfully.")
+    # Call the main function with the parameters collected from the user
+    create_wind_turbine_shapefile(windfarm_folder, turbine_folder, turbine_capacity, turbine_diameter, turbine_spacing,)
+
+    arcpy.AddMessage("Wind turbine point features creation complete.")
+
