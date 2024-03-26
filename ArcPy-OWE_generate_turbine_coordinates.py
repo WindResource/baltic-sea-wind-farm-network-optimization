@@ -26,6 +26,10 @@ def create_wind_turbine_shapefile(input_folder: str, output_folder: str, turbine
 
         # Set the ArcPy environment workspace to the input folder
         arcpy.env.workspace = input_folder
+        
+        # Get a reference to the currently active map frame
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+        map_obj = aprx.activeMap
 
         # Get the first shapefile in the folder to process
         shapefiles = arcpy.ListFeatureClasses()
@@ -38,10 +42,10 @@ def create_wind_turbine_shapefile(input_folder: str, output_folder: str, turbine
 
         # Create one output feature class for all turbine points
         output_feature_class = os.path.join(output_folder, "AllWindTurbines.shp")
-        arcpy.CreateFeatureclass_management(output_folder, "AllWindTurbines.shp", "POINT", spatial_reference=utm_spatial_ref)
+        arcpy.management.CreateFeatureclass(output_folder, "AllWindTurbines.shp", "POINT", spatial_reference=utm_spatial_ref)
 
         # Add necessary fields to the output feature class
-        arcpy.AddFields_management(output_feature_class, [
+        arcpy.management.AddFields(output_feature_class, [
             ["TurbineID", "TEXT", "", "", 50, "Turbine ID"],
             ["XCoord", "DOUBLE", "", "", "", "Longitude"],
             ["YCoord", "DOUBLE", "", "", "", "Latitude"],
@@ -56,7 +60,7 @@ def create_wind_turbine_shapefile(input_folder: str, output_folder: str, turbine
         insert_cursor_fields = ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter", "FeatureFID", "Country", "Name"]
         insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
 
-        # Iterate through each feature in the first shapefile
+        # Iterate through each feature in the shapefile
         search_fields = ["SHAPE@", "OID@", "Country", "Name"]
         with arcpy.da.SearchCursor(first_shapefile, search_fields) as feature_cursor:
             for feature_index, (shape, fid, country, name) in enumerate(feature_cursor):
@@ -100,4 +104,3 @@ if __name__ == "__main__":
     create_wind_turbine_shapefile(windfarm_folder, turbine_folder, turbine_capacity, turbine_diameter, turbine_spacing,)
 
     arcpy.AddMessage("Wind turbine point features creation complete.")
-
