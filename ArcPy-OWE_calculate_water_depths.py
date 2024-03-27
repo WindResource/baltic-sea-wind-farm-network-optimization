@@ -17,7 +17,7 @@ def project_raster() -> arcpy.Raster:
         aprx = arcpy.mp.ArcGISProject("CURRENT")
         map = aprx.activeMap
 
-        # Get the first layer in the map that starts with 'WTC'
+        # Get the first layer in the map that ends with 'bathymetry.tif'
         input_layer = None
         for layer in map.listLayers():
             if layer.name.endswith('bathymetry.tif'):
@@ -31,7 +31,10 @@ def project_raster() -> arcpy.Raster:
         arcpy.AddMessage(f"Projecting bathymetry raster '{input_layer}' to UTM Zone 33N...")
 
         # Project the raster using arcpy.ProjectRaster_management
-        projected_raster = arcpy.management.ProjectRaster(input_layer, "in_memory\\projected_raster", utm_spatial_ref).getOutput(0)
+        result = arcpy.management.ProjectRaster(input_layer, "in_memory\\projected_raster", utm_spatial_ref)
+        
+        # Get the output raster from the result object
+        projected_raster = result.getOutput(0)
 
         arcpy.AddMessage("Raster projection completed.")
 
@@ -49,25 +52,30 @@ def calculate_water_depth(projected_raster: arcpy.Raster) -> None:
     Calculate water depth from a projected bathymetry raster and add it to the attribute table of a wind turbine feature layer.
 
     Parameters:
-    - projected_raster (arcpy.Raster): Projected bathymetry raster.
+    - projected_raster (Union[str, arcpy.Raster]): Either a path to the projected bathymetry raster or an arcpy Raster object.
 
     Returns:
     - None
     """
     try:
+        # Ensure that projected_raster is an arcpy Raster object
+        if isinstance(projected_raster, str):
+            projected_raster = arcpy.Raster(projected_raster)
+
         # Get the current map
         aprx = arcpy.mp.ArcGISProject("CURRENT")
         map = aprx.activeMap
 
-        # Get the first layer in the map that starts with 'WTC'
+        # Get the first feature layer in the map that starts with 'WTC'
         input_layer = None
         for layer in map.listLayers():
-            if layer.name.startswith('WTC'):
-                input_layer = layer
-                break
+            if layer.isFeatureLayer:
+                if layer.name.startswith('WTC'):
+                    input_layer = layer
+                    break
         
         if input_layer is None:
-            arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+            arcpy.AddError("No feature layer starting with 'WTC' found in the current map.")
             return
 
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
@@ -80,9 +88,9 @@ def calculate_water_depth(projected_raster: arcpy.Raster) -> None:
         cell_width = projected_raster.meanCellWidth
         cell_height = projected_raster.meanCellHeight
 
-        # Add 'WaterDepth' field if it does not exist in the turbine layer
+        # Add 'WaterDepth' field if it does not exist in the feature layer
         field_name = "WaterDepth"
-        if field_name not in [field.name for field in input_layer.fields]:
+        if field_name not in [field.name for field in arcpy.ListFields(input_layer)]:
             arcpy.management.AddField(input_layer, field_name, "DOUBLE")
 
         # Update the attribute table with water depth values
