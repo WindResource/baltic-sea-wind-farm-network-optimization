@@ -57,7 +57,7 @@ def project_raster() -> list:
         arcpy.AddError(f"An unexpected error occurred during raster projection: {e}")
         return []
 
-def calculate_water_depth(projected_rasters: list) -> None:
+def calculate_raster(projected_rasters: list) -> None:
     """
     Calculate water depth, Weibull-A, and Weibull-k from projected rasters and add them to the attribute table of a wind turbine feature layer.
 
@@ -146,7 +146,7 @@ if __name__ == "__main__":
 
         if projected_rasters:
             # Calculate water depth for the turbine layer using the projected rasters
-            calculate_water_depth(projected_rasters)
+            calculate_raster(projected_rasters)
 
     except arcpy.ExecuteError as e:
         arcpy.AddMessage(f"Failed to process wind turbine feature layer: {e}")
