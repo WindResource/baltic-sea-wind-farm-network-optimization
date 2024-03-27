@@ -1,27 +1,29 @@
+import arcpy
+
 def find_closest_port_to_windfarms(windfarm_layer, port_layer):
     """Finds the closest port to each wind farm and returns a mapping of wind farm FID to port name and geometry."""
     windfarm_to_port_info = {}  # Dictionary to store port name and geometry for each wind farm
-
-    # Cursors to iterate through windfarm and port layers
-    with arcpy.da.SearchCursor(windfarm_layer, ["OID@", "SHAPE@"]) as windfarm_cursor, \
-        arcpy.da.SearchCursor(port_layer, ["PORT_NAME", "SHAPE@"]) as port_cursor:
-        
-        # Convert port_cursor to a list to reuse it for each windfarm
-        ports = list(port_cursor)
-
+    
+    # Cursor to iterate through windfarm layer
+    with arcpy.da.SearchCursor(windfarm_layer, ["OID@", "SHAPE@"]) as windfarm_cursor:
         for wf_row in windfarm_cursor:
             windfarm_fid, windfarm_geom = wf_row
             closest_port_name = None
             closest_port_geom = None
             min_distance = float('inf')
 
-            for p_row in ports:
-                port_name, port_geom = p_row
-                distance = windfarm_geom.distanceTo(port_geom)
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_port_name = port_name
-                    closest_port_geom = port_geom
+            # Cursor to iterate through port layer for each wind farm feature
+            with arcpy.da.SearchCursor(port_layer, ["PORT_NAME", "SHAPE@"]) as port_cursor:
+                for port_row in port_cursor:
+                    port_name, port_geom = port_row
+                    distance = windfarm_geom.distanceTo(port_geom)
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_port_name = port_name
+                        closest_port_geom = port_geom
+            
+            # Display closest port name
+            arcpy.AddMessage(f"Closest port to wind farm FID {windfarm_fid}: {closest_port_name}")
             
             # Map the closest port name and geometry to the windfarm
             windfarm_to_port_info[windfarm_fid] = {"PortName": closest_port_name, "PortGeometry": closest_port_geom}
