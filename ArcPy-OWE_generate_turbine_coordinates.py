@@ -36,7 +36,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
 
         # Modify output feature class name
-        output_feature_class_name = input_layer.name.replace('WFA', 'WTC') + "_Turbines.shp"
+        output_feature_class_name = input_layer.name.replace('WFA', 'WTC') + ".shp"
         output_feature_class = os.path.join(output_folder, output_feature_class_name)
 
         # Create one output feature class for all turbine points
