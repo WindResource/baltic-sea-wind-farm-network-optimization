@@ -67,7 +67,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
                     x = bounding_box.XMin
                     while x <= bounding_box.XMax:
                         # Check if the point is inside the feature's polygon (consider only offshore areas)
-                        point = arcpy.PointGeometry(arcpy.Point(x, y), utm_spatial_ref)
+                        point = arcpy.Point(x, y)
                         if shape.contains(point):
                             substation_id = f"Substation_{substation_index}"
                             substation_index += 1
@@ -81,9 +81,6 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
                 #arcpy.AddMessage(f"Generated substations for feature with Substation ID {substation_id}.")
 
-        # Cleanup
-        del insert_cursor
-
         # Add the generated shapefile to the current map
         map.addDataFromPath(output_feature_class)
         
@@ -94,8 +91,8 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
 if __name__ == "__main__":
     # Example user inputs
-    output_folder = "C:/GIS/Output"  # Example output folder path
-    spacing = 5.0  # Spacing in kilometers
+    output_folder = str(arcpy.GetParameterAsText(0))  # Output folder path
+    spacing = float(arcpy.GetParameterAsText(1))  # Spacing in kilometers
 
     # Ensure the output directory exists, create it if not
     if not os.path.exists(output_folder):
