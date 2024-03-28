@@ -56,13 +56,9 @@ def identify_countries(point_features):
         arcpy.analysis.SpatialJoin(point_features, "in_memory\\countries_projected", "in_memory\\point_country_join",
                                     join_type="KEEP_ALL", match_option="WITHIN")
         
-        # Perform the second spatial join between the points with null country values and country polygons within a certain distance using "WITHIN_A_DISTANCE" criteria
+        # Perform the second spatial join between the points with null country values and country polygons within a certain distance using "CLOSEST" criteria
         arcpy.analysis.SpatialJoin(point_features, "in_memory\\countries_projected", "in_memory\\point_country_join_distance_close",
-                                    join_type="KEEP_ALL", match_option="WITHIN_A_DISTANCE", search_radius="25 Kilometers")
-        
-        # Perform the third spatial join between the points with null country values and country polygons within a certain distance using "WITHIN_A_DISTANCE" criteria
-        arcpy.analysis.SpatialJoin(point_features, "in_memory\\countries_projected", "in_memory\\point_country_join_distance_far",
-                                    join_type="KEEP_ALL", match_option="WITHIN_A_DISTANCE", search_radius="150 Kilometers")
+                                    join_type="KEEP_ALL", match_option="CLOSEST", search_radius="150 Kilometers")
         
         # Add the Country and ISO fields to the original point features
         arcpy.management.AddField(point_features, "Country", "TEXT")
@@ -79,15 +75,6 @@ def identify_countries(point_features):
         # Update the "Country" and "ISO" fields from the second spatial join
         with arcpy.da.UpdateCursor(point_features, ["Country", "ISO"]) as update_cursor:
             with arcpy.da.SearchCursor("in_memory\\point_country_join_distance_close", ["COUNTRY", "ISO"]) as search_cursor:
-                for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
-                    if update_row[0] == "Unknown" or update_row[1] == "Unknown":  # Check if Country or ISO is Unknown
-                        update_row[0] = str(country_value) if country_value else "Unknown"
-                        update_row[1] = str(iso_cc_value) if iso_cc_value else "Unknown"
-                        update_cursor.updateRow(update_row)
-                        
-        # Update the "Country" and "ISO" fields from the third spatial join
-        with arcpy.da.UpdateCursor(point_features, ["Country", "ISO"]) as update_cursor:
-            with arcpy.da.SearchCursor("in_memory\\point_country_join_distance_far", ["COUNTRY", "ISO"]) as search_cursor:
                 for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
                     if update_row[0] == "Unknown" or update_row[1] == "Unknown":  # Check if Country or ISO is Unknown
                         update_row[0] = str(country_value) if country_value else "Unknown"
