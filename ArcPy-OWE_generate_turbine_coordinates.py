@@ -59,15 +59,15 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
         insert_cursor_fields = ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter", "FeatureFID", "Country", "Name", "Status"]
         insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
 
+        # Calculate the spacing in meters
+        spacing = turbine_spacing * turbine_diameter
+        
         # Iterate through each feature in the input layer
         search_fields = ["SHAPE@", "OID@", "Country", "Name", "Status"]
         with arcpy.da.SearchCursor(input_layer, search_fields) as feature_cursor:
             for feature_index, (shape, fid, country, name, status) in enumerate(feature_cursor):
                 # Reset turbine index for each feature
                 turbine_index = 0
-                
-                # Calculate the spacing in meters
-                spacing = turbine_spacing * turbine_diameter
                 
                 # Generate points within the feature's bounding box
                 bounding_box = shape.extent
