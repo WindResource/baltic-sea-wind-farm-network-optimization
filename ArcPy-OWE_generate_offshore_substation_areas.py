@@ -39,7 +39,7 @@ def generate_offshore_substation_areas(iso_country_code, output_folder, buffer_d
 
         # Create buffer layer for the selected country
         buffer_layer = "in_memory\\buffered_country"
-        arcpy.analysis.Buffer("in_memory\\selected_country_projected", buffer_layer, f"{buffer_distance} Kilometers", "FULL", "ROUND", "NONE", None, "PLANAR")
+        arcpy.analysis.Buffer("in_memory\\selected_country_projected", buffer_layer, f"{buffer_distance} Kilometers", "FULL", "ROUND", "NONE", None, "GEODESIC")
 
         # Pairwise erase the buffer from the EEZ layer
         erased_layer = "in_memory\\erased_eez"
