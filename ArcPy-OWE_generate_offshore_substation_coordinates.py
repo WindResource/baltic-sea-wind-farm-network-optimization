@@ -42,13 +42,13 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
         # Add fields to store substation attributes
         arcpy.AddFields_management(output_feature_class, [
-            ["SubstationID", "TEXT", "", "", 50, "Substation ID"],
+            ["StationID", "TEXT", "", "", 50, "Substation ID"],
             ["XCoord", "DOUBLE", "", "", "", "Longitude"],
             ["YCoord", "DOUBLE", "", "", "", "Latitude"]
         ])
 
         # Prepare to insert new substation point features
-        insert_cursor_fields = ["SHAPE@", "SubstationID", "XCoord", "YCoord"]
+        insert_cursor_fields = ["SHAPE@", "StationID", "XCoord", "YCoord"]
         insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
 
         # Convert spacing from kilometers to meters (1 km = 1000 m)
@@ -79,7 +79,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
                         x += spacing_meters
                     y += spacing_meters
 
-                arcpy.AddMessage(f"Generated substations for feature with Substation ID {substation_id}.")
+                #arcpy.AddMessage(f"Generated substations for feature with Substation ID {substation_id}.")
 
         # Cleanup
         del insert_cursor
