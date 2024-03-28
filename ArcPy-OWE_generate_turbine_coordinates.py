@@ -81,7 +81,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
                             turbine_index += 1
                             
                             # Insert the new turbine point with its attributes
-                            row_values = (point, turbine_id, x, y, turbine_capacity, turbine_diameter, fid, country, name, status)
+                            row_values = (point, turbine_id, round(x), round(y), turbine_capacity, turbine_diameter, fid, country, name, status)
                             insert_cursor.insertRow(row_values)
                         x += spacing
                     y += spacing

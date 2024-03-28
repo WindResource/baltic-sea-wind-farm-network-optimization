@@ -49,7 +49,7 @@ def update_turbine_distances(turbine_layer, windfarm_to_port_info):
                 port_geom = port_info["PortGeometry"]
                 distance = turbine_geom.distanceTo(port_geom)
                 row[1] = port_name
-                row[2] = distance
+                row[2] = round(distance)
                 cursor.updateRow(row)
 
 if __name__ == "__main__":
