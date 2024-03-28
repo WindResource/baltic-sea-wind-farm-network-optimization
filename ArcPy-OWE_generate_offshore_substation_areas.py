@@ -12,7 +12,7 @@ def generate_offshore_substation_areas(iso_country_code, output_folder, buffer_d
     """
     # URLs for feature layers
     countries_feature_layer_url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World_Countries_(Generalized)/FeatureServer/0"
-    helcom_mpa_feature_layer_url = "https://maps.helcom.fi/arcgis/rest/services/MADS/Custom_webapps/MapServer/2"
+    helcom_mpa_feature_layer_url = "https://maps.helcom.fi/arcgis/rest/services/MADS/Biodiversity/MapServer/54"
     utm_wkid = 32633  # UTM Zone 33N, consider dynamically calculating this based on the country's location
 
     try:
