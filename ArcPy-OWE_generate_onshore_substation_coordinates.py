@@ -1,7 +1,7 @@
 import arcpy
 import os
 
-def process_high_voltage_stations(highvoltage_vertices_folder: str, iso_country_code: str, onshore_station_folder: str) -> None:
+def generate_onshore_substation_coordinates(highvoltage_vertices_folder: str, iso_country_code: str, onshore_station_folder: str) -> None:
     """
     Selects high voltage substations and stations based on ISO country code,
     exports the selected features to a new shapefile in a specified output folder, and adds the layer to the current map.
@@ -61,4 +61,4 @@ if __name__ == "__main__":
     onshore_station_folder = arcpy.GetParameterAsText(2)  # Output folder for the shapefile
 
     # Process the high voltage stations
-    process_high_voltage_stations(highvoltage_vertices_folder, iso_country_code, onshore_station_folder)
+    generate_onshore_substation_coordinates(highvoltage_vertices_folder, iso_country_code, onshore_station_folder)
