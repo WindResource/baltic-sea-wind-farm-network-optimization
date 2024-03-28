@@ -34,7 +34,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
 
         # Output feature class name based on the input layer
-        output_feature_class_name = input_layer.name.replace('OSSA', 'OSS') + ".shp"
+        output_feature_class_name = input_layer.name.replace('OSSA', 'OSSC') + ".shp"
         output_feature_class = os.path.join(output_folder, output_feature_class_name)
 
         # Create the output feature class for substations
@@ -90,7 +90,6 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
         arcpy.AddError(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
-    # Example user inputs
     output_folder = str(arcpy.GetParameterAsText(0))  # Output folder path
     spacing = float(arcpy.GetParameterAsText(1))  # Spacing in kilometers
 
