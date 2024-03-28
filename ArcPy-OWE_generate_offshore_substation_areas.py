@@ -52,7 +52,7 @@ def generate_offshore_substation_areas(iso_country_code, output_folder, buffer_d
         arcpy.analysis.PairwiseErase(temp_erased_eez, "in_memory\\helcom_mpa_projected", final_erased_eez)
 
         # Save the output to a new shapefile
-        output_feature_class = f"{output_folder}\\final_new_eez_shapefile_for_{iso_country_code}.shp"
+        output_feature_class = f"{output_folder}\\OSSA_{iso_country_code}.shp"
         arcpy.management.CopyFeatures(final_erased_eez, output_feature_class)
 
         arcpy.AddMessage(f"Successfully processed and saved new EEZ shapefile for {iso_country_code} at {output_feature_class}.")
