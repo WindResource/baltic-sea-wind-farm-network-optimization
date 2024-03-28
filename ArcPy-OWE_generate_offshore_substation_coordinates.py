@@ -32,10 +32,13 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             return
 
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
-
+        
         # Output feature class name based on the input layer
         output_feature_class_name = input_layer.name.replace('OSSA', 'OSSC') + ".shp"
         output_feature_class = os.path.join(output_folder, output_feature_class_name)
+        
+        # Reproject input_layer to UTM
+        input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory", "reprojected_layer"), utm_spatial_ref)[0]
 
         # Create the output feature class for substations
         arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=utm_spatial_ref)
@@ -51,16 +54,13 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
         insert_cursor_fields = ["SHAPE@", "StationID", "XCoord", "YCoord"]
         insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
 
-        # Convert spacing from kilometers to meters (1 km = 1000 m)
-        spacing_meters = spacing * 1000
-
-        # Initialize a counter for substation ID numbering
-        substation_index = 0
-
         # Generate points within the bounding box of the input layer's extent
         # considering the specified spacing
         with arcpy.da.SearchCursor(input_layer, ["SHAPE@"]) as cursor:
-            for shape, in cursor:
+            for shape, in cursor:   
+                # Initialize a counter for substation ID numbering
+                substation_index = 0
+                
                 bounding_box = shape.extent
                 y = bounding_box.YMin
                 while y <= bounding_box.YMax:
@@ -76,10 +76,10 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
                             row_values = (point, substation_id, x, y)
                             insert_cursor.insertRow(row_values)
                             
-                        x += spacing_meters
-                    y += spacing_meters
+                        x += spacing * 1000
+                    y += spacing * 1000
 
-                #arcpy.AddMessage(f"Generated substations for feature with Substation ID {substation_id}.")
+                arcpy.AddMessage(f"Generated substations for feature with Substation ID {substation_id}.")
 
         # Add the generated shapefile to the current map
         map.addDataFromPath(output_feature_class)
