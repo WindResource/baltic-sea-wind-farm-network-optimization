@@ -1,7 +1,7 @@
 import arcpy
 import os
 
-def generate_windfarm_connect_coordinates(output_folder: str) -> None:
+def generate_windfarm_coordinates(output_folder: str) -> None:
     """
     Generates a point feature class for wind farm connection points based on the wind farm feature layer in the current map.
     Each point represents a wind farm connection point, the midpoint of the corresponding wind farm feature.
@@ -80,4 +80,4 @@ if __name__ == "__main__":
         os.makedirs(output_folder)
 
     # Call the main function with the parameter collected from the user
-    generate_windfarm_connect_coordinates(output_folder)
+    generate_windfarm_coordinates(output_folder)
