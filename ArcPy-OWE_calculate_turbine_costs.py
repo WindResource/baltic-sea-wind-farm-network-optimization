@@ -3,11 +3,11 @@ This script is designed to automate the calculation and updating of cost and log
 
 Functions:
 
-    calculate_total_costs(turbine_file, windfarm_file):
+    calculate_total_costs(turbine_layer, windfarm_file):
         Calculate the total costs for each category by summing the corresponding values in each row of the turbine attribute table.
 
         Parameters:
-        - turbine_file (str): Path to the turbine shapefile.
+        - turbine_layer (str): Path to the turbine shapefile.
         - windfarm_file (str): Path to the wind farm shapefile.
 
         Returns:
@@ -83,63 +83,18 @@ Functions:
         Returns:
         - tuple: Logistics time in hours per year and logistics costs in Euros.
 
-    update_fields(turbine_file):
-        Update the attribute table of a shapefile with calculated equipment, installation, decommissioning, logistics costs,
-        logistics time, and Opex.
-
-        Parameters:
-        - turbine_file (str): Path to the turbine shapefile.
+    update_fields():
+        Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
+        decommissioning, logistics costs, logistics time, and Opex.
 
         Returns:
         - None
 
 """
 
-
 import arcpy
 import os
 import arcpy
-import numpy as np
-
-def calculate_total_costs(turbine_file, windfarm_file):
-    """
-    Calculate the total costs for each category by summing the corresponding values in each row of the turbine attribute table.
-
-    Returns:
-    - dict: A dictionary containing total costs for each category.
-    """
-    try:
-        # Define the list of columns including Capacity and cost columns
-        cost_columns = ['Capacity', 'Capex20', 'Capex30', 'Capex50', 'Opex20', 'Opex30', 'Opex50', 'Decex']
-
-        # Add fields to windfarm_file if they do not exist
-        for field in cost_columns:
-            if field not in [f.name for f in arcpy.ListFields(windfarm_file)]:
-                arcpy.AddField_management(windfarm_file, field, "DOUBLE")
-                arcpy.AddMessage(f"Added field '{field}' to {windfarm_file}")
-
-        # Convert turbine attribute table to a NumPy array
-        turbine_array = arcpy.da.FeatureClassToNumPyArray(turbine_file, cost_columns)
-
-        # Calculate total costs
-        total_costs = {col: np.sum(turbine_array[col]) for col in cost_columns}
-
-        # Update the wind farm shapefile's attribute table with the calculated total costs
-        with arcpy.da.UpdateCursor(windfarm_file, cost_columns) as cursor:
-            for row in cursor:
-                for i, column in enumerate(cost_columns):
-                    row[i] = total_costs[column]
-                cursor.updateRow(row)
-
-        return total_costs
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to calculate total costs: {e}")
-        return None
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred: {e}")
-        return None
-
 
 def determine_support_structure(water_depth):
     """
@@ -169,15 +124,15 @@ def calc_equip_costs(water_depth, year, turbine_capacity):
     """
     # Coefficients for equipment cost calculation based on the support structure and year
     support_structure_coeff = {
-        ('2020', 'monopile'): (201, 613, 812),
-        ('2030', 'monopile'): (181, 552, 370),
-        ('2050', 'monopile'): (171, 521, 170),
-        ('2020', 'jacket'): (114, -2270, 932),
-        ('2030', 'jacket'): (103, -2043, 478),
-        ('2050', 'jacket'): (97, -1930, 272),
-        ('2020', 'floating'): (0, 774, 1481),
-        ('2030', 'floating'): (0, 697, 1223),
-        ('2050', 'floating'): (0, 658, 844)
+        ('monopile', '2020'): (201, 613, 812),
+        ('monopile', '2030'): (181, 552, 370),
+        ('monopile', '2050'): (171, 521, 170),
+        ('jacket', '2020'): (114, -2270, 932),
+        ('jacket', '2030'): (103, -2043, 478),
+        ('jacket', '2050'): (97, -1930, 272),
+        ('floating', '2020'): (0, 774, 1481),
+        ('floating', '2030'): (0, 697, 1223),
+        ('floating', '2050'): (0, 658, 844)
     }
 
     # Coefficients for wind turbine rated cost
@@ -190,14 +145,17 @@ def calc_equip_costs(water_depth, year, turbine_capacity):
     # Get the support structure type based on water depth
     support_structure = determine_support_structure(water_depth)
 
-    key = (year, support_structure)
+    key = (support_structure, year)
+    if key not in support_structure_coeff:
+        return 0  # Return 0 if coefficients not available
+
     c1, c2, c3 = support_structure_coeff[key]
     WT_rated_cost = wind_turbine_coeff[year]
 
     # Calculate equipment costs using the provided formula
     return turbine_capacity * ((c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000) + (WT_rated_cost))
 
-def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float, operation: str) -> tuple:
+def calc_costs(water_depth, port_distance, turbine_capacity, operation):
     """
     Calculate installation or decommissioning costs based on the water depth, port distance,
     and rated power of the wind turbines.
@@ -205,7 +163,6 @@ def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float
     Returns:
     - tuple: Calculated hours and costs in Euros.
     """
-    
     # Installation coefficients for different vehicles
     inst_coeff = {
         'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
@@ -227,36 +184,33 @@ def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float
     support_structure = determine_support_structure(water_depth).lower()
 
     # Determine installation vehicles based on support structure
-    if support_structure == 'floating':
-        # For floating support structure, use both Tug and AHV
-        vehicles = ['Tug', 'AHV']
-    else:
-        # For other support structures, use only PSIV
-        vehicles = ['PSIV']
+    vehicles = ['Tug', 'AHV'] if support_structure == 'floating' else ['PSIV']
 
     # Calculate hours separately for each vessel
-    hours_per_vessel = [((1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]) for c in [coeff[vehicle] for vehicle in vehicles]
+    hours_per_vessel = [
+        ((1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3])
+        for c in [coeff[vehicle] for vehicle in vehicles]
     ]
     
     # For floating support structure, use the maximum hours of Tug and AHV
-    total_hours = max(hours_per_vessel) if support_structure.lower() == 'floating' else sum(hours_per_vessel)
+    total_hours = max(hours_per_vessel) if support_structure == 'floating' else sum(hours_per_vessel)
 
     # Calculate costs based on the determined hours
-    total_costs = sum([
-        hours * c[4] * 1000 / 24
-        for hours, c in zip(hours_per_vessel, [coeff[vehicle] for vehicle in vehicles])
-    ]) if support_structure.lower() == 'floating' else hours_per_vessel[0] * coeff[vehicles[0]][4] * 1000 / 24
+    total_costs = (
+        sum(hours * c[4] * 1000 / 24 for hours, c in zip(hours_per_vessel, [coeff[vehicle] for vehicle in vehicles]))
+        if support_structure == 'floating'
+        else hours_per_vessel[0] * coeff[vehicles[0]][4] * 1000 / 24
+    )
 
     return total_hours, total_costs
 
-def logi_costs(water_depth: float, port_distance: float, failure_rate: float = 0.08) -> tuple:
+def logi_costs(water_depth, port_distance, failure_rate=0.08):
     """
     Calculate logistics time and costs based on water depth, port distance, and failure rate for major wind turbine repairs.
 
     Returns:
     - tuple: Logistics time in hours per year and logistics costs in Euros.
     """
-    
     # Logistics coefficients for different vessels
     logi_coeff = {
         'JUV': (18.5, 50, 150, 1),
@@ -267,9 +221,9 @@ def logi_costs(water_depth: float, port_distance: float, failure_rate: float = 0
     support_structure = determine_support_structure(water_depth).capitalize()
 
     # Determine logistics vessel based on support structure
-    vessel = 'Tug' if support_structure.lower() == 'floating' else 'JUV'
+    vessel = 'Tug' if support_structure == 'Floating' else 'JUV'
 
-    # Choose the appropriate coefficients based on the selected vessel
+    # Get logistics coefficients for the chosen vessel
     coeff = logi_coeff[vessel]
 
     # Calculate logistics time in hours per year
@@ -280,198 +234,122 @@ def logi_costs(water_depth: float, port_distance: float, failure_rate: float = 0
 
     return logistics_time, logistics_costs
 
-def update_fields(turbine_file):
+def update_fields():
     """
-    Update the attribute table of a shapefile with calculated equipment, installation, decommissioning, logistics costs,
-    logistics time, and Opex.
+    Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
+    decommissioning, logistics costs, logistics time, and Opex.
 
     Returns:
     - None
     """
-    try:
-        # Check if the turbine shapefile exists
-        if not arcpy.Exists(turbine_file):
-            arcpy.AddError(f"Turbine shapefile '{turbine_file}' does not exist.")
-            return
 
-        # Define the fields to be added if they don't exist
-        fields_to_add = [
-            {'name': 'SuppStruct', 'type': 'TEXT'},
-            {'name': 'EquiC20', 'type': 'DOUBLE'},
-            {'name': 'EquiC30', 'type': 'DOUBLE'},
-            {'name': 'EquiC50', 'type': 'DOUBLE'},
-            {'name': 'InstC', 'type': 'DOUBLE'},
-            {'name': 'InstT', 'type': 'DOUBLE'},  # Installation Time
-            {'name': 'Capex20', 'type': 'DOUBLE'},
-            {'name': 'Capex30', 'type': 'DOUBLE'},
-            {'name': 'Capex50', 'type': 'DOUBLE'},
-            {'name': 'Decex', 'type': 'DOUBLE'},
-            {'name': 'DecT', 'type': 'DOUBLE'},  # Decommissioning Time
-            {'name': 'LogiC', 'type': 'DOUBLE'},  # Logistics Costs
-            {'name': 'LogiT', 'type': 'DOUBLE'},  # Logistics Time
-            {'name': 'Opex20', 'type': 'DOUBLE'},  # Operational Expenditure for 2020
-            {'name': 'Opex30', 'type': 'DOUBLE'},  # Operational Expenditure for 2030
-            {'name': 'Opex50', 'type': 'DOUBLE'}   # Operational Expenditure for 2050
-        ]
+    # Function to add a field if it doesn't exist
+    def add_field_if_not_exists(layer, field_name, field_type):
+        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
+            arcpy.AddField_management(layer, field_name, field_type)
+            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
 
-        # Get the list of fields in the attribute table
-        existing_fields = [field.name for field in arcpy.ListFields(turbine_file)]
+    # Get the current map and the turbine layer
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
+    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
 
-        # Add fields if they do not exist
-        for field in fields_to_add:
-            if field['name'] not in existing_fields:
-                arcpy.AddField_management(turbine_file, field['name'], field['type'])
-                arcpy.AddMessage(f"Added field '{field['name']}' to the attribute table.")
+    # Check if turbine layer exists
+    if not turbine_layer:
+        arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+        return
 
-        # Get the updated list of fields in the attribute table
-        fields = [field.name for field in arcpy.ListFields(turbine_file)]
+    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
 
-        # Update the attribute table with calculated values
-        with arcpy.da.UpdateCursor(turbine_file, fields) as cursor:
-            for row in cursor:
-                # Get field indices dynamically
-                water_depth_index = fields.index("WaterDepth")
-                capacity_index = fields.index("Capacity")
+    # Define fields to be added if they don't exist
+    fields_to_add = [
+        ('SuppStruct', 'TEXT'),
+        ('EquiC20', 'DOUBLE'),
+        ('EquiC30', 'DOUBLE'),
+        ('EquiC50', 'DOUBLE'),
+        ('InstC', 'DOUBLE'),
+        ('InstT', 'DOUBLE'),
+        ('Capex20', 'DOUBLE'),
+        ('Capex30', 'DOUBLE'),
+        ('Capex50', 'DOUBLE'),
+        ('LogiC', 'DOUBLE'),
+        ('LogiT', 'DOUBLE'),
+        ('Opex20', 'DOUBLE'),
+        ('Opex30', 'DOUBLE'),
+        ('Opex50', 'DOUBLE'),
+        ('Decex', 'DOUBLE'),
+        ('DecT', 'DOUBLE')
+    ]
 
-                # Get water depth and turbine capacity from the row
-                water_depth = -row[water_depth_index]  # Invert the sign
-                turbine_capacity = row[capacity_index]
+    # Add fields if they don't exist
+    for field_name, field_type in fields_to_add:
+        add_field_if_not_exists(turbine_layer, field_name, field_type)
 
-                # Identify support structure and capitalize the first letter
-                support_structure = determine_support_structure(water_depth).capitalize()
-                row[fields.index("SuppStruct")] = support_structure
+    # Get existing field names
+    fields = [field.name for field in arcpy.ListFields(turbine_layer)]
 
-                # Update equipment costs for each year using calc_equipment_costs
-                for year in ['2020', '2030', '2050']:
-                    field_name_ec = f"EquiC{year[2:]}"  # Remove the first two numbers of the year
-                    field_name_cap = f"Capex{year[2:]}"  # Remove the first two numbers of the year
-                    if field_name_ec in fields and field_name_cap in fields:
-                        # Calculate equipment costs using calc_equipment_costs
-                        equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
-                        row[fields.index(field_name_ec)] = round(equi_costs, 2)
+    # Update attribute table
+    with arcpy.da.UpdateCursor(turbine_layer, fields) as cursor:
+        for row in cursor:
+            water_depth = -row[fields.index("WaterDepth")]  # Invert the sign
+            turbine_capacity = row[fields.index("Capacity")]
 
-                        # Calculate installation and decommissioning costs and times
-                        inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'installation')
-                        deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")], turbine_capacity, 'decommissioning')
+            # Determine support structure
+            support_structure = determine_support_structure(water_depth).capitalize()
+            row[fields.index("SuppStruct")] = support_structure
 
-                        # Update installation and decommissioning times (InstT and DecT) in hours
-                        row[fields.index("InstT")] = round(inst_hours, 2)
-                        row[fields.index("DecT")] = round(deco_hours, 2)
+            # Update fields for each year
+            for year in ['2020', '2030', '2050']:
+                field_name_ec = f"EquiC{year[2:]}"
+                field_name_cap = f"Capex{year[2:]}"
 
-                        # Update installation costs
-                        row[fields.index("InstC")] = round(inst_costs, 2)
+                if field_name_ec in fields and field_name_cap in fields:
+                    # Calculate equipment costs
+                    equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
+                    row[fields.index(field_name_ec)] = round(equi_costs, 2)
 
-                        # Calculate and update capex for the current year
-                        capex = equi_costs + inst_costs
-                        row[fields.index(field_name_cap)] = round(capex, 2)
+                    # Calculate installation and decommissioning costs and times
+                    inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")],
+                                                        turbine_capacity, 'installation')
+                    deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")],
+                                                        turbine_capacity, 'decommissioning')
 
-                        # Calculate decommissioning costs and update the Decex field
-                        field_name_dec = "Decex"
-                        if field_name_dec in fields:
-                            row[fields.index(field_name_dec)] = round(deco_costs, 2)
+                    # Update installation and decommissioning times
+                    row[fields.index("InstT")] = round(inst_hours, 2)
+                    row[fields.index("DecT")] = round(deco_hours, 2)
 
-                        # Calculate logistics costs and update the LogiC field
-                        logi_costs_value = logi_costs(water_depth, row[fields.index("Distance")])[1]
-                        row[fields.index("LogiC")] = round(logi_costs_value, 2)
+                    # Update installation costs
+                    row[fields.index("InstC")] = round(inst_costs, 2)
 
-                        # Calculate logistics time and update the LogiT field
-                        logi_time = logi_costs(water_depth, row[fields.index("Distance")])[0]
-                        row[fields.index("LogiT")] = round(logi_time, 2)
+                    # Calculate capex for the current year
+                    capex = equi_costs + inst_costs
+                    row[fields.index(field_name_cap)] = round(capex, 2)
 
-                        # Calculate material costs (0.025 * equipment costs) and update Opex for each year
-                        material_costs = 0.025 * equi_costs
-                        field_name_opex = f"Opex{year[2:]}"
-                        if field_name_opex in fields:
-                            row[fields.index(field_name_opex)] = round(material_costs + logi_costs_value, 2)
+                    # Calculate and update decommissioning costs
+                    field_name_dec = "Decex"
+                    if field_name_dec in fields:
+                        row[fields.index(field_name_dec)] = round(deco_costs, 2)
 
-                # Update the row in the attribute table
-                cursor.updateRow(row)
+                    # Calculate logistics costs and time
+                    logi_costs_value = logi_costs(water_depth, row[fields.index("Distance")])[1]
+                    logi_time = logi_costs(water_depth, row[fields.index("Distance")])[0]
 
-        arcpy.AddMessage(f"Attribute table of {turbine_file} updated successfully.")
+                    # Update logistics costs and time
+                    row[fields.index("LogiC")] = round(logi_costs_value, 2)
+                    row[fields.index("LogiT")] = round(logi_time, 2)
 
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to update fields: {e}")
-        arcpy.AddError(arcpy.GetMessages(2))  # Log more detailed error messages
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred: {e}")
-        arcpy.AddError(arcpy.GetMessages(2))  # Log more detailed error messages
+                    # Calculate material costs and update opex
+                    material_costs = 0.025 * equi_costs
+                    field_name_opex = f"Opex{year[2:]}"
+                    if field_name_opex in fields:
+                        row[fields.index(field_name_opex)] = round(material_costs + logi_costs_value, 2)
+
+            cursor.updateRow(row)
+
+    arcpy.AddMessage(f"Attribute table of {turbine_layer} updated successfully.")
 
 if __name__ == "__main__":
-    turbine_folder = arcpy.GetParameterAsText(0)
-    windfarm_folder = arcpy.GetParameterAsText(1)
-
-
-    # Set the workspace to the turbine folder
-    arcpy.env.workspace = turbine_folder
-    arcpy.AddMessage(f"Setting workspace to: {turbine_folder}")
-
-    # List all shapefiles in the turbine folder
-    turbine_shapefiles = arcpy.ListFeatureClasses("*.shp")
-
-    # Check if there are any shapefiles in the turbine folder
-    if not turbine_shapefiles:
-        arcpy.AddError(f"No shapefiles found in the turbine folder: {turbine_folder}")
-        exit()
-
-    # Iterate through each turbine shapefile and process it
-    for turbine_shapefile_name in turbine_shapefiles:
-        turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
-        arcpy.AddMessage(f"Processing turbine shapefile: {turbine_shapefile_path}")
-
-        # Check if the shapefile exists
-        if not arcpy.Exists(turbine_shapefile_path):
-            arcpy.AddError(f"Turbine shapefile '{turbine_shapefile_path}' does not exist.")
-            continue
-
-        # Check if 'WaterDepth' and 'Distance' fields exist
-        turbine_field_names = [field.name for field in arcpy.ListFields(turbine_shapefile_path)]
-        required_turbine_fields = ['WaterDepth', 'Distance']
-
-        if not all(field in turbine_field_names for field in required_turbine_fields):
-            arcpy.AddError(f"Missing required fields ('WaterDepth' and/or 'Distance') in turbine shapefile '{turbine_shapefile_path}'. Aborting.")
-            continue
-
-        # Update the attribute table with equipment, installation, and decommissioning costs
-        update_fields(turbine_shapefile_path)
-
-        # Check if updated fields exist and have nonzero values
-        check_result = check_updated_fields(turbine_shapefile_path)
-        if check_result:
-            arcpy.AddMessage("All checks passed for turbine shapefile.")
-        else:
-            arcpy.AddWarning("One or more checks failed for turbine shapefile.")
-
-    # Now, set the workspace to the wind farm folder
-    arcpy.env.workspace = windfarm_folder
-    arcpy.AddMessage(f"Setting workspace to: {windfarm_folder}")
-
-    # List all shapefiles in the wind farm folder
-    windfarm_shapefiles = arcpy.ListFeatureClasses("*.shp")
-
-    # Check if there are any shapefiles in the wind farm folder
-    if not windfarm_shapefiles:
-        arcpy.AddError(f"No shapefiles found in the wind farm folder: {windfarm_folder}")
-        exit()
-
-    # Iterate through each wind farm shapefile and process it
-    for windfarm_shapefile_name in windfarm_shapefiles:
-        windfarm_shapefile_path = os.path.join(windfarm_folder, windfarm_shapefile_name)
-        arcpy.AddMessage(f"Processing wind farm shapefile: {windfarm_shapefile_path}")
-
-        # Check if the shapefile exists
-        if not arcpy.Exists(windfarm_shapefile_path):
-            arcpy.AddError(f"Wind farm shapefile '{windfarm_shapefile_path}' does not exist.")
-            continue
-
-        # Calculate total costs for each category for the corresponding turbine shapefile
-        turbine_shapefile_name = f"WTC_{os.path.basename(windfarm_shapefile_name).replace('WFA_', '')}"
-        turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
-
-        total_costs = calculate_total_costs(turbine_shapefile_path, windfarm_shapefile_path)
-        if total_costs:
-            arcpy.AddMessage(f"Total costs for each category updated in wind farm shapefile '{windfarm_shapefile_name}'.")
-        else:
-            arcpy.AddWarning(f"Failed to update total costs in wind farm shapefile '{windfarm_shapefile_name}'.")
+    update_fields()
 
 
 
