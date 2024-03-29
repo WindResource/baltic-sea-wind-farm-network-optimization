@@ -40,6 +40,9 @@ def filter_OSSC(distance: float) -> None:
 
         arcpy.AddMessage(f"Processing layer: {wfc_layer.name}")
 
+        # Create a new layer to store filtered OSSC points
+        filtered_ossc_layer = arcpy.management.CopyFeatures(ossc_layer, f"OSSC_filtered_{round(distance)}km")[0]
+        
         # List to store WFC points
         wfc_points = []
 
@@ -49,7 +52,7 @@ def filter_OSSC(distance: float) -> None:
                 wfc_points.append(wfc_row[0])
 
         # Iterate over OSSC points
-        with arcpy.da.UpdateCursor(ossc_layer, ["SHAPE@"]) as ossc_cursor:
+        with arcpy.da.UpdateCursor(filtered_ossc_layer, ["SHAPE@"]) as ossc_cursor:
             for ossc_row in ossc_cursor:
                 ossc_point = ossc_row[0]
 
@@ -70,6 +73,9 @@ def filter_OSSC(distance: float) -> None:
                 # If the point is not within the specified distance from any WFC point, delete it
                 if not within_distance:
                     ossc_cursor.deleteRow()
+                    
+        # Add the shapefile to the map
+        map.addDataFromPath(filtered_ossc_layer)
         
         # Refresh the map view
         aprx.save()
