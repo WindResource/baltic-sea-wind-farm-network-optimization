@@ -106,7 +106,7 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
 
         arcpy.AddMessage("Creating output shapefile...")
         # Define the output shapefile path
-        output_shapefile = os.path.join(highvoltage_vertices_folder, "highvoltage_vertices.shp")
+        output_shapefile = os.path.join(highvoltage_vertices_folder, "highvoltage_vertices_Europe.shp")
 
         # Define the spatial reference for EPSG:32633
         spatial_ref = arcpy.SpatialReference(32633)
@@ -151,7 +151,7 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
                     frequency = ""
 
                 # Insert the row with the geometry and attributes
-                cursor.insertRow([(x, y), x, y, typ, voltage, frequency])
+                cursor.insertRow([(x, y), round(x), round(y), typ, voltage, frequency])
 
         arcpy.AddMessage("Identifying countries...")
         # Identify countries and add the country field to the point features
