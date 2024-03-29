@@ -242,25 +242,7 @@ def update_fields():
     Returns:
     - None
     """
-
-    # Function to add a field if it doesn't exist
-    def add_field_if_not_exists(layer, field_name, field_type):
-        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
-            arcpy.AddField_management(layer, field_name, field_type)
-            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
-
-    # Get the current map and the turbine layer
-    aprx = arcpy.mp.ArcGISProject("CURRENT")
-    map = aprx.activeMap
-    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
-
-    # Check if turbine layer exists
-    if not turbine_layer:
-        arcpy.AddError("No layer starting with 'WTC' found in the current map.")
-        return
-
-    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
-
+    
     # Define fields to be added if they don't exist
     fields_to_add = [
         ('SuppStruct', 'TEXT'),
@@ -278,71 +260,100 @@ def update_fields():
         ('Opex30', 'DOUBLE'),
         ('Opex50', 'DOUBLE'),
         ('Decex', 'DOUBLE'),
-        ('DecT', 'DOUBLE')
+        ('DecT', 'DOUBLE'),
     ]
+    
+    # Function to add a field if it does not exist in the layer
+    def add_field_if_not_exists(layer, field_name, field_type):
+        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
+            arcpy.AddField_management(layer, field_name, field_type)
+            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
 
-    # Add fields if they don't exist
+    # Access the current ArcGIS project
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
+
+    # Find the wind turbine layer in the map
+    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
+
+    # Check if the turbine layer exists
+    if not turbine_layer:
+        arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+        return
+
+    # Deselect all currently selected features
+    arcpy.SelectLayerByAttribute_management(turbine_layer, "CLEAR_SELECTION")
+    
+    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
+
+    # Check if required fields exist in the attribute table
+    required_fields = ['WaterDepth', 'Capacity', 'Distance']
+    existing_fields = [field.name for field in arcpy.ListFields(turbine_layer)]
+    for field in required_fields:
+        if field not in existing_fields:
+            arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
+            return
+
+    # Add new fields to the attribute table if they do not exist
     for field_name, field_type in fields_to_add:
         add_field_if_not_exists(turbine_layer, field_name, field_type)
 
-    # Get existing field names
+    # Get the list of fields in the attribute table
     fields = [field.name for field in arcpy.ListFields(turbine_layer)]
 
-    # Update attribute table
+    # Update each row in the attribute table
     with arcpy.da.UpdateCursor(turbine_layer, fields) as cursor:
         for row in cursor:
+            # Extract water depth and turbine capacity from the current row
             water_depth = -row[fields.index("WaterDepth")]  # Invert the sign
             turbine_capacity = row[fields.index("Capacity")]
 
-            # Determine support structure
+            # Determine support structure and assign it to the corresponding field
             support_structure = determine_support_structure(water_depth).capitalize()
             row[fields.index("SuppStruct")] = support_structure
 
-            # Update fields for each year
+            # Iterate over each year and calculate costs and time
             for year in ['2020', '2030', '2050']:
                 field_name_ec = f"EquiC{year[2:]}"
                 field_name_cap = f"Capex{year[2:]}"
 
                 if field_name_ec in fields and field_name_cap in fields:
-                    # Calculate equipment costs
+                    # Calculate equipment costs for the current year
                     equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
-                    row[fields.index(field_name_ec)] = round(equi_costs, 2)
+                    row[fields.index(field_name_ec)] = round(equi_costs)
 
-                    # Calculate installation and decommissioning costs and times
+                    # Calculate installation and decommissioning costs and time
                     inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")],
                                                         turbine_capacity, 'installation')
                     deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")],
                                                         turbine_capacity, 'decommissioning')
 
-                    # Update installation and decommissioning times
-                    row[fields.index("InstT")] = round(inst_hours, 2)
-                    row[fields.index("DecT")] = round(deco_hours, 2)
+                    # Assign calculated values to the corresponding fields
+                    row[fields.index("InstT")] = round(inst_hours)
+                    row[fields.index("DecT")] = round(deco_hours)
+                    row[fields.index("InstC")] = round(inst_costs)
 
-                    # Update installation costs
-                    row[fields.index("InstC")] = round(inst_costs, 2)
-
-                    # Calculate capex for the current year
+                    # Calculate and assign total capital expenditure for the current year
                     capex = equi_costs + inst_costs
-                    row[fields.index(field_name_cap)] = round(capex, 2)
+                    row[fields.index(field_name_cap)] = round(capex)
 
-                    # Calculate and update decommissioning costs
+                    # Assign decommissioning costs if the field exists
                     field_name_dec = "Decex"
                     if field_name_dec in fields:
-                        row[fields.index(field_name_dec)] = round(deco_costs, 2)
+                        row[fields.index(field_name_dec)] = round(deco_costs)
 
-                    # Calculate logistics costs and time
+                    # Calculate and assign logistics costs and time
                     logi_costs_value = logi_costs(water_depth, row[fields.index("Distance")])[1]
                     logi_time = logi_costs(water_depth, row[fields.index("Distance")])[0]
 
-                    # Update logistics costs and time
-                    row[fields.index("LogiC")] = round(logi_costs_value, 2)
-                    row[fields.index("LogiT")] = round(logi_time, 2)
+                    row[fields.index("LogiC")] = round(logi_costs_value)
+                    row[fields.index("LogiT")] = round(logi_time)
 
-                    # Calculate material costs and update opex
+                    # Calculate material costs and assign operating expenses if the field exists
                     material_costs = 0.025 * equi_costs
                     field_name_opex = f"Opex{year[2:]}"
                     if field_name_opex in fields:
-                        row[fields.index(field_name_opex)] = round(material_costs + logi_costs_value, 2)
+                        row[fields.index(field_name_opex)] = round(material_costs + logi_costs_value)
 
             cursor.updateRow(row)
 
