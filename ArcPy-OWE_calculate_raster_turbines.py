@@ -82,7 +82,10 @@ def calculate_raster(projected_rasters: list) -> None:
         if input_layer is None:
             arcpy.AddError("No feature layer starting with 'WTC' found in the current map.")
             return
-
+        
+        # Deselect all currently selected features
+        arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
+        
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
         
         # Ensure that projected_rasters are arcpy Raster objects
@@ -105,8 +108,12 @@ def calculate_raster(projected_rasters: list) -> None:
                 field_name = "WaterDepth"
             elif 'Weibull-A' in projected_raster.name:
                 field_name = "WeibullA"
+                # Round Weibull-A values
+                raster_array = np.round(raster_array, decimals=2)
             elif 'Weibull-k' in projected_raster.name:
                 field_name = "WeibullK"
+                # Round Weibull-K values
+                raster_array = np.round(raster_array, decimals=2)
             else:
                 arcpy.AddWarning(f"Raster '{projected_raster.name}' does not match expected naming convention. Skipping...")
                 continue

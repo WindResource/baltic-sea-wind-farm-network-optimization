@@ -30,6 +30,9 @@ def generate_windfarm_coordinates(output_folder: str) -> None:
             arcpy.AddError("No layer starting with 'WFA' found in the current map.")
             return
 
+        # Deselect all currently selected features
+        arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
+        
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
 
         # Modify output feature class name, WFC is wind farm connection

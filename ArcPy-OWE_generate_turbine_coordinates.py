@@ -32,7 +32,10 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
         if input_layer is None:
             arcpy.AddError("No layer starting with 'WFA' found in the current map.")
             return
-
+        
+        # Deselect all currently selected features
+        arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
+        
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
 
         # Modify output feature class name
