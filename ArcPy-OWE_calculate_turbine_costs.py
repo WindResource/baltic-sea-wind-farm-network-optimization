@@ -1,3 +1,101 @@
+"""
+This script is designed to automate the calculation and updating of cost and logistical parameters for wind turbine installations within GIS shapefiles, utilizing the ArcPy site package. It facilitates the assessment of various costs associated with wind turbine projects, including equipment, installation, decommissioning, and logistics, based on spatial and non-spatial attributes found in shapefiles for turbines and wind farms.
+
+Functions:
+
+    calculate_total_costs(turbine_file, windfarm_file):
+        Calculate the total costs for each category by summing the corresponding values in each row of the turbine attribute table.
+
+        Parameters:
+        - turbine_file (str): Path to the turbine shapefile.
+        - windfarm_file (str): Path to the wind farm shapefile.
+
+        Returns:
+        - dict: A dictionary containing total costs for each category.
+
+    determine_support_structure(water_depth):
+        Determines the support structure type based on water depth.
+
+        Parameters:
+        - water_depth (float): Water depth in meters.
+
+        Returns:
+        - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
+
+    calc_equip_costs(water_depth, year, turbine_capacity):
+        Calculates the equipment costs based on water depth values, year, and turbine capacity.
+
+        Parameters:
+        - water_depth (float): Water depth in meters.
+        - year (str): Year for which equipment costs are calculated ('2020', '2030', or '2050').
+        - turbine_capacity (float): Rated power capacity of the wind turbine.
+
+        Returns:
+        - float: Calculated equipment costs.
+
+    calc_costs(water_depth, port_distance, turbine_capacity, operation):
+        Calculate installation or decommissioning costs based on the water depth, port distance,
+        and rated power of the wind turbines.
+
+        Parameters:
+        - water_depth (float): Water depth in meters.
+        - port_distance (float): Distance to the port in meters.
+        - turbine_capacity (float): Rated power capacity of the wind turbines in megawatts (MW).
+        - operation (str): Operation type ('installation' or 'decommissioning').
+
+        Coefficients:
+        - Capacity (u/lift): Capacity of the vessel in units per lift.
+        - Speed (km/h): Speed of the vessel in kilometers per hour.
+        - Load time (h/lift): Load time per lift in hours per lift.
+        - Inst. time (h/u): Installation time per unit in hours per unit.
+        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+
+        Vessels:
+        - SPIV (Self-Propelled Installation Vessel)
+        - AHV (Anchor Handling Vessel)
+        - Tug (Tug Boat)
+
+        Equation:
+        Hours = (1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]
+        Cost = Hours * c[4] * 1000 / 24
+
+        Returns:
+        - tuple: Calculated hours and costs in Euros.
+
+    logi_costs(water_depth, port_distance, failure_rate=0.08):
+        Calculate logistics time and costs based on water depth, port distance, and failure rate for major wind turbine repairs.
+
+        Parameters:
+        - water_depth (float): Water depth in meters.
+        - port_distance (float): Distance to the port in meters.
+        - failure_rate (float, optional): Failure rate for the wind turbines (/yr). Default is 0.08.
+
+        Coefficients:
+        - Speed (km/h): Speed of the vessel in kilometers per hour.
+        - Repair time (h): Repair time in hours.
+        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+        - Roundtrips: Number of roundtrips for the logistics operation.
+
+        Equations:
+        - Logistics Time: labda * ((2 * c4 * port_distance) / c1 + c2)
+        - Logistics Costs: Logistics Time * c4 / 24
+
+        Returns:
+        - tuple: Logistics time in hours per year and logistics costs in Euros.
+
+    update_fields(turbine_file):
+        Update the attribute table of a shapefile with calculated equipment, installation, decommissioning, logistics costs,
+        logistics time, and Opex.
+
+        Parameters:
+        - turbine_file (str): Path to the turbine shapefile.
+
+        Returns:
+        - None
+
+"""
+
+
 import arcpy
 import os
 import arcpy
@@ -6,10 +104,6 @@ import numpy as np
 def calculate_total_costs(turbine_file, windfarm_file):
     """
     Calculate the total costs for each category by summing the corresponding values in each row of the turbine attribute table.
-
-    Parameters:
-    - turbine_file (str): Path to the turbine shapefile.
-    - windfarm_file (str): Path to the wind farm shapefile.
 
     Returns:
     - dict: A dictionary containing total costs for each category.
@@ -51,9 +145,6 @@ def determine_support_structure(water_depth):
     """
     Determines the support structure type based on water depth.
 
-    Parameters:
-    - water_depth (float): Water depth in meters.
-
     Returns:
     - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
     """
@@ -72,11 +163,6 @@ def determine_support_structure(water_depth):
 def calc_equip_costs(water_depth, year, turbine_capacity):
     """
     Calculates the equipment costs based on water depth values, year, and turbine capacity.
-
-    Parameters:
-    - water_depth (float): Water depth in meters.
-    - year (str): Year for which equipment costs are calculated ('2020', '2030', or '2050').
-    - turbine_capacity (float): Rated power capacity of the wind turbine.
 
     Returns:
     - float: Calculated equipment costs.
@@ -115,31 +201,6 @@ def calc_costs(water_depth: float, port_distance: float, turbine_capacity: float
     """
     Calculate installation or decommissioning costs based on the water depth, port distance,
     and rated power of the wind turbines.
-
-    Parameters:
-    - water_depth (float): Water depth in meters.
-    - port_distance (float): Distance to the port in meters.
-    - turbine_capacity (float): Rated power capacity of the wind turbines in megawatts (MW).
-    - operation (str): Operation type ('installation' or 'decommissioning').
-
-    Coefficients:
-    - Capacity (u/lift): Capacity of the vessel in units per lift.
-    - Speed (km/h): Speed of the vessel in kilometers per hour.
-    - Load time (h/lift): Load time per lift in hours per lift.
-    - Inst. time (h/u): Installation time per unit in hours per unit.
-    - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-
-    Vessels:
-    - SPIV (Self-Propelled Installation Vessel)
-    - AHV (Anchor Handling Vessel)
-    - Tug (Tug Boat)
-
-    Equation:
-    Hours = (1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]
-    Cost = Hours * c[4] * 1000 / 24
-
-    Explanation:
-    The hours are calculated first, and then the cost is calculated using the determined hours.
 
     Returns:
     - tuple: Calculated hours and costs in Euros.
@@ -192,21 +253,6 @@ def logi_costs(water_depth: float, port_distance: float, failure_rate: float = 0
     """
     Calculate logistics time and costs based on water depth, port distance, and failure rate for major wind turbine repairs.
 
-    Parameters:
-    - water_depth (float): Water depth in meters.
-    - port_distance (float): Distance to the port in meters.
-    - failure_rate (float, optional): Failure rate for the wind turbines (/yr). Default is 0.08.
-
-    Coefficients:
-    - Speed (km/h): Speed of the vessel in kilometers per hour.
-    - Repair time (h): Repair time in hours.
-    - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-    - Roundtrips: Number of roundtrips for the logistics operation.
-
-    Equations:
-    - Logistics Time: labda * ((2 * c4 * port_distance) / c1 + c2)
-    - Logistics Costs: Logistics Time * c4 / 24
-
     Returns:
     - tuple: Logistics time in hours per year and logistics costs in Euros.
     """
@@ -238,9 +284,6 @@ def update_fields(turbine_file):
     """
     Update the attribute table of a shapefile with calculated equipment, installation, decommissioning, logistics costs,
     logistics time, and Opex.
-
-    Parameters:
-    - turbine_file (str): Path to the turbine shapefile.
 
     Returns:
     - None
@@ -353,129 +396,83 @@ def update_fields(turbine_file):
         arcpy.AddError(f"An unexpected error occurred: {e}")
         arcpy.AddError(arcpy.GetMessages(2))  # Log more detailed error messages
 
-def check_updated_fields(turbine_file):
-    """
-    Check if the updated fields exist in the attribute table and if their values are nonzero.
-
-    Parameters:
-    - turbine_file (str): Path to the turbine shapefile.
-
-    Returns:
-    - bool: True if the fields exist and their values are nonzero and updated, False otherwise.
-    """
-    try:
-        # Get the list of fields in the attribute table
-        fields = [field.name for field in arcpy.ListFields(turbine_file)]
-
-        # Check if the updated fields exist
-        required_fields = ['SuppStruct', 'EC_2020', 'EC_2030', 'EC_2050', 'IC', 'CAP_2020', 'CAP_2030', 'CAP_2050', 'DEC']
-        if not all(field in fields for field in required_fields):
-            arcpy.AddWarning("Not all required fields are present in the attribute table.")
-            return False
-
-        # Check if the values of updated fields are nonzero
-        with arcpy.da.SearchCursor(turbine_file, required_fields) as cursor:
-            for row in cursor:
-                for value in row:
-                    if value == None or value == 0:
-                        arcpy.AddWarning("Some updated fields have zero or None values.")
-                        return False
-
-        # All checks passed
-        arcpy.AddMessage("All updated fields exist and have nonzero values in the attribute table.")
-        return True
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to check updated fields: {e}")
-        return False
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred: {e}")
-        return False
-
 if __name__ == "__main__":
     turbine_folder = arcpy.GetParameterAsText(0)
     windfarm_folder = arcpy.GetParameterAsText(1)
 
-    try:
-        # Set the workspace to the turbine folder
-        arcpy.env.workspace = turbine_folder
-        arcpy.AddMessage(f"Setting workspace to: {turbine_folder}")
 
-        # List all shapefiles in the turbine folder
-        turbine_shapefiles = arcpy.ListFeatureClasses("*.shp")
+    # Set the workspace to the turbine folder
+    arcpy.env.workspace = turbine_folder
+    arcpy.AddMessage(f"Setting workspace to: {turbine_folder}")
 
-        # Check if there are any shapefiles in the turbine folder
-        if not turbine_shapefiles:
-            arcpy.AddError(f"No shapefiles found in the turbine folder: {turbine_folder}")
-            exit()
+    # List all shapefiles in the turbine folder
+    turbine_shapefiles = arcpy.ListFeatureClasses("*.shp")
 
-        # Iterate through each turbine shapefile and process it
-        for turbine_shapefile_name in turbine_shapefiles:
-            turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
-            arcpy.AddMessage(f"Processing turbine shapefile: {turbine_shapefile_path}")
+    # Check if there are any shapefiles in the turbine folder
+    if not turbine_shapefiles:
+        arcpy.AddError(f"No shapefiles found in the turbine folder: {turbine_folder}")
+        exit()
 
-            # Check if the shapefile exists
-            if not arcpy.Exists(turbine_shapefile_path):
-                arcpy.AddError(f"Turbine shapefile '{turbine_shapefile_path}' does not exist.")
-                continue
+    # Iterate through each turbine shapefile and process it
+    for turbine_shapefile_name in turbine_shapefiles:
+        turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
+        arcpy.AddMessage(f"Processing turbine shapefile: {turbine_shapefile_path}")
 
-            # Check if 'WaterDepth' and 'Distance' fields exist
-            turbine_field_names = [field.name for field in arcpy.ListFields(turbine_shapefile_path)]
-            required_turbine_fields = ['WaterDepth', 'Distance']
+        # Check if the shapefile exists
+        if not arcpy.Exists(turbine_shapefile_path):
+            arcpy.AddError(f"Turbine shapefile '{turbine_shapefile_path}' does not exist.")
+            continue
 
-            if not all(field in turbine_field_names for field in required_turbine_fields):
-                arcpy.AddError(f"Missing required fields ('WaterDepth' and/or 'Distance') in turbine shapefile '{turbine_shapefile_path}'. Aborting.")
-                continue
+        # Check if 'WaterDepth' and 'Distance' fields exist
+        turbine_field_names = [field.name for field in arcpy.ListFields(turbine_shapefile_path)]
+        required_turbine_fields = ['WaterDepth', 'Distance']
 
-            # Update the attribute table with equipment, installation, and decommissioning costs
-            update_fields(turbine_shapefile_path)
+        if not all(field in turbine_field_names for field in required_turbine_fields):
+            arcpy.AddError(f"Missing required fields ('WaterDepth' and/or 'Distance') in turbine shapefile '{turbine_shapefile_path}'. Aborting.")
+            continue
 
-            # Check if updated fields exist and have nonzero values
-            check_result = check_updated_fields(turbine_shapefile_path)
-            if check_result:
-                arcpy.AddMessage("All checks passed for turbine shapefile.")
-            else:
-                arcpy.AddWarning("One or more checks failed for turbine shapefile.")
+        # Update the attribute table with equipment, installation, and decommissioning costs
+        update_fields(turbine_shapefile_path)
 
-        # Now, set the workspace to the wind farm folder
-        arcpy.env.workspace = windfarm_folder
-        arcpy.AddMessage(f"Setting workspace to: {windfarm_folder}")
+        # Check if updated fields exist and have nonzero values
+        check_result = check_updated_fields(turbine_shapefile_path)
+        if check_result:
+            arcpy.AddMessage("All checks passed for turbine shapefile.")
+        else:
+            arcpy.AddWarning("One or more checks failed for turbine shapefile.")
 
-        # List all shapefiles in the wind farm folder
-        windfarm_shapefiles = arcpy.ListFeatureClasses("*.shp")
+    # Now, set the workspace to the wind farm folder
+    arcpy.env.workspace = windfarm_folder
+    arcpy.AddMessage(f"Setting workspace to: {windfarm_folder}")
 
-        # Check if there are any shapefiles in the wind farm folder
-        if not windfarm_shapefiles:
-            arcpy.AddError(f"No shapefiles found in the wind farm folder: {windfarm_folder}")
-            exit()
+    # List all shapefiles in the wind farm folder
+    windfarm_shapefiles = arcpy.ListFeatureClasses("*.shp")
 
-        # Iterate through each wind farm shapefile and process it
-        for windfarm_shapefile_name in windfarm_shapefiles:
-            windfarm_shapefile_path = os.path.join(windfarm_folder, windfarm_shapefile_name)
-            arcpy.AddMessage(f"Processing wind farm shapefile: {windfarm_shapefile_path}")
+    # Check if there are any shapefiles in the wind farm folder
+    if not windfarm_shapefiles:
+        arcpy.AddError(f"No shapefiles found in the wind farm folder: {windfarm_folder}")
+        exit()
 
-            # Check if the shapefile exists
-            if not arcpy.Exists(windfarm_shapefile_path):
-                arcpy.AddError(f"Wind farm shapefile '{windfarm_shapefile_path}' does not exist.")
-                continue
+    # Iterate through each wind farm shapefile and process it
+    for windfarm_shapefile_name in windfarm_shapefiles:
+        windfarm_shapefile_path = os.path.join(windfarm_folder, windfarm_shapefile_name)
+        arcpy.AddMessage(f"Processing wind farm shapefile: {windfarm_shapefile_path}")
 
-            # Calculate total costs for each category for the corresponding turbine shapefile
-            turbine_shapefile_name = f"WTC_{os.path.basename(windfarm_shapefile_name).replace('WFA_', '')}"
-            turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
+        # Check if the shapefile exists
+        if not arcpy.Exists(windfarm_shapefile_path):
+            arcpy.AddError(f"Wind farm shapefile '{windfarm_shapefile_path}' does not exist.")
+            continue
 
-            total_costs = calculate_total_costs(turbine_shapefile_path, windfarm_shapefile_path)
-            if total_costs:
-                arcpy.AddMessage(f"Total costs for each category updated in wind farm shapefile '{windfarm_shapefile_name}'.")
-            else:
-                arcpy.AddWarning(f"Failed to update total costs in wind farm shapefile '{windfarm_shapefile_name}'.")
+        # Calculate total costs for each category for the corresponding turbine shapefile
+        turbine_shapefile_name = f"WTC_{os.path.basename(windfarm_shapefile_name).replace('WFA_', '')}"
+        turbine_shapefile_path = os.path.join(turbine_folder, turbine_shapefile_name)
 
-    except arcpy.ExecuteError as e:
-        arcpy.AddMessage(f"Failed to process shapefiles: {e}")
-    except Exception as e:
-        arcpy.AddMessage(f"An unexpected error occurred: {e}")
-    finally:
-        # Reset the workspace to None to avoid potential issues
-        arcpy.env.workspace = None
+        total_costs = calculate_total_costs(turbine_shapefile_path, windfarm_shapefile_path)
+        if total_costs:
+            arcpy.AddMessage(f"Total costs for each category updated in wind farm shapefile '{windfarm_shapefile_name}'.")
+        else:
+            arcpy.AddWarning(f"Failed to update total costs in wind farm shapefile '{windfarm_shapefile_name}'.")
+
 
 
 
