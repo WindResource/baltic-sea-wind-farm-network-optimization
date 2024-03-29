@@ -38,7 +38,7 @@ def generate_onshore_substation_coordinates(highvoltage_vertices_folder: str, is
         arcpy.management.CopyFeatures(vertices_layer, output_shapefile)
 
         # Create a feature layer from the shapefile
-        output_layer = arcpy.management.MakeFeatureLayer(output_shapefile, f"{iso_country_code}_Substations_Stations_Layer").getOutput(0)
+        output_layer = arcpy.management.MakeFeatureLayer(output_shapefile, f"OnSSC_{iso_country_code}").getOutput(0)
 
         # Use arcpy.mp to add the layer to the map
         aprx = arcpy.mp.ArcGISProject("CURRENT")
