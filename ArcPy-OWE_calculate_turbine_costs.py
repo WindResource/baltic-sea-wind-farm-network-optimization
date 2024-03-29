@@ -160,6 +160,18 @@ def calc_costs(water_depth, port_distance, turbine_capacity, operation):
     Calculate installation or decommissioning costs based on the water depth, port distance,
     and rated power of the wind turbines.
 
+    Coefficients:
+        - Capacity (u/lift): Capacity of the vessel in units per lift.
+        - Speed (km/h): Speed of the vessel in kilometers per hour.
+        - Load time (h/lift): Load time per lift in hours per lift.
+        - Inst. time (h/u): Installation time per unit in hours per unit.
+        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+
+        Vessels:
+        - SPIV (Self-Propelled Installation Vessel)
+        - AHV (Anchor Handling Vessel)
+        - Tug (Tug Boat)
+
     Returns:
     - tuple: Calculated hours and costs in Euros.
     """
@@ -173,7 +185,7 @@ def calc_costs(water_depth, port_distance, turbine_capacity, operation):
     # Decommissioning coefficients for different vehicles
     deco_coeff = {
         'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
-        'Tug': (0.3, 7.5, 5, 0, 0),
+        'Tug': (0.3, 7.5, 5, 0, 2.5),
         'AHV': (7, 18.5, 30, 30, 40)
     }
 
@@ -206,8 +218,14 @@ def calc_costs(water_depth, port_distance, turbine_capacity, operation):
 
 def logi_costs(water_depth, port_distance, failure_rate=0.08):
     """
-    Calculate logistics time and costs based on water depth, port distance, and failure rate for major wind turbine repairs.
-
+    Calculate logistics time and costs for major wind turbine repairs (part of OPEX) based on water depth, port distance, and failure rate for major wind turbine repairs.
+    
+    Coefficients:
+        - Speed (km/h): Speed of the vessel in kilometers per hour.
+        - Repair time (h): Repair time in hours.
+        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+        - Roundtrips: Number of roundtrips for the logistics operation.
+    
     Returns:
     - tuple: Logistics time in hours per year and logistics costs in Euros.
     """
@@ -224,13 +242,13 @@ def logi_costs(water_depth, port_distance, failure_rate=0.08):
     vessel = 'Tug' if support_structure == 'Floating' else 'JUV'
 
     # Get logistics coefficients for the chosen vessel
-    coeff = logi_coeff[vessel]
+    c = logi_coeff[vessel]
 
     # Calculate logistics time in hours per year
-    logistics_time = failure_rate * ((2 * coeff[3] * port_distance / 1000) / coeff[0] + coeff[1])
+    logistics_time = failure_rate * ((2 * c[3] * port_distance / 1000) / c[0] + c[1])
 
     # Calculate logistics costs using the provided equation
-    logistics_costs = logistics_time * coeff[3] * 1000 / 24
+    logistics_costs = logistics_time * c[3] * 1000 / 24
 
     return logistics_time, logistics_costs
 
