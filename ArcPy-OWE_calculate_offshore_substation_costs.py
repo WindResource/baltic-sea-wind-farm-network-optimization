@@ -214,12 +214,13 @@ def update_fields():
     # Define fields to be added if they don't exist
     fields_to_add = [('SuppStruct', 'TEXT', 'Substation support structure')]
 
-    # Generate field definitions for each capacity and expense category
+    # Generate field definitions for each capacity and expense category for both AC and DC
     for capacity in capacities:
         for category in expense_categories:
-            field_name = f'{category}{capacity}'
-            field_label = f'{category} expenses for a {capacity} GW substation'
-            fields_to_add.append((field_name, 'DOUBLE', field_label))
+            for sub_type in ['AC', 'DC']:
+                field_name = f'{category}{capacity}_{sub_type}'
+                field_label = f'{category} expenses for a {capacity} GW {sub_type} substation'
+                fields_to_add.append((field_name, 'DOUBLE', field_label))
 
     # Access the current ArcGIS project
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -252,27 +253,28 @@ def update_fields():
             water_depth = row[fields.index("WaterDepth")]
             port_distance = row[fields.index("Distance")]
             for capacity in capacities:
-                # Determine and assign Support structure
-                support_structure = determine_support_structure(water_depth)  # You need to define this function
-                row[fields.index('SuppStruct')] = support_structure
+                for sub_type in ['AC', 'DC']:
+                    # Determine and assign Support structure
+                    support_structure = determine_support_structure(water_depth)
+                    row[fields.index('SuppStruct')] = support_structure
 
-                # Equipment Costs
-                equip_costs = calc_equip_costs(water_depth, capacity)  # You need to define this function
-                row[fields.index(f'Equ{capacity}')] = equip_costs
+                    # Equipment Costs
+                    equip_costs = calc_equip_costs(water_depth, capacity, HVC_type=sub_type)
+                    row[fields.index(f'Equ{capacity}_{sub_type}')] = equip_costs
 
-                # Installation and Decommissioning Costs
-                inst_costs = calc_costs(water_depth, port_distance, capacity, operation="installation")  # You need to define this function
-                deco_costs = calc_costs(water_depth, port_distance, capacity, operation="decommissioning")  # You need to define this function
-                row[fields.index(f'Ins{capacity}')] = inst_costs
-                row[fields.index(f'Dec{capacity}')] = deco_costs
+                    # Installation and Decommissioning Costs
+                    inst_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="installation")
+                    deco_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="decommissioning")
+                    row[fields.index(f'Ins{capacity}_{sub_type}')] = inst_costs
+                    row[fields.index(f'Dec{capacity}_{sub_type}')] = deco_costs
 
-                # Calculate and assign the capital expenses (the sum of the equipment and installation costs)
-                capital_expenses = equip_costs + inst_costs
-                row[fields.index(f'Cap{capacity}')] = capital_expenses
+                    # Calculate and assign the capital expenses (the sum of the equipment and installation costs)
+                    capital_expenses = equip_costs + inst_costs
+                    row[fields.index(f'Cap{capacity}_{sub_type}')] = capital_expenses
 
-                # Calculate and assign operating expenses
-                operating_expenses = calc_operating_expenses(water_depth, port_distance, capacity)  # You need to define this function
-                row[fields.index(f'Ope{capacity}')] = operating_expenses
+                    # Calculate and assign operating expenses
+                    operating_expenses = calc_operating_expenses(water_depth, port_distance, capacity, HVC_type=sub_type)
+                    row[fields.index(f'Ope{capacity}_{sub_type}')] = operating_expenses
 
             cursor.updateRow(row)
 
