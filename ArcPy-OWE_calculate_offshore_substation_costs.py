@@ -209,7 +209,7 @@ def update_fields():
     capacities = [500, 750, 1000, 1250, 1500]
 
     # Define the expense categories
-    expense_categories = ['Equ', 'Ins', 'Cap', 'Ope', 'Dec'] # Equipment costs, Installation costs, Capital expenses, Operating expenses, decomissioning expenses
+    expense_categories = ['Equ', 'Ins', 'Cap', 'Ope', 'Dec'] # Equipment costs, Installation costs, Capital expenses, Operating expenses, decommissioning expenses
 
     # Define fields to be added if they don't exist
     fields_to_add = [('SuppStruct', 'TEXT', 'Substation support structure')]
@@ -239,42 +239,44 @@ def update_fields():
     arcpy.AddMessage(f"Processing layer: {oss_layer.name}")
 
     # Check if required fields exist in the attribute table
+    fields = [field.name for field in arcpy.ListFields(oss_layer)]
     required_fields = ['WaterDepth', 'Capacity', 'Distance']
-    
     for field in required_fields:
         if field not in fields:
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
             return
-        
+
     # Update each row in the attribute table
-    fields = [field.name for field in arcpy.ListFields(oss_layer)]
-    with arcpy.da.UpdateCursor(oss_layer, fields + [f.name for f in fields_to_add]) as cursor:
+    with arcpy.da.UpdateCursor(oss_layer, fields + [f[0] for f in fields_to_add]) as cursor:
         for row in cursor:
             water_depth = row[fields.index("WaterDepth")]
             port_distance = row[fields.index("Distance")]
             for capacity in capacities:
-                
                 # Determine and assign Support structure
-                support_structure = determine_support_structure(water_depth)
-                
-                
+                support_structure = determine_support_structure(water_depth)  # You need to define this function
+                row[fields.index('SuppStruct')] = support_structure
+
                 # Equipment Costs
-                equip_costs = calc_equip_costs(water_depth, capacity)
+                equip_costs = calc_equip_costs(water_depth, capacity)  # You need to define this function
                 row[fields.index(f'Equ{capacity}')] = equip_costs
 
                 # Installation and Decommissioning Costs
-                inst_costs = calc_costs(water_depth, port_distance, capacity, operation="installation")
-                deco_costs = calc_costs(water_depth, port_distance, capacity, operation="decommissioning")
+                inst_costs = calc_costs(water_depth, port_distance, capacity, operation="installation")  # You need to define this function
+                deco_costs = calc_costs(water_depth, port_distance, capacity, operation="decommissioning")  # You need to define this function
                 row[fields.index(f'Ins{capacity}')] = inst_costs
                 row[fields.index(f'Dec{capacity}')] = deco_costs
 
                 # Calculate and assign the capital expenses (the sum of the equipment and installation costs)
+                capital_expenses = equip_costs + inst_costs
+                row[fields.index(f'Cap{capacity}')] = capital_expenses
 
-                # Calculate and assign operating expenses (a function still has to be added, add a placeholder)
+                # Calculate and assign operating expenses
+                operating_expenses = calc_operating_expenses(water_depth, port_distance, capacity)  # You need to define this function
+                row[fields.index(f'Ope{capacity}')] = operating_expenses
 
             cursor.updateRow(row)
 
-    arcpy.AddMessage(f"Attribute table of {oss_layer} updated successfully.")
+    arcpy.AddMessage(f"Attribute table of {oss_layer.name} updated successfully.")
 
 if __name__ == "__main__":
     update_fields()
