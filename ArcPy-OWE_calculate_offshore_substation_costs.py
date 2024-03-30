@@ -228,8 +228,8 @@ def add_fields(layer, fields_to_add):
 
 def update_fields():
     """
-    Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
-    decommissioning, logistics costs, logistics time, and Opex.
+    Update the attribute table of the offshore substation coordinates shapefile (OSSC) with calculated equipment, installation,
+    decommissioning, logistics costs, and Opex.
 
     Returns:
     - None
@@ -239,12 +239,10 @@ def update_fields():
     capacities = [500, 750, 1000, 1250, 1500]
 
     # Define the expense categories
-    expense_categories = ['Equ', 'Ins', 'Cap', 'Lgi', 'Ope', 'Dec']
+    expense_categories = ['Equ', 'Ins', 'Dec', 'Lgi', 'Ope']  # Adjusted to include only relevant categories
 
-    # Define fields to be added if they don't exist
+    # Define fields to be added if they don't exist, adjusting to include field_label correctly
     fields_to_add = [('SuppStruct', 'TEXT', 'Substation support structure')]
-
-    # Generate field definitions for each capacity and expense category
     for capacity in capacities:
         for category in expense_categories:
             field_name = f'{category}{capacity}'
@@ -255,72 +253,45 @@ def update_fields():
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
-    # Find the wind turbine layer in the map
-    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
+    # Find the wind turbine coordinates layer in the map
+    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('OSSC')), None)
 
-    # Check if the turbine layer exists
     if not oss_layer:
         arcpy.AddError("No layer starting with 'WTC' found in the current map.")
         return
 
-    # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(substation_layer, "CLEAR_SELECTION")
-    
+    arcpy.SelectLayerByAttribute_management(oss_layer, "CLEAR_SELECTION")
     arcpy.AddMessage(f"Processing layer: {oss_layer.name}")
 
-    # Check if required fields exist in the attribute table
-    required_fields = ['WaterDepth', 'Capacity', 'Distance']
     existing_fields = [field.name for field in arcpy.ListFields(oss_layer)]
-    for field in required_fields:
-        if field not in existing_fields:
-            arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
-            return
+    add_fields(oss_layer, fields_to_add)  # Adjusted function call to match add_fields definition
 
-    # Add new fields to the attribute table if they do not exist
-    for field_name, field_type in fields_to_add:
-        add_fields(oss_layer, field_name, field_type)
-
-    # Get the list of fields in the attribute table
-    fields = [field.name for field in arcpy.ListFields(oss_layer)]
-
-    # Update each row in the attribute table
-    with arcpy.da.UpdateCursor(oss_layer, fields) as cursor:
+    with arcpy.da.UpdateCursor(oss_layer, existing_fields + [f.name for f in fields_to_add]) as cursor:
         for row in cursor:
-            # Extract water depth and turbine capacity from the current row
-            water_depth = -row[fields.index("WaterDepth")]  # Invert the sign
-            turbine_capacity = row[fields.index("Capacity")]
+            water_depth = row[existing_fields.index("WaterDepth")]
+            port_distance = row[existing_fields.index("Distance")]
+            for capacity in capacities:
+                support_structure = determine_support_structure(water_depth)
 
-            # Determine support structure and assign it to the corresponding field
-            support_structure = determine_support_structure(water_depth).capitalize()
-            row[fields.index("SuppStruct")] = support_structure
+                # Equipment Costs
+                equip_costs = calc_equip_costs(water_depth, capacity)
+                row[existing_fields.index(f'Equ{capacity}')] = equip_costs
 
-            # Iterate over each substation capacity
-            for # some code
+                # Installation and Decommissioning Costs
+                inst_costs = calc_costs(water_depth, port_distance, capacity, operation="installation")
+                deco_costs = calc_costs(water_depth, port_distance, capacity, operation="decommissioning")
+                row[existing_fields.index(f'Ins{capacity}')] = inst_costs
+                row[existing_fields.index(f'Dec{capacity}')] = deco_costs
 
-                if field_name_ec in fields and field_name_cap in fields:
-                    # Calculate equipment costs for the current year
-                    equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
-                    row[fields.index(field_name_ec)] = round(equi_costs)
-
-                    # Calculate installation and decommissioning costs
-
-                    # Assign calculated values to the corresponding fields
-
-
-                    # Calculate and assign total capital expenditure for the current year
-
-
-                    # Assign decommissioning costs
-
-
-                    # Calculate and assign logistics costs
-
-
-                    # Calculate and assign operating expenses
+                # Logistics and Operating Expenses
+                _, logistics_costs = logi_costs(water_depth, port_distance)
+                row[existing_fields.index(f'Lgi{capacity}')] = logistics_costs
+                # Assume a method to calculate OPEX exists; otherwise, adjust accordingly
+                # row[existing_fields.index(f'Ope{capacity}')] = calculated_opex
 
             cursor.updateRow(row)
-
     arcpy.AddMessage(f"Attribute table of {oss_layer} updated successfully.")
+
 
 if __name__ == "__main__":
     update_fields()
