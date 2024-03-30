@@ -178,7 +178,7 @@ def calc_costs(water_depth, port_distance, turbine_capacity, operation):
     # Installation coefficients for different vehicles
     inst_coeff = {
         'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
-        'Tug': (0.3, 7.5, 5, 0, 0),
+        'Tug': (0.3, 7.5, 5, 0, 2.5),
         'AHV': (7, 18.5, 30, 90, 40)
     }
 
