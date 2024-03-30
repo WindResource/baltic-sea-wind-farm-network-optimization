@@ -179,35 +179,6 @@ def calc_costs(water_depth, port_distance, oss_capacity, HVC_type = "AC", operat
         
     return total_costs
 
-def logi_costs(water_depth, port_distance, failure_rate=0.08):
-    """
-    Calculate logistics costs for major substation repairs (part of OPEX) based on water depth, port distance, and failure rate.
-    
-    Returns:
-    - tuple: Logistics costs.
-    """
-    # Logistics coefficients for different vessels
-    logi_coeff = {
-        'JUV': (18.5, 50, 150, 1),
-        'Tug': (7.5, 50, 2.5, 2)
-    }
-
-    # Determine support structure based on water depth
-    support_structure = determine_support_structure(water_depth).capitalize()
-
-    # Determine logistics vessel based on support structure
-    vessel = 'Tug' if support_structure == 'Floating' else 'JUV'
-
-    # Get logistics coefficients for the chosen vessel
-    c = logi_coeff[vessel]
-
-    # Calculate logistics time in hours per year
-    logistics_time = failure_rate * ((2 * c[3] * port_distance / 1000) / c[0] + c[1])
-
-    # Calculate logistics costs using the provided equation
-    logistics_costs = logistics_time * c[3] * 1000 / 24
-
-    return logistics_time, logistics_costs
 
 def add_fields(layer, fields_to_add):
     """
@@ -228,8 +199,7 @@ def add_fields(layer, fields_to_add):
 
 def update_fields():
     """
-    Update the attribute table of the offshore substation coordinates shapefile (OSSC) with calculated equipment, installation,
-    decommissioning, logistics costs, and Opex.
+    Update the attribute table of the Offshore SubStation Coordinates (OSSC) layer.
 
     Returns:
     - None
@@ -239,10 +209,12 @@ def update_fields():
     capacities = [500, 750, 1000, 1250, 1500]
 
     # Define the expense categories
-    expense_categories = ['Equ', 'Ins', 'Dec', 'Lgi', 'Ope']  # Adjusted to include only relevant categories
+    expense_categories = ['Equ', 'Ins', 'Cap', 'Ope', 'Dec'] # Equipment costs, Installation costs, Capital expenses, Operating expenses, decomissioning expenses
 
-    # Define fields to be added if they don't exist, adjusting to include field_label correctly
+    # Define fields to be added if they don't exist
     fields_to_add = [('SuppStruct', 'TEXT', 'Substation support structure')]
+
+    # Generate field definitions for each capacity and expense category
     for capacity in capacities:
         for category in expense_categories:
             field_name = f'{category}{capacity}'
@@ -253,48 +225,61 @@ def update_fields():
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
-    # Find the wind turbine coordinates layer in the map
-    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('OSSC')), None)
+    # Find the wind turbine layer in the map
+    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
 
+    # Check if the turbine layer exists
     if not oss_layer:
         arcpy.AddError("No layer starting with 'WTC' found in the current map.")
         return
 
+    # Deselect all currently selected features
     arcpy.SelectLayerByAttribute_management(oss_layer, "CLEAR_SELECTION")
+    
     arcpy.AddMessage(f"Processing layer: {oss_layer.name}")
 
-    existing_fields = [field.name for field in arcpy.ListFields(oss_layer)]
-    add_fields(oss_layer, fields_to_add)  # Adjusted function call to match add_fields definition
-
-    with arcpy.da.UpdateCursor(oss_layer, existing_fields + [f.name for f in fields_to_add]) as cursor:
+    # Check if required fields exist in the attribute table
+    required_fields = ['WaterDepth', 'Capacity', 'Distance']
+    
+    for field in required_fields:
+        if field not in fields:
+            arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
+            return
+        
+    # Update each row in the attribute table
+    fields = [field.name for field in arcpy.ListFields(oss_layer)]
+    with arcpy.da.UpdateCursor(oss_layer, fields + [f.name for f in fields_to_add]) as cursor:
         for row in cursor:
-            water_depth = row[existing_fields.index("WaterDepth")]
-            port_distance = row[existing_fields.index("Distance")]
+            water_depth = row[fields.index("WaterDepth")]
+            port_distance = row[fields.index("Distance")]
             for capacity in capacities:
+                
+                # Determine and assign Support structure
                 support_structure = determine_support_structure(water_depth)
-
+                
+                
                 # Equipment Costs
                 equip_costs = calc_equip_costs(water_depth, capacity)
-                row[existing_fields.index(f'Equ{capacity}')] = equip_costs
+                row[fields.index(f'Equ{capacity}')] = equip_costs
 
                 # Installation and Decommissioning Costs
                 inst_costs = calc_costs(water_depth, port_distance, capacity, operation="installation")
                 deco_costs = calc_costs(water_depth, port_distance, capacity, operation="decommissioning")
-                row[existing_fields.index(f'Ins{capacity}')] = inst_costs
-                row[existing_fields.index(f'Dec{capacity}')] = deco_costs
+                row[fields.index(f'Ins{capacity}')] = inst_costs
+                row[fields.index(f'Dec{capacity}')] = deco_costs
 
-                # Logistics and Operating Expenses
-                _, logistics_costs = logi_costs(water_depth, port_distance)
-                row[existing_fields.index(f'Lgi{capacity}')] = logistics_costs
-                # Assume a method to calculate OPEX exists; otherwise, adjust accordingly
-                # row[existing_fields.index(f'Ope{capacity}')] = calculated_opex
+                # Calculate and assign the capital expenses (the sum of the equipment and installation costs)
+
+                # Calculate and assign operating expenses (a function still has to be added, add a placeholder)
 
             cursor.updateRow(row)
-    arcpy.AddMessage(f"Attribute table of {oss_layer} updated successfully.")
 
+    arcpy.AddMessage(f"Attribute table of {oss_layer} updated successfully.")
 
 if __name__ == "__main__":
     update_fields()
+
+
 
 
 
