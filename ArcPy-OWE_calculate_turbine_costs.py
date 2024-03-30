@@ -104,11 +104,11 @@ def determine_support_structure(water_depth):
     - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
     """
     # Define depth ranges for different support structures
-    if 0 <= water_depth <= 25:
+    if 0 <= water_depth < 25:
         return "monopile"
-    elif 25 < water_depth <= 55:
+    elif 25 <= water_depth < 55:
         return "jacket"
-    elif 55 < water_depth <= 200:
+    elif 55 <= water_depth <= 200:
         return "floating"
     else:
         # If water depth is outside specified ranges, assign default support structure
