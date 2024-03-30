@@ -1,3 +1,60 @@
+"""
+Calculate installation or decommissioning costs of offshore substations based on the water depth, and port distance.
+
+Parameters:
+- water_depth (float): Water depth at the installation site, in meters.
+- port_distance (float): Distance from the installation site to the nearest port, in kilometers.
+- oss_capacity (float): Capacity of the offshore substation, in units.
+- HVC_type (str, optional): Type of high-voltage converter ('AC' or 'DC'). Defaults to 'AC'.
+- operation (str, optional): Type of operation ('inst' for installation or 'deco' for decommissioning). Defaults to 'inst'.
+
+Returns:
+- float: Calculated installation or decommissioning costs in Euros.
+
+Coefficients:
+- Capacity (u/lift): Capacity of the vessel in units per lift.
+- Speed (km/h): Speed of the vessel in kilometers per hour.
+- Load time (h/lift): Load time per lift in hours per lift.
+- Inst. time (h/u): Installation time per unit in hours per unit.
+- Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+
+Vessels:
+- SUBV (Self-Unloading Bulk Vessels)
+- SPIV (Self-Propelled Installation Vessel)
+- HLCV (Heavy-Lift Cargo Vessels)
+- AHV (Anchor Handling Vessel)
+
+Notes:
+- The function supports both installation and decommissioning operations.
+- Costs are calculated based on predefined coefficients for different support structures and vessels.
+- If the support structure is unrecognized, the function returns None.
+"""
+"""
+Calculate logistics time and costs for major wind turbine repairs (part of OPEX) based on water depth, port distance, and failure rate for major wind turbine repairs.
+
+Coefficients:
+    - Speed (km/h): Speed of the vessel in kilometers per hour.
+    - Repair time (h): Repair time in hours.
+    - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+    - Roundtrips: Number of roundtrips for the logistics operation.
+
+Returns:
+- tuple: Logistics time in hours per year and logistics costs in Euros.
+"""
+"""
+Add new fields to the attribute table if they do not exist.
+
+Parameters:
+- layer: The layer to which fields will be added.
+- fields_to_add: A list of tuples containing field definitions. Each tuple should contain:
+    - Field name (str): The name of the field.
+    - Field type (str): The data type of the field.
+    - Field label (str): The label or description of the field.
+
+Returns:
+None
+"""
+
 import arcpy
 import numpy as np
 
@@ -62,33 +119,8 @@ def calc_costs(water_depth, port_distance, oss_capacity, HVC_type = "AC", operat
     """
     Calculate installation or decommissioning costs of offshore substations based on the water depth, and port distance.
 
-    Parameters:
-    - water_depth (float): Water depth at the installation site, in meters.
-    - port_distance (float): Distance from the installation site to the nearest port, in kilometers.
-    - oss_capacity (float): Capacity of the offshore substation, in units.
-    - HVC_type (str, optional): Type of high-voltage converter ('AC' or 'DC'). Defaults to 'AC'.
-    - operation (str, optional): Type of operation ('inst' for installation or 'deco' for decommissioning). Defaults to 'inst'.
-
     Returns:
-    - float: Calculated installation or decommissioning costs in Euros.
-    
-    Coefficients:
-    - Capacity (u/lift): Capacity of the vessel in units per lift.
-    - Speed (km/h): Speed of the vessel in kilometers per hour.
-    - Load time (h/lift): Load time per lift in hours per lift.
-    - Inst. time (h/u): Installation time per unit in hours per unit.
-    - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-
-    Vessels:
-    - SUBV (Self-Unloading Bulk Vessels)
-    - SPIV (Self-Propelled Installation Vessel)
-    - HLCV (Heavy-Lift Cargo Vessels)
-    - AHV (Anchor Handling Vessel)
-    
-    Notes:
-    - The function supports both installation and decommissioning operations.
-    - Costs are calculated based on predefined coefficients for different support structures and vessels.
-    - If the support structure is unrecognized, the function returns None.
+    - float: Calculated installation or decommissioning costs.
     """
     # Installation coefficients for different vehicles
     inst_coeff = {
@@ -149,16 +181,10 @@ def calc_costs(water_depth, port_distance, oss_capacity, HVC_type = "AC", operat
 
 def logi_costs(water_depth, port_distance, failure_rate=0.08):
     """
-    Calculate logistics time and costs for major wind turbine repairs (part of OPEX) based on water depth, port distance, and failure rate for major wind turbine repairs.
-    
-    Coefficients:
-        - Speed (km/h): Speed of the vessel in kilometers per hour.
-        - Repair time (h): Repair time in hours.
-        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-        - Roundtrips: Number of roundtrips for the logistics operation.
+    Calculate logistics costs for major substation repairs (part of OPEX) based on water depth, port distance, and failure rate.
     
     Returns:
-    - tuple: Logistics time in hours per year and logistics costs in Euros.
+    - tuple: Logistics costs.
     """
     # Logistics coefficients for different vessels
     logi_coeff = {
@@ -183,6 +209,23 @@ def logi_costs(water_depth, port_distance, failure_rate=0.08):
 
     return logistics_time, logistics_costs
 
+def add_fields(layer, fields_to_add):
+    """
+    Add new fields to the attribute table if they do not exist.
+    
+    Returns:
+    None
+    """
+    for field_name, field_type, field_label in fields_to_add:
+        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
+            if field_name == 'SuppStruct':
+                arcpy.AddField_management(layer, field_name, field_type)
+                arcpy.AlterField_management(layer, field_name, new_field_alias=field_label)
+                arcpy.AddMessage(f"Added field '{field_name}' to the attribute table with label '{field_label}'.")
+            else:
+                arcpy.AddField_management(layer, field_name, field_type)
+                arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
+
 def update_fields():
     """
     Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
@@ -192,52 +235,42 @@ def update_fields():
     - None
     """
     
+    # Define the capacities for which fields are to be added
+    capacities = [500, 750, 1000, 1250, 1500]
+
+    # Define the expense categories
+    expense_categories = ['Equ', 'Ins', 'Cap', 'Lgi', 'Ope', 'Dec']
+
     # Define fields to be added if they don't exist
-    fields_to_add = [
-        ('SuppStruct', 'TEXT'),
-        ('EquiC20', 'DOUBLE'),
-        ('EquiC30', 'DOUBLE'),
-        ('EquiC50', 'DOUBLE'),
-        ('InstC', 'DOUBLE'),
-        ('InstT', 'DOUBLE'),
-        ('Capex20', 'DOUBLE'),
-        ('Capex30', 'DOUBLE'),
-        ('Capex50', 'DOUBLE'),
-        ('LogiC', 'DOUBLE'),
-        ('LogiT', 'DOUBLE'),
-        ('Opex20', 'DOUBLE'),
-        ('Opex30', 'DOUBLE'),
-        ('Opex50', 'DOUBLE'),
-        ('Decex', 'DOUBLE'),
-        ('DecT', 'DOUBLE'),
-    ]
-    
-    # Function to add a field if it does not exist in the layer
-    def add_field_if_not_exists(layer, field_name, field_type):
-        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
-            arcpy.AddField_management(layer, field_name, field_type)
-            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
+    fields_to_add = [('SuppStruct', 'TEXT', 'Substation support structure')]
+
+    # Generate field definitions for each capacity and expense category
+    for capacity in capacities:
+        for category in expense_categories:
+            field_name = f'{category}{capacity}'
+            field_label = f'{category} expenses for a {capacity} GW substation'
+            fields_to_add.append((field_name, 'DOUBLE', field_label))
 
     # Access the current ArcGIS project
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
     # Find the wind turbine layer in the map
-    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
+    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
 
     # Check if the turbine layer exists
-    if not turbine_layer:
+    if not oss_layer:
         arcpy.AddError("No layer starting with 'WTC' found in the current map.")
         return
 
     # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(turbine_layer, "CLEAR_SELECTION")
+    arcpy.SelectLayerByAttribute_management(substation_layer, "CLEAR_SELECTION")
     
-    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
+    arcpy.AddMessage(f"Processing layer: {oss_layer.name}")
 
     # Check if required fields exist in the attribute table
     required_fields = ['WaterDepth', 'Capacity', 'Distance']
-    existing_fields = [field.name for field in arcpy.ListFields(turbine_layer)]
+    existing_fields = [field.name for field in arcpy.ListFields(oss_layer)]
     for field in required_fields:
         if field not in existing_fields:
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
@@ -245,13 +278,13 @@ def update_fields():
 
     # Add new fields to the attribute table if they do not exist
     for field_name, field_type in fields_to_add:
-        add_field_if_not_exists(turbine_layer, field_name, field_type)
+        add_fields(oss_layer, field_name, field_type)
 
     # Get the list of fields in the attribute table
-    fields = [field.name for field in arcpy.ListFields(turbine_layer)]
+    fields = [field.name for field in arcpy.ListFields(oss_layer)]
 
     # Update each row in the attribute table
-    with arcpy.da.UpdateCursor(turbine_layer, fields) as cursor:
+    with arcpy.da.UpdateCursor(oss_layer, fields) as cursor:
         for row in cursor:
             # Extract water depth and turbine capacity from the current row
             water_depth = -row[fields.index("WaterDepth")]  # Invert the sign
@@ -261,52 +294,33 @@ def update_fields():
             support_structure = determine_support_structure(water_depth).capitalize()
             row[fields.index("SuppStruct")] = support_structure
 
-            # Iterate over each year and calculate costs and time
-            for year in ['2020', '2030', '2050']:
-                field_name_ec = f"EquiC{year[2:]}"
-                field_name_cap = f"Capex{year[2:]}"
+            # Iterate over each substation capacity
+            for # some code
 
                 if field_name_ec in fields and field_name_cap in fields:
                     # Calculate equipment costs for the current year
                     equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
                     row[fields.index(field_name_ec)] = round(equi_costs)
 
-                    # Calculate installation and decommissioning costs and time
-                    inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")],
-                                                        turbine_capacity, 'inst')
-                    deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")],
-                                                        turbine_capacity, 'deco')
+                    # Calculate installation and decommissioning costs
 
                     # Assign calculated values to the corresponding fields
-                    row[fields.index("InstT")] = round(inst_hours)
-                    row[fields.index("DecT")] = round(deco_hours)
-                    row[fields.index("InstC")] = round(inst_costs)
+
 
                     # Calculate and assign total capital expenditure for the current year
-                    capex = equi_costs + inst_costs
-                    row[fields.index(field_name_cap)] = round(capex)
 
-                    # Assign decommissioning costs if the field exists
-                    field_name_dec = "Decex"
-                    if field_name_dec in fields:
-                        row[fields.index(field_name_dec)] = round(deco_costs)
 
-                    # Calculate and assign logistics costs and time
-                    logi_costs_value = logi_costs(water_depth, row[fields.index("Distance")])[1]
-                    logi_time = logi_costs(water_depth, row[fields.index("Distance")])[0]
+                    # Assign decommissioning costs
 
-                    row[fields.index("LogiC")] = round(logi_costs_value)
-                    row[fields.index("LogiT")] = round(logi_time)
 
-                    # Calculate material costs and assign operating expenses if the field exists
-                    material_costs = 0.025 * equi_costs
-                    field_name_opex = f"Opex{year[2:]}"
-                    if field_name_opex in fields:
-                        row[fields.index(field_name_opex)] = round(material_costs + logi_costs_value)
+                    # Calculate and assign logistics costs
+
+
+                    # Calculate and assign operating expenses
 
             cursor.updateRow(row)
 
-    arcpy.AddMessage(f"Attribute table of {turbine_layer} updated successfully.")
+    arcpy.AddMessage(f"Attribute table of {oss_layer} updated successfully.")
 
 if __name__ == "__main__":
     update_fields()
