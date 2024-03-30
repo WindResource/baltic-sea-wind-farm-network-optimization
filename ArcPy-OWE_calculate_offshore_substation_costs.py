@@ -1,99 +1,4 @@
-"""
-This script is designed to automate the calculation and updating of cost and logistical parameters for wind turbine installations within GIS shapefiles, utilizing the ArcPy site package. It facilitates the assessment of various costs associated with wind turbine projects, including equipment, installation, decommissioning, and logistics, based on spatial and non-spatial attributes found in shapefiles for turbines and wind farms.
-
-Functions:
-
-    calculate_total_costs(turbine_layer, windfarm_file):
-        Calculate the total costs for each category by summing the corresponding values in each row of the turbine attribute table.
-
-        Parameters:
-        - turbine_layer (str): Path to the turbine shapefile.
-        - windfarm_file (str): Path to the wind farm shapefile.
-
-        Returns:
-        - dict: A dictionary containing total costs for each category.
-
-    determine_support_structure(water_depth):
-        Determines the support structure type based on water depth.
-
-        Parameters:
-        - water_depth (float): Water depth in meters.
-
-        Returns:
-        - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
-
-    calc_equip_costs(water_depth, year, turbine_capacity):
-        Calculates the equipment costs based on water depth values, year, and turbine capacity.
-
-        Parameters:
-        - water_depth (float): Water depth in meters.
-        - year (str): Year for which equipment costs are calculated ('2020', '2030', or '2050').
-        - turbine_capacity (float): Rated power capacity of the wind turbine.
-
-        Returns:
-        - float: Calculated equipment costs.
-
-    calc_costs(water_depth, port_distance, turbine_capacity, operation):
-        Calculate installation or decommissioning costs based on the water depth, port distance,
-        and rated power of the wind turbines.
-
-        Parameters:
-        - water_depth (float): Water depth in meters.
-        - port_distance (float): Distance to the port in meters.
-        - turbine_capacity (float): Rated power capacity of the wind turbines in megawatts (MW).
-        - operation (str): Operation type ('installation' or 'decommissioning').
-
-        Coefficients:
-        - Capacity (u/lift): Capacity of the vessel in units per lift.
-        - Speed (km/h): Speed of the vessel in kilometers per hour.
-        - Load time (h/lift): Load time per lift in hours per lift.
-        - Inst. time (h/u): Installation time per unit in hours per unit.
-        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-
-        Vessels:
-        - SPIV (Self-Propelled Installation Vessel)
-        - AHV (Anchor Handling Vessel)
-        - Tug (Tug Boat)
-
-        Equation:
-        Hours = (1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3]
-        Cost = Hours * c[4] * 1000 / 24
-
-        Returns:
-        - tuple: Calculated hours and costs in Euros.
-
-    logi_costs(water_depth, port_distance, failure_rate=0.08):
-        Calculate logistics time and costs based on water depth, port distance, and failure rate for major wind turbine repairs.
-
-        Parameters:
-        - water_depth (float): Water depth in meters.
-        - port_distance (float): Distance to the port in meters.
-        - failure_rate (float, optional): Failure rate for the wind turbines (/yr). Default is 0.08.
-
-        Coefficients:
-        - Speed (km/h): Speed of the vessel in kilometers per hour.
-        - Repair time (h): Repair time in hours.
-        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-        - Roundtrips: Number of roundtrips for the logistics operation.
-
-        Equations:
-        - Logistics Time: labda * ((2 * c4 * port_distance) / c1 + c2)
-        - Logistics Costs: Logistics Time * c4 / 24
-
-        Returns:
-        - tuple: Logistics time in hours per year and logistics costs in Euros.
-
-    update_fields():
-        Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
-        decommissioning, logistics costs, logistics time, and Opex.
-
-        Returns:
-        - None
-
-"""
-
 import arcpy
-import os
 import numpy as np
 
 def determine_support_structure(water_depth):
@@ -153,65 +58,94 @@ def calc_equip_costs(water_depth, oss_capacity, HVC_type="AC"):
 
     return equip_costs
 
-def calc_costs(water_depth, port_distance, turbine_capacity, operation):
+def calc_costs(water_depth, port_distance, oss_capacity, HVC_type = "AC", operation = "inst"):
     """
-    Calculate installation or decommissioning costs based on the water depth, and port distance.
+    Calculate installation or decommissioning costs of offshore substations based on the water depth, and port distance.
 
-    Coefficients:
-        - Capacity (u/lift): Capacity of the vessel in units per lift.
-        - Speed (km/h): Speed of the vessel in kilometers per hour.
-        - Load time (h/lift): Load time per lift in hours per lift.
-        - Inst. time (h/u): Installation time per unit in hours per unit.
-        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-
-        Vessels:
-        - SPIV (Self-Propelled Installation Vessel)
-        - AHV (Anchor Handling Vessel)
-        - Tug (Tug Boat)
+    Parameters:
+    - water_depth (float): Water depth at the installation site, in meters.
+    - port_distance (float): Distance from the installation site to the nearest port, in kilometers.
+    - oss_capacity (float): Capacity of the offshore substation, in units.
+    - HVC_type (str, optional): Type of high-voltage converter ('AC' or 'DC'). Defaults to 'AC'.
+    - operation (str, optional): Type of operation ('inst' for installation or 'deco' for decommissioning). Defaults to 'inst'.
 
     Returns:
-    - tuple: Calculated hours and costs in Euros.
+    - float: Calculated installation or decommissioning costs in Euros.
+    
+    Coefficients:
+    - Capacity (u/lift): Capacity of the vessel in units per lift.
+    - Speed (km/h): Speed of the vessel in kilometers per hour.
+    - Load time (h/lift): Load time per lift in hours per lift.
+    - Inst. time (h/u): Installation time per unit in hours per unit.
+    - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
+
+    Vessels:
+    - SUBV (Self-Unloading Bulk Vessels)
+    - SPIV (Self-Propelled Installation Vessel)
+    - HLCV (Heavy-Lift Cargo Vessels)
+    - AHV (Anchor Handling Vessel)
+    
+    Notes:
+    - The function supports both installation and decommissioning operations.
+    - Costs are calculated based on predefined coefficients for different support structures and vessels.
+    - If the support structure is unrecognized, the function returns None.
     """
     # Installation coefficients for different vehicles
     inst_coeff = {
-        'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
-        'Tug': (0.3, 7.5, 5, 0, 0),
-        'AHV': (7, 18.5, 30, 90, 40)
+        ('sandisland','SUBV'): (20000, 25, 2000, 6000, 15),
+        ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
+        ('floating','HLCV'): (1, 22.5, 10, 0, 40),
+        ('floating','AHV'): (3, 18.5, 30, 90, 40)
     }
 
     # Decommissioning coefficients for different vehicles
     deco_coeff = {
-        'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
-        'Tug': (0.3, 7.5, 5, 0, 2.5),
-        'AHV': (7, 18.5, 30, 30, 40)
+        ('sandisland','SUBV'): (20000, 25, 2000, 6000, 15),
+        ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
+        ('floating','HLCV'): (1, 22.5, 10, 0, 40),
+        ('floating','AHV'): (3, 18.5, 30, 30, 40)
     }
 
     # Choose the appropriate coefficients based on the operation type
     coeff = inst_coeff if operation == 'installation' else deco_coeff
 
-    # Determine support structure based on water depth
-    support_structure = determine_support_structure(water_depth).lower()
-
-    # Determine installation vehicles based on support structure
-    vehicles = ['Tug', 'AHV'] if support_structure == 'floating' else ['PSIV']
-
-    # Calculate hours separately for each vessel
-    hours_per_vessel = [
-        ((1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3])
-        for c in [coeff[vehicle] for vehicle in vehicles]
-    ]
+    # Get the support structure type based on water depth
+    support_structure = determine_support_structure(water_depth)
     
-    # For floating support structure, use the maximum hours of Tug and AHV
-    total_hours = max(hours_per_vessel) if support_structure == 'floating' else sum(hours_per_vessel)
-
-    # Calculate costs based on the determined hours
-    total_costs = (
-        sum(hours * c[4] * 1000 / 24 for hours, c in zip(hours_per_vessel, [coeff[vehicle] for vehicle in vehicles]))
-        if support_structure == 'floating'
-        else hours_per_vessel[0] * coeff[vehicles[0]][4] * 1000 / 24
-    )
-
-    return total_hours, total_costs
+    if support_structure == 'sandisland':
+        c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
+        # Define equivalent electrical power
+        equiv_capacity = 0.5 * oss_capacity if HVC_type == "AC" else oss_capacity
+        
+        # Calculate installation costs for sand island
+        area_island = (equiv_capacity * 5)
+        slope = 0.75
+        r_hub = np.sqrt(area_island/np.pi)
+        r_seabed = r_hub + (water_depth + 3) / slope
+        volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
+        
+        
+        total_costs = (volume_island / c1) * ((2 * port_distance / 1000) / c2) + (volume_island / c3) + (volume_island / c4) * (c5 * 1000) / 24
+    elif support_structure == 'jacket':
+        c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
+        # Calculate installation costs for jacket
+        total_costs = ((1 / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4) * (c5 * 1000) / 24
+    elif support_structure == 'floating':
+        total_costs = 0
+        
+        # Iterate over the coefficients for floating (HLCV and AHV)
+        for vessel_type in [('floating', 'HLCV'), ('floating', 'AHV')]:
+            c1, c2, c3, c4, c5 = coeff[vessel_type]
+            
+            # Calculate installation costs for the current vessel type
+            vessel_costs = ((1 if vessel_type[1] == 'HLCV' else 3) / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4 * (c5 * 1000) / 24
+            
+            # Add the costs for the current vessel type to the total costs
+            total_costs += vessel_costs
+    else:
+        total_costs = None
+        
+    return total_costs
 
 def logi_costs(water_depth, port_distance, failure_rate=0.08):
     """
@@ -339,9 +273,9 @@ def update_fields():
 
                     # Calculate installation and decommissioning costs and time
                     inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")],
-                                                        turbine_capacity, 'installation')
+                                                        turbine_capacity, 'inst')
                     deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")],
-                                                        turbine_capacity, 'decommissioning')
+                                                        turbine_capacity, 'deco')
 
                     # Assign calculated values to the corresponding fields
                     row[fields.index("InstT")] = round(inst_hours)
