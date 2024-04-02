@@ -242,7 +242,7 @@ def update_fields():
 
     # Check if required fields exist in the attribute table
     fields = [field.name for field in arcpy.ListFields(oss_layer)]
-    required_fields = ['WaterDepth', 'Capacity', 'Distance']
+    required_fields = ['WaterDepth', 'Distance']
     for field in required_fields:
         if field not in fields:
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
@@ -262,12 +262,13 @@ def update_fields():
         for row in cursor:
             water_depth = - row[fields.index("WaterDepth")]
             port_distance = row[fields.index("Distance")]
+            
+            # Determine and assign Support structure
+            support_structure = determine_support_structure(water_depth)
+            row[fields.index('SuppStruct')] = support_structure
+            
             for capacity in capacities:
                 for sub_type in ['AC', 'DC']:
-                    # Determine and assign Support structure
-                    support_structure = determine_support_structure(water_depth)
-                    row[fields.index('SuppStruct')] = support_structure
-
                     # Equipment Costs
                     equip_costs = calc_equip_costs(water_depth, capacity, HVC_type=sub_type)
                     row[fields.index(f'Equ{capacity}_{sub_type}')] = equip_costs
