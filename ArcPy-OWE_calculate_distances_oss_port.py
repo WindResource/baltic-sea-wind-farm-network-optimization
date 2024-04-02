@@ -23,6 +23,9 @@ def calculate_distances_oss_port():
     if not substation_layer:
         raise ValueError("No substation layer found in the map.")
 
+    # Deselect all currently selected features
+    arcpy.SelectLayerByAttribute_management(substation_layer, "CLEAR_SELECTION")
+    
     # Add fields if they don't exist in the substation layer
     field_names = [field.name for field in arcpy.ListFields(substation_layer)]
     if "PortName" not in field_names:
@@ -36,7 +39,6 @@ def calculate_distances_oss_port():
             substation_geom, _, _ = substation_row
             min_distance = float('inf')  # Initialize minimum distance to a large value
             closest_port_name = ""
-            closest_port_geom = None
 
             # Cursor to iterate through port layer for each substation feature
             with arcpy.da.SearchCursor(port_layer, ["PORT_NAME", "SHAPE@"]) as port_cursor:
@@ -46,7 +48,6 @@ def calculate_distances_oss_port():
                     if distance < min_distance:
                         min_distance = distance
                         closest_port_name = port_name
-                        closest_port_geom = port_geom
             
             # Update fields in substation layer with closest port information
             substation_row[1] = closest_port_name
