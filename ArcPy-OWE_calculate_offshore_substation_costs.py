@@ -204,6 +204,7 @@ def update_fields():
     Returns:
     - None
     """
+    import arcpy
     
     # Define the capacities for which fields are to be added
     capacities = [500, 750, 1000, 1250, 1500]
@@ -226,12 +227,12 @@ def update_fields():
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
-    # Find the wind turbine layer in the map
-    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
+    # Find the offshore substation layer
+    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('OSSC')), None)
 
     # Check if the turbine layer exists
     if not oss_layer:
-        arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+        arcpy.AddError("No layer starting with 'OSSC' found in the current map.")
         return
 
     # Deselect all currently selected features
@@ -247,10 +248,19 @@ def update_fields():
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
             return
 
+    # Add fields only if they do not exist
+    for field_name, field_type, field_alias in fields_to_add:
+        if field_name not in fields:
+            arcpy.AddField_management(oss_layer, field_name, field_type)
+            # Update field alias
+            field_obj = [field for field in arcpy.ListFields(oss_layer) if field.name == field_name][0]
+            field_obj.aliasName = field_alias
+
+
     # Update each row in the attribute table
     with arcpy.da.UpdateCursor(oss_layer, fields + [f[0] for f in fields_to_add]) as cursor:
         for row in cursor:
-            water_depth = row[fields.index("WaterDepth")]
+            water_depth = - row[fields.index("WaterDepth")]
             port_distance = row[fields.index("Distance")]
             for capacity in capacities:
                 for sub_type in ['AC', 'DC']:
@@ -272,9 +282,9 @@ def update_fields():
                     capital_expenses = equip_costs + inst_costs
                     row[fields.index(f'Cap{capacity}_{sub_type}')] = capital_expenses
 
-                    # Calculate and assign operating expenses
-                    operating_expenses = calc_operating_expenses(water_depth, port_distance, capacity, HVC_type=sub_type)
-                    row[fields.index(f'Ope{capacity}_{sub_type}')] = operating_expenses
+                    # # Calculate and assign operating expenses
+                    # operating_expenses = calc_operating_expenses(water_depth, port_distance, capacity, HVC_type=sub_type)
+                    # row[fields.index(f'Ope{capacity}_{sub_type}')] = operating_expenses
 
             cursor.updateRow(row)
 

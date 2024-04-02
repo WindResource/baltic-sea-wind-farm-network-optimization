@@ -70,12 +70,12 @@ def calculate_raster(projected_raster: arcpy.Raster) -> None:
         input_layer = None
         for layer in map.listLayers():
             if layer.isFeatureLayer:
-                if layer.name.startswith('WTC'):
+                if layer.name.startswith('OSSC'):
                     input_layer = layer
                     break
         
         if input_layer is None:
-            arcpy.AddError("No feature layer starting with 'WTC' found in the current map.")
+            arcpy.AddError("No feature layer starting with 'OSSC' found in the current map.")
             return
 
         arcpy.AddMessage(f"Processing layer: {input_layer.name}")
