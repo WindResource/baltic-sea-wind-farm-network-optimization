@@ -204,7 +204,6 @@ def update_fields():
     Returns:
     - None
     """
-    import arcpy
     
     # Define the capacities for which fields are to be added
     capacities = [500, 750, 1000, 1250, 1500]
@@ -213,15 +212,14 @@ def update_fields():
     expense_categories = ['Equ', 'Ins', 'Cap', 'Ope', 'Dec'] # Equipment costs, Installation costs, Capital expenses, Operating expenses, decommissioning expenses
 
     # Define fields to be added if they don't exist
-    fields_to_add = [('SuppStruct', 'TEXT', 'Substation support structure')]
+    fields_to_add = [('SuppStruct', 'TEXT')]
 
     # Generate field definitions for each capacity and expense category for both AC and DC
     for capacity in capacities:
         for category in expense_categories:
             for sub_type in ['AC', 'DC']:
                 field_name = f'{category}{capacity}_{sub_type}'
-                field_label = f'{category} expenses for a {capacity} GW {sub_type} substation'
-                fields_to_add.append((field_name, 'DOUBLE', field_label))
+                fields_to_add.append((field_name, 'DOUBLE'))
 
     # Access the current ArcGIS project
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -249,13 +247,9 @@ def update_fields():
             return
 
     # Add fields only if they do not exist
-    for field_name, field_type, field_alias in fields_to_add:
+    for field_name, field_type in fields_to_add:
         if field_name not in fields:
             arcpy.AddField_management(oss_layer, field_name, field_type)
-            # Update field alias
-            field_obj = [field for field in arcpy.ListFields(oss_layer) if field.name == field_name][0]
-            field_obj.aliasName = field_alias
-
 
     # Update each row in the attribute table
     with arcpy.da.UpdateCursor(oss_layer, fields + [f[0] for f in fields_to_add]) as cursor:
