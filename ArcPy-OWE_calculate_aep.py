@@ -1,10 +1,15 @@
+import arcpy
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.stats import weibull_min
 
-def calculate_aep_and_capacity_factor():
+def calculate_aep_and_capacity_factor(weibullA, weibullK):
     """
     Calculate the Annual Energy Production (AEP) and Capacity Factor of a wind turbine.
+
+    Args:
+        weibullA (float): Weibull scale parameter (m/s).
+        weibullK (float): Weibull shape parameter.
 
     Returns:
         tuple: A tuple containing the AEP (in kWh) and the Capacity Factor (as a percentage).
@@ -15,9 +20,7 @@ def calculate_aep_and_capacity_factor():
     # Wind turbine availability factor
     avail_factor = 0.94
     
-    # New parameters for Weibull distribution and cut-off wind speed
-    weibullA = 10.65  # Weibull scale parameter (m/s)
-    weibullK = 2.32  # Weibull shape parameter
+    # New parameters for cut-off wind speed and turbine rating
     turbine_rating = 8 * 1e3  # Turbine rating (kW)
     cutoff_wind_speed = 25  # Cut-off wind speed (m/s)
 
@@ -34,7 +37,7 @@ def calculate_aep_and_capacity_factor():
     power_values = np.array(list(power_curve_data.values()))  # Power values are already in kW
     power_curve_func = interp1d(wind_speeds, power_values, kind='linear', fill_value='extrapolate')
 
-    # Define the Weibull distribution with the new range
+    # Define the Weibull distribution with the provided parameters
     weibull_dist = weibull_min(weibullK, scale=weibullA)
 
     # Define wind speed range
@@ -62,8 +65,51 @@ def calculate_aep_and_capacity_factor():
 
     return aep, capacity_factor
 
-# Calculate AEP and capacity factor
-aep, capacity_factor = calculate_aep_and_capacity_factor()
+def update_fields():
+    """
+    Update the attribute table of the wind turbine layer with AEP and capacity factor.
+    """
+    # Access the current ArcGIS project
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
 
-print("Annual Energy Production (AEP): {:.2f} kWh".format(aep))
-print("Capacity Factor: {:.2f}%".format(capacity_factor))
+    # Find the wind turbine layer in the map
+    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
+
+    # Check if the turbine layer exists
+    if not turbine_layer:
+        arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+        return
+
+    # Deselect all currently selected features
+    arcpy.SelectLayerByAttribute_management(turbine_layer, "CLEAR_SELECTION")
+
+    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
+
+    # Check if required fields exist in the attribute table
+    required_fields = ['WeibullA', 'WeibullK']
+    existing_fields = [field.name for field in arcpy.ListFields(turbine_layer)]
+    for field in required_fields:
+        if field not in existing_fields:
+            arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
+            return
+
+    # Add 'AEP' and 'Capacity_Factor' fields if they do not exist
+    for field in ['AEP', 'Cap_Factor']:
+        if field not in existing_fields:
+            arcpy.AddField_management(turbine_layer, field, "DOUBLE")
+
+    # Retrieve WeibullA and WeibullK values for each wind turbine
+    with arcpy.da.UpdateCursor(turbine_layer, ['WeibullA', 'WeibullK', 'AEP', 'Cap_Factor']) as cursor:
+        for row in cursor:
+            weibullA, weibullK = row[:2]
+            aep, capacity_factor = calculate_aep_and_capacity_factor(weibullA, weibullK)
+            row[2] = round(aep / int(1e3))
+            row[3] = round(capacity_factor, 2)
+            cursor.updateRow(row)
+
+    arcpy.AddMessage("AEP and capacity factor calculations completed and added to the attribute table.")
+
+if __name__ == "__main__":
+    # Call the update_fields() function
+    update_fields()
