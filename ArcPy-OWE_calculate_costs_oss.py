@@ -252,7 +252,7 @@ def update_fields():
             arcpy.AddField_management(oss_layer, field_name, field_type)
 
     # Update each row in the attribute table
-    with arcpy.da.UpdateCursor(oss_layer, fields + [f[0] for f in fields_to_add]) as cursor:
+    with arcpy.da.UpdateCursor(oss_layer, fields) as cursor:
         for row in cursor:
             water_depth = - row[fields.index("WaterDepth")]
             port_distance = row[fields.index("Distance")]
@@ -260,26 +260,26 @@ def update_fields():
             # Determine and assign Support structure
             support_structure = determine_support_structure(water_depth)
             row[fields.index('SuppStruct')] = support_structure
-            
+
             for capacity in capacities:
                 for sub_type in ['AC', 'DC']:
                     # Equipment Costs
                     equip_costs = calc_equip_costs(water_depth, capacity, HVC_type=sub_type)
-                    row[fields.index(f'Equ{capacity}_{sub_type}')] = equip_costs
+                    row[fields.index(f'Equ{capacity}_{sub_type}')] = round(equip_costs)
 
                     # Installation and Decommissioning Costs
                     inst_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="installation")
                     deco_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="decommissioning")
-                    row[fields.index(f'Ins{capacity}_{sub_type}')] = inst_costs
-                    row[fields.index(f'Dec{capacity}_{sub_type}')] = deco_costs
+                    row[fields.index(f'Ins{capacity}_{sub_type}')] = round(inst_costs)
+                    row[fields.index(f'Dec{capacity}_{sub_type}')] = round(deco_costs)
 
                     # Calculate and assign the capital expenses (the sum of the equipment and installation costs)
                     capital_expenses = equip_costs + inst_costs
-                    row[fields.index(f'Cap{capacity}_{sub_type}')] = capital_expenses
+                    row[fields.index(f'Cap{capacity}_{sub_type}')] = round(capital_expenses)
 
-                    # # Calculate and assign operating expenses
-                    # operating_expenses = calc_operating_expenses(water_depth, port_distance, capacity, HVC_type=sub_type)
-                    # row[fields.index(f'Ope{capacity}_{sub_type}')] = operating_expenses
+                    # Calculate and assign operating expenses
+                    operating_expenses = 0.03 * equip_costs
+                    row[fields.index(f'Ope{capacity}_{sub_type}')] = round(operating_expenses)
 
             cursor.updateRow(row)
 
