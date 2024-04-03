@@ -57,65 +57,63 @@ def calculate_raster(projected_raster: arcpy.Raster) -> None:
     Returns:
     - None
     """
-    try:
-        # Ensure that projected_raster is an arcpy Raster object
-        if isinstance(projected_raster, str):
-            projected_raster = arcpy.Raster(projected_raster)
 
-        # Get the current map
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map = aprx.activeMap
+    # Ensure that projected_raster is an arcpy Raster object
+    if isinstance(projected_raster, str):
+        projected_raster = arcpy.Raster(projected_raster)
 
-        # Get the first feature layer in the map that starts with 'WTC'
-        input_layer = None
-        for layer in map.listLayers():
-            if layer.isFeatureLayer:
-                if layer.name.startswith('OSSC'):
-                    input_layer = layer
-                    break
-        
-        if input_layer is None:
-            arcpy.AddError("No feature layer starting with 'OSSC' found in the current map.")
-            return
+    # Get the current map
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
 
-        arcpy.AddMessage(f"Processing layer: {input_layer.name}")
-        
-        # Convert raster to numpy array
-        raster_array = arcpy.RasterToNumPyArray(projected_raster, nodata_to_value=np.nan)
+    # Get the first feature layer in the map that starts with 'WTC'
+    input_layer = None
+    for layer in map.listLayers():
+        if layer.isFeatureLayer:
+            if layer.name.startswith('OSSC'):
+                input_layer = layer
+                break
+    
+    if input_layer is None:
+        arcpy.AddError("No feature layer starting with 'OSSC' found in the current map.")
+        return
 
-        # Get raster properties
-        extent = projected_raster.extent
-        cell_width = projected_raster.meanCellWidth
-        cell_height = projected_raster.meanCellHeight
+    arcpy.AddMessage(f"Processing layer: {input_layer.name}")
+    
+    # Convert raster to numpy array
+    raster_array = arcpy.RasterToNumPyArray(projected_raster, nodata_to_value=np.nan)
 
-        # Add 'WaterDepth' field if it does not exist in the feature layer
-        field_name = "WaterDepth"
-        if field_name not in [field.name for field in arcpy.ListFields(input_layer)]:
-            arcpy.management.AddField(input_layer, field_name, "DOUBLE")
+    # Invert the sign of the water depth values
+    raster_array = - raster_array
+    
+    # Get raster properties
+    extent = projected_raster.extent
+    cell_width = projected_raster.meanCellWidth
+    cell_height = projected_raster.meanCellHeight
 
-        # Update the attribute table with water depth values
-        with arcpy.da.UpdateCursor(input_layer, ["SHAPE@", field_name]) as cursor:
-            for row in cursor:
-                # Get the centroid of the shape
-                centroid = row[0].centroid
-                
-                # Get the cell indices
-                col = int((centroid.X - extent.XMin) / cell_width)
-                row_index = int((extent.YMax - centroid.Y) / cell_height)
-                
-                # Get the water depth value from the numpy array
-                water_depth = raster_array[row_index, col]
-                
-                # Update the 'WaterDepth' field
-                row[1] = float(water_depth) if not np.isnan(water_depth) else None
-                cursor.updateRow(row)
+    # Add 'WaterDepth' field if it does not exist in the feature layer
+    field_name = "WaterDepth"
+    if field_name not in [field.name for field in arcpy.ListFields(input_layer)]:
+        arcpy.management.AddField(input_layer, field_name, "DOUBLE")
 
-        arcpy.AddMessage(f"Water depth calculation and attribute update for {input_layer.name} completed.")
+    # Update the attribute table with water depth values
+    with arcpy.da.UpdateCursor(input_layer, ["SHAPE@", field_name]) as cursor:
+        for row in cursor:
+            # Get the centroid of the shape
+            centroid = row[0].centroid
+            
+            # Get the cell indices
+            col = int((centroid.X - extent.XMin) / cell_width)
+            row_index = int((extent.YMax - centroid.Y) / cell_height)
+            
+            # Get the water depth value from the numpy array
+            water_depth = raster_array[row_index, col]
+            
+            # Update the 'WaterDepth' field
+            row[1] = float(water_depth) if not np.isnan(water_depth) else None
+            cursor.updateRow(row)
 
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to calculate water depth: {e}")
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred: {e}")
+    arcpy.AddMessage(f"Water depth calculation and attribute update for {input_layer.name} completed.")
 
 # Check if the script is executed standalone or as a module
 if __name__ == "__main__":
