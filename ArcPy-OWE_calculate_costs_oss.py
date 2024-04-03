@@ -66,9 +66,9 @@ def determine_support_structure(water_depth):
     - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
     """
     # Define depth ranges for different support structures
-    if 0 <= water_depth < 30:
+    if 0 <= water_depth < 25:
         return "sandisland"
-    elif 30 <= water_depth < 150:
+    elif 25 <= water_depth < 150:
         return "jacket"
     elif 150 <= water_depth:
         return "floating"
@@ -259,27 +259,27 @@ def update_fields():
             
             # Determine and assign Support structure
             support_structure = determine_support_structure(water_depth)
-            row[fields.index('SuppStruct')] = support_structure
+            row[fields.index('SuppStruct')] = support_structure.capitalize()
 
             for capacity in capacities:
                 for sub_type in ['AC', 'DC']:
                     # Equipment Costs
                     equip_costs = calc_equip_costs(water_depth, capacity, HVC_type=sub_type)
-                    row[fields.index(f'Equ{capacity}_{sub_type}')] = round(equip_costs)
+                    row[fields.index(f'Equ{capacity}_{sub_type}')] = round(equip_costs / int(1e6), 6)
 
                     # Installation and Decommissioning Costs
                     inst_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="installation")
                     deco_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="decommissioning")
-                    row[fields.index(f'Ins{capacity}_{sub_type}')] = round(inst_costs)
-                    row[fields.index(f'Dec{capacity}_{sub_type}')] = round(deco_costs)
+                    row[fields.index(f'Ins{capacity}_{sub_type}')] = round(inst_costs / int(1e6), 6)
+                    row[fields.index(f'Dec{capacity}_{sub_type}')] = round(deco_costs / int(1e6), 6)
 
                     # Calculate and assign the capital expenses (the sum of the equipment and installation costs)
                     capital_expenses = equip_costs + inst_costs
-                    row[fields.index(f'Cap{capacity}_{sub_type}')] = round(capital_expenses)
+                    row[fields.index(f'Cap{capacity}_{sub_type}')] = round(capital_expenses / int(1e6), 6)
 
                     # Calculate and assign operating expenses
                     operating_expenses = 0.03 * equip_costs
-                    row[fields.index(f'Ope{capacity}_{sub_type}')] = round(operating_expenses)
+                    row[fields.index(f'Ope{capacity}_{sub_type}')] = round(operating_expenses / int(1e6), 6)
 
             cursor.updateRow(row)
 
