@@ -104,7 +104,7 @@ def update_fields():
         for row in cursor:
             weibullA, weibullK = row[:2]
             aep, capacity_factor = calculate_aep_and_capacity_factor(weibullA, weibullK)
-            row[2] = round(aep / int(1e3))
+            row[2] = round(aep / int(1e6), 4) # AEP in GWh
             row[3] = round(capacity_factor, 2)
             cursor.updateRow(row)
 
