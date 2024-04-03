@@ -70,4 +70,4 @@ def calculate_distances_turbine_port():
 
 # Call the function
 if __name__ == "__main__":
-    calculate_distances()
+    calculate_distances_turbine_port()
