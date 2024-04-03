@@ -114,7 +114,7 @@ def determine_support_structure(water_depth):
         arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
         return "default"
 
-def calc_equip_costs(water_depth, year, turbine_capacity):
+def calc_equip_costs(water_depth, support_structure, year, turbine_capacity):
     """
     Calculates the equipment costs based on water depth values, year, and turbine capacity.
 
@@ -135,26 +135,22 @@ def calc_equip_costs(water_depth, year, turbine_capacity):
     }
 
     # Coefficients for wind turbine rated cost
-    wind_turbine_coeff = {
+    turbine_coeff = {
         '2020': 1500,
         '2030': 1200,
         '2050': 1000
     }
 
-    # Get the support structure type based on water depth
-    support_structure = determine_support_structure(water_depth)
-
-    key = (support_structure, year)
-    if key not in support_structure_coeff:
-        return 0  # Return 0 if coefficients not available
-
-    c1, c2, c3 = support_structure_coeff[key]
-    WT_rated_cost = wind_turbine_coeff[year]
-
     # Calculate equipment costs using the provided formula
-    return turbine_capacity * ((c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000) + (WT_rated_cost))
+    c1, c2, c3 = support_structure_coeff[(support_structure, year)]
+    support_structure_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
+    turbine_costs = turbine_capacity * turbine_coeff[year]
 
-def calc_costs(water_depth, port_distance, turbine_capacity, operation):
+    equip_costs = support_structure_costs + turbine_costs
+    
+    return equip_costs
+
+def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, operation):
     """
     Calculate installation or decommissioning costs based on the water depth, port distance,
     and rated power of the wind turbines.
@@ -194,28 +190,28 @@ def calc_costs(water_depth, port_distance, turbine_capacity, operation):
     # Determine support structure based on water depth
     support_structure = determine_support_structure(water_depth).lower()
 
-    # Determine installation vehicles based on support structure
-    vehicles = ['Tug', 'AHV'] if support_structure == 'floating' else ['PSIV']
+    if support_structure == 'monopile' or 'jacket':
+        c1, c2, c3, c4, c5 = coeff['PSIV']
+        # Calculate installation costs for jacket
+        total_costs = ((1 / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4) * (c5 * 1000) / 24
+    elif support_structure == 'floating':
+        total_costs = 0
+        
+        # Iterate over the coefficients for floating (Tug and AHV)
+        for vessel_type in ['Tug', 'AHV']:
+            c1, c2, c3, c4, c5 = coeff[vessel_type]
+            
+            # Calculate installation costs for the current vessel type
+            vessel_costs = ((1 / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4) * (c5 * 1000) / 24
+            
+            # Add the costs for the current vessel type to the total costs
+            total_costs += vessel_costs
+    else:
+        total_costs = None
+        
+    return total_costs
 
-    # Calculate hours separately for each vessel
-    hours_per_vessel = [
-        ((1 / c[0]) * ((2 * port_distance / 1000) / c[1] + c[2]) + c[3])
-        for c in [coeff[vehicle] for vehicle in vehicles]
-    ]
-    
-    # For floating support structure, use the maximum hours of Tug and AHV
-    total_hours = max(hours_per_vessel) if support_structure == 'floating' else sum(hours_per_vessel)
-
-    # Calculate costs based on the determined hours
-    total_costs = (
-        sum(hours * c[4] * 1000 / 24 for hours, c in zip(hours_per_vessel, [coeff[vehicle] for vehicle in vehicles]))
-        if support_structure == 'floating'
-        else hours_per_vessel[0] * coeff[vehicles[0]][4] * 1000 / 24
-    )
-
-    return total_hours, total_costs
-
-def logi_costs(water_depth, port_distance, failure_rate=0.08):
+def calc_logi_costs(water_depth, support_structure, port_distance, failure_rate=0.08):
     """
     Calculate logistics time and costs for major wind turbine repairs (part of OPEX) based on water depth, port distance, and failure rate for major wind turbine repairs.
     
@@ -234,22 +230,15 @@ def logi_costs(water_depth, port_distance, failure_rate=0.08):
         'Tug': (7.5, 50, 2.5, 2)
     }
 
-    # Determine support structure based on water depth
-    support_structure = determine_support_structure(water_depth).capitalize()
-
     # Determine logistics vessel based on support structure
-    vessel = 'Tug' if support_structure == 'Floating' else 'JUV'
+    vessel = 'JUV' if support_structure == 'monopile' or 'jacket' else 'Tug'
 
-    # Get logistics coefficients for the chosen vessel
-    c = logi_coeff[vessel]
+    c1, c2, c3, c4 = logi_coeff[vessel]
 
-    # Calculate logistics time in hours per year
-    logistics_time = failure_rate * ((2 * c[3] * port_distance / 1000) / c[0] + c[1])
+    # Calculate logistics costs
+    logi_costs = failure_rate * ((2 * c4 * port_distance / 1000) / c1 + c2) * (c3 * 1000) / 24
 
-    # Calculate logistics costs using the provided equation
-    logistics_costs = logistics_time * c[3] * 1000 / 24
-
-    return logistics_time, logistics_costs
+    return logi_costs
 
 def update_fields():
     """
@@ -259,7 +248,12 @@ def update_fields():
     Returns:
     - None
     """
-    
+    # Function to add a field if it does not exist in the layer
+    def add_field_if_not_exists(layer, field_name, field_type):
+        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
+            arcpy.AddField_management(layer, field_name, field_type)
+            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
+
     # Define fields to be added if they don't exist
     fields_to_add = [
         ('SuppStruct', 'TEXT'),
@@ -267,25 +261,16 @@ def update_fields():
         ('EquiC30', 'DOUBLE'),
         ('EquiC50', 'DOUBLE'),
         ('InstC', 'DOUBLE'),
-        ('InstT', 'DOUBLE'),
         ('Capex20', 'DOUBLE'),
         ('Capex30', 'DOUBLE'),
         ('Capex50', 'DOUBLE'),
         ('LogiC', 'DOUBLE'),
-        ('LogiT', 'DOUBLE'),
         ('Opex20', 'DOUBLE'),
         ('Opex30', 'DOUBLE'),
         ('Opex50', 'DOUBLE'),
         ('Decex', 'DOUBLE'),
-        ('DecT', 'DOUBLE'),
     ]
     
-    # Function to add a field if it does not exist in the layer
-    def add_field_if_not_exists(layer, field_name, field_type):
-        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
-            arcpy.AddField_management(layer, field_name, field_type)
-            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
-
     # Access the current ArcGIS project
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
@@ -322,12 +307,13 @@ def update_fields():
     with arcpy.da.UpdateCursor(turbine_layer, fields) as cursor:
         for row in cursor:
             # Extract water depth and turbine capacity from the current row
-            water_depth = -row[fields.index("WaterDepth")]  # Invert the sign
+            water_depth = row[fields.index("WaterDepth")]  # Invert the sign
             turbine_capacity = row[fields.index("Capacity")]
-
+            distance = row[fields.index("Distance")]
+            
             # Determine support structure and assign it to the corresponding field
-            support_structure = determine_support_structure(water_depth).capitalize()
-            row[fields.index("SuppStruct")] = support_structure
+            support_structure = determine_support_structure(water_depth)
+            row[fields.index("SuppStruct")] = support_structure.capitalize()
 
             # Iterate over each year and calculate costs and time
             for year in ['2020', '2030', '2050']:
@@ -335,42 +321,41 @@ def update_fields():
                 field_name_cap = f"Capex{year[2:]}"
 
                 if field_name_ec in fields and field_name_cap in fields:
+                    # Round function
+                    def rnd(r):
+                        return round(r / int(1e6), 6)
+                    
                     # Calculate equipment costs for the current year
-                    equi_costs = calc_equip_costs(water_depth, year, turbine_capacity)
-                    row[fields.index(field_name_ec)] = round(equi_costs)
+                    equi_costs = calc_equip_costs(water_depth, support_structure, year, turbine_capacity)
+                    row[fields.index(field_name_ec)] = rnd(equi_costs)
 
-                    # Calculate installation and decommissioning costs and time
-                    inst_hours, inst_costs = calc_costs(water_depth, row[fields.index("Distance")],
+                    # Calculate installation and decommissioning costs
+                    inst_costs = calc_costs(water_depth, support_structure, distance,
                                                         turbine_capacity, 'installation')
-                    deco_hours, deco_costs = calc_costs(water_depth, row[fields.index("Distance")],
+                    deco_costs = calc_costs(water_depth, support_structure, distance,
                                                         turbine_capacity, 'decommissioning')
 
                     # Assign calculated values to the corresponding fields
-                    row[fields.index("InstT")] = round(inst_hours)
-                    row[fields.index("DecT")] = round(deco_hours)
-                    row[fields.index("InstC")] = round(inst_costs)
+                    row[fields.index("InstC")] = rnd(inst_costs)
 
                     # Calculate and assign total capital expenditure for the current year
                     capex = equi_costs + inst_costs
-                    row[fields.index(field_name_cap)] = round(capex)
+                    row[fields.index(field_name_cap)] = rnd(capex)
 
                     # Assign decommissioning costs if the field exists
                     field_name_dec = "Decex"
                     if field_name_dec in fields:
-                        row[fields.index(field_name_dec)] = round(deco_costs)
+                        row[fields.index(field_name_dec)] = rnd(deco_costs)
 
                     # Calculate and assign logistics costs and time
-                    logi_costs_value = logi_costs(water_depth, row[fields.index("Distance")])[1]
-                    logi_time = logi_costs(water_depth, row[fields.index("Distance")])[0]
-
-                    row[fields.index("LogiC")] = round(logi_costs_value)
-                    row[fields.index("LogiT")] = round(logi_time)
+                    logi_costs = calc_logi_costs(water_depth, support_structure, distance)
+                    row[fields.index("LogiC")] = rnd(logi_costs)
 
                     # Calculate material costs and assign operating expenses if the field exists
                     material_costs = 0.025 * equi_costs
                     field_name_opex = f"Opex{year[2:]}"
                     if field_name_opex in fields:
-                        row[fields.index(field_name_opex)] = round(material_costs + logi_costs_value)
+                        row[fields.index(field_name_opex)] = rnd(material_costs + logi_costs)
 
             cursor.updateRow(row)
 
