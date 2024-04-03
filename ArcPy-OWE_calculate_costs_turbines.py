@@ -94,7 +94,6 @@ Functions:
 
 import arcpy
 import os
-import arcpy
 
 def determine_support_structure(water_depth):
     """
