@@ -73,7 +73,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
                             substation_index += 1
                             
                             # Insert the new substation point with its attributes
-                            row_values = (point, substation_id, x, y)
+                            row_values = (point, substation_id, round(x), round(y))
                             insert_cursor.insertRow(row_values)
                             
                         x += spacing * 1000
