@@ -57,6 +57,8 @@ None
 
 import arcpy
 import numpy as np
+import os
+import matplotlib.pyplot as plt
 
 def determine_support_structure(water_depth):
     """
@@ -77,7 +79,7 @@ def determine_support_structure(water_depth):
         arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
         return "default"
 
-def calc_equip_costs(water_depth, oss_capacity, HVC_type="AC"):
+def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type="AC"):
     """
     Calculates the offshore substation equipment costs based on water depth, capacity, and export cable type.
 
@@ -90,9 +92,6 @@ def calc_equip_costs(water_depth, oss_capacity, HVC_type="AC"):
         'jacket': (233, 47, 309, 62),
         'floating': (87, 68, 116, 91)
     }
-
-    # Get the support structure type based on water depth
-    support_structure = determine_support_structure(water_depth)
 
     # Define parameters
     c1, c2, c3, c4 = support_structure_coeff[support_structure]
@@ -115,7 +114,7 @@ def calc_equip_costs(water_depth, oss_capacity, HVC_type="AC"):
 
     return equip_costs
 
-def calc_costs(water_depth, port_distance, oss_capacity, HVC_type = "AC", operation = "inst"):
+def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_type = "AC", operation = "inst"):
     """
     Calculate installation or decommissioning costs of offshore substations based on the water depth, and port distance.
 
@@ -141,9 +140,6 @@ def calc_costs(water_depth, port_distance, oss_capacity, HVC_type = "AC", operat
     # Choose the appropriate coefficients based on the operation type
     coeff = inst_coeff if operation == 'installation' else deco_coeff
 
-    # Get the support structure type based on water depth
-    support_structure = determine_support_structure(water_depth)
-    
     if support_structure == 'sandisland':
         c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
         # Define equivalent electrical power
@@ -264,12 +260,12 @@ def update_fields():
             for capacity in capacities:
                 for sub_type in ['AC', 'DC']:
                     # Equipment Costs
-                    equip_costs = calc_equip_costs(water_depth, capacity, HVC_type=sub_type)
+                    equip_costs = calc_equip_costs(water_depth, support_structure, capacity, HVC_type=sub_type)
                     row[fields.index(f'Equ{capacity}_{sub_type}')] = round(equip_costs / int(1e6), 6)
 
                     # Installation and Decommissioning Costs
-                    inst_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="installation")
-                    deco_costs = calc_costs(water_depth, port_distance, capacity, HVC_type=sub_type, operation="decommissioning")
+                    inst_costs = calc_costs(water_depth, support_structure, port_distance, capacity, HVC_type=sub_type, operation="installation")
+                    deco_costs = calc_costs(water_depth, support_structure, port_distance, capacity, HVC_type=sub_type, operation="decommissioning")
                     row[fields.index(f'Ins{capacity}_{sub_type}')] = round(inst_costs / int(1e6), 6)
                     row[fields.index(f'Dec{capacity}_{sub_type}')] = round(deco_costs / int(1e6), 6)
 
@@ -285,8 +281,90 @@ def update_fields():
 
     arcpy.AddMessage(f"Attribute table of {oss_layer.name} updated successfully.")
 
+def plot_capital_expenses():
+    """
+    Plot the capital expenses for different support structures and export cable types based on predefined water depths, capacities, and HVC types.
+    Save each plot to a separate file in the specified output folder.
+
+    Returns:
+    - None
+    """
+    # Specify the output folder where the plot image will be saved
+    output_folder = arcpy.GetParameterAsText(0)
+    
+    water_depths = np.arange(0, 50, step=1)  # Water depths with a step of 1 meter
+    capacities = [500, 750, 1000, 1250, 1500]  # Capacities in MW
+    HVC_types = ['AC', 'DC']  # Export cable types AC and DC
+    port_distance = 1000  # Port distance in meters
+    
+    # Initialize lists to store capital expenses for each support structure, capacity, and export cable type
+    support_structures = ['sandisland', 'jacket', 'floating']
+    colors = {'AC': ['blue', 'orange', 'green'], 'DC': ['lightblue', 'lightsalmon', 'lightgreen']}
+    
+    legend_order = ['Sandisland (AC)', 'Sandisland (DC)', 'Jacket (AC)', 'Jacket (DC)', 'Floating (AC)', 'Floating (DC)']
+    
+    for capacity in capacities:
+        plt.figure(figsize=(12, 8))
+        
+        for HVC_type in HVC_types:
+            for index, support_structure in enumerate(support_structures):
+                capital_expenses = []
+                
+                for depth in water_depths:
+                    # Calculate equipment costs for each support structure, capacity, and export cable type
+                    equip_costs = calc_equip_costs(depth, support_structure, capacity, HVC_type)
+                    
+                    # Calculate installation costs for each support structure, capacity, and export cable type
+                    inst_costs = calc_costs(depth, support_structure, port_distance, capacity, HVC_type, operation="installation")
+                    
+                    # Calculate total capital expenses (equipment costs + installation costs)
+                    total_costs = (equip_costs + inst_costs) / int(1e6)
+                    
+                    capital_expenses.append(total_costs)
+                
+                # Plot the capital expenses for the current support structure, capacity, and export cable type
+                label = f"{support_structure.capitalize()} ({HVC_type})"
+                plt.plot(water_depths, capital_expenses, label=label, color=colors[HVC_type][index])
+        
+        # Customize the plot
+        plt.xlabel('Water Depth (m)')
+        plt.ylabel('Capital Expenses (Million EU)')
+        plt.title(f'Capital Expenses vs. Water Depth for Capacity {capacity} MW')
+        plt.legend()
+        plt.grid(True)
+        
+        # Sort the legend entries
+        handles, labels = plt.gca().get_legend_handles_labels()
+        sorted_handles = [handles[labels.index(label)] for label in legend_order]
+        sorted_labels = [label for label in legend_order]
+        
+        # Display the legend with sorted entries
+        plt.legend(sorted_handles, sorted_labels)
+        
+        # Set minor gridlines for every 1 meter of water depth
+        plt.minorticks_on()
+        plt.xticks(np.arange(0, 50, 5))  # Set major ticks every 5 meters
+        plt.xticks(np.arange(0, 50, 1), minor=True)  # Set minor ticks every 1 meter
+        plt.grid(which='both', linestyle=':', linewidth='0.5', color='gray')
+                
+        # Set the limits for both axes to start from 0
+        plt.xlim(0)  # Water depth range
+        plt.ylim(0)  # Capital expenses range
+        
+        # Save the plot to the specified output folder
+        output_file = os.path.join(output_folder, f"capital_expenses_plot_capacity_{capacity}.png")
+        plt.savefig(output_file)
+        
+        # Clear the plot to release memory
+        plt.close()
+        
+    arcpy.AddMessage(f"Figures saved succesfully.")
+
+
 if __name__ == "__main__":
     update_fields()
+    
+    plot_capital_expenses()
 
 
 
