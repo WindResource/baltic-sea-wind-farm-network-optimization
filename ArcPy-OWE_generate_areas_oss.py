@@ -1,6 +1,6 @@
 import arcpy
 
-def generate_offshore_substation_areas(iso_country_code, output_folder, buffer_distance):
+def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, output_folder, buffer_distance = 15):
     """
     Creates a new EEZ shapefile for a specified country, erases the pairwise buffered areas of the specified country and 
     HELCOM Marine Protected Areas (MPA) from the EEZ shapefile, and adds the generated shapefile to the current ArcGIS map.
@@ -38,6 +38,12 @@ def generate_offshore_substation_areas(iso_country_code, output_folder, buffer_d
         if eez_layer is None:
             arcpy.AddError("No EEZ layer found. Ensure a layer starting with 'eez_v12' is loaded in the map.")
             return
+        
+        # Processing for EEZ layer
+        countries_layer = arcpy.management.MakeFeatureLayer(countries_feature_layer_url, "countries_layer").getOutput(0)
+        arcpy.management.SelectLayerByAttribute(eez_layer, "NEW_SELECTION", f"ISO_TER1 = '{iso_eez_country_code}'")
+        arcpy.management.CopyFeatures(countries_layer, "in_memory\\selected_eez")
+        arcpy.management.Project("in_memory\\selected_eez", "in_memory\\selected_eez_projected", utm_wkid)
 
         # Create buffer for the selected country
         buffer_layer = "in_memory\\buffered_country"
@@ -64,7 +70,9 @@ def generate_offshore_substation_areas(iso_country_code, output_folder, buffer_d
         arcpy.AddError(f"Error in generating offshore substation areas: {e}")
 
 if __name__ == "__main__":
-    iso_country_code = arcpy.GetParameterAsText(0)
-    output_folder = arcpy.GetParameterAsText(1)
-    buffer_distance = float(arcpy.GetParameterAsText(2))  # Ensure this is a float
-    generate_offshore_substation_areas(iso_country_code, output_folder, buffer_distance)
+    iso_country_code = arcpy.GetParameterAsText(0) # ISO 2 char
+    iso_eez_country_code = arcpy.GetParameterAsText(1) # ISO 3 char
+    output_folder = arcpy.GetParameterAsText(2)
+    buffer_distance = float(arcpy.GetParameterAsText(3))  # Ensure this is a float
+    
+    generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, output_folder, buffer_distance)
