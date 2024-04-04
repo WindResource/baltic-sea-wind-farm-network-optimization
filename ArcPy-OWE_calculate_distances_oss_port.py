@@ -2,7 +2,7 @@ import arcpy
 import numpy as np
 
 def calculate_distances_oss_port():
-    """Performs calculation to identify the closest port for each offshore substation within the specified search radius."""
+    """Calculate distances between substation points and nearest port points."""
     # Setup and obtain layers as previously described
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
@@ -57,14 +57,8 @@ def calculate_distances_oss_port():
                 return round(r / int(1e3), 3)
             
             closest_port_index = closest_port_indices[i]
+            closest_port_distance = distances[i, closest_port_index]
             closest_port_name = closest_port_names[closest_port_index]
-
-            # Get geometry objects for current substation and closest port
-            substation_geom = substation_row[0]
-            port_geom = arcpy.da.SearchCursor(port_layer, "SHAPE@", where_clause=f"PORT_NAME = '{closest_port_name}'").next()[0]
-
-            # Calculate distance between substation and closest port
-            closest_port_distance = substation_geom.distanceTo(port_geom)
 
             # Update fields in substation layer with closest port information
             substation_row[1] = closest_port_name
