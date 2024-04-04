@@ -19,7 +19,7 @@ def calculate_distances_turbine_port():
                 turbine_layer = layer
 
     # Check if layers are found
-    required_layers = [("SelectedPorts", port_layer), ("OSSC", turbine_layer)]
+    required_layers = [("SelectedPorts", port_layer), ("WTC", turbine_layer)]
     for layer_name, layer_var in required_layers:
         if not layer_var:
             arcpy.AddError(f"No layer named '{layer_name}' found in the current map.")
@@ -57,14 +57,8 @@ def calculate_distances_turbine_port():
                 return round(r / int(1e3), 3)
             
             closest_port_index = closest_port_indices[i]
+            closest_port_distance = distances[i, closest_port_index]
             closest_port_name = closest_port_names[closest_port_index]
-
-            # Get geometry objects for current turbine and closest port
-            turbine_geom = turbine_row[0]
-            port_geom = arcpy.da.SearchCursor(port_layer, "SHAPE@", where_clause=f"PORT_NAME = '{closest_port_name}'").next()[0]
-
-            # Calculate distance between turbine and closest port
-            closest_port_distance = turbine_geom.distanceTo(port_geom)
 
             # Update fields in turbine layer with closest port information
             turbine_row[1] = closest_port_name
