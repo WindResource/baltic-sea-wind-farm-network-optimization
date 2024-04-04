@@ -54,13 +54,23 @@ def calculate_distances_oss_port():
     # Cursor to update substation features
     with arcpy.da.UpdateCursor(substation_layer, ["SHAPE@", "PortName", "Distance"]) as substation_cursor:
         for i, substation_row in enumerate(substation_cursor):
+            # Round function
+            def rnd(r):
+                return round(r / int(1e3), 3)
+            
             closest_port_index = closest_port_indices[i]
-            closest_port_distance = distances[i, closest_port_index]
             closest_port_name = closest_port_names[closest_port_index]
+
+            # Get geometry objects for current substation and closest port
+            substation_geom = substation_row[0]
+            port_geom = arcpy.da.SearchCursor(port_layer, "SHAPE@", where_clause=f"PORT_NAME = '{closest_port_name}'").next()[0]
+
+            # Calculate distance between substation and closest port
+            closest_port_distance = substation_geom.distanceTo(port_geom)
 
             # Update fields in substation layer with closest port information
             substation_row[1] = closest_port_name
-            substation_row[2] = closest_port_distance
+            substation_row[2] = rnd(closest_port_distance)
             substation_cursor.updateRow(substation_row)
 
 if __name__ == "__main__":
