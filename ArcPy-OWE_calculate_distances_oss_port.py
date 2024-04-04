@@ -1,6 +1,4 @@
 import arcpy
-
-import arcpy
 import numpy as np
 
 def calculate_distances_oss_port():
@@ -42,12 +40,14 @@ def calculate_distances_oss_port():
     if "Distance" not in field_names:
         arcpy.AddField_management(substation_layer, "Distance", "DOUBLE")
 
-    # Get geometry arrays for faster calculations
-    substation_geoms = np.array([(row[0].centroid.X, row[0].centroid.Y) for row in arcpy.da.SearchCursor(substation_layer, "SHAPE@")])
-    port_geoms = np.array([(row[0].centroid.X, row[0].centroid.Y) for row in arcpy.da.SearchCursor(port_layer, "SHAPE@")])
+    # Get point coordinates for faster calculations
+    substation_points = np.array([(row[0].firstPoint.X, row[0].firstPoint.Y) for row in arcpy.da.SearchCursor(substation_layer, "SHAPE@")])
+    port_points = np.array([(row[0].firstPoint.X, row[0].firstPoint.Y) for row in arcpy.da.SearchCursor(port_layer, "SHAPE@")])
 
-    # Calculate distances using numpy
-    distances = np.sqrt(np.sum((substation_geoms[:, None] - port_geoms) ** 2, axis=2))
+    # Compute distances using Euclidean distance formula
+    distances = np.sqrt(np.sum((substation_points[:, None] - port_points) ** 2, axis=2))
+
+    # Find indices of closest ports for each substation
     closest_port_indices = np.argmin(distances, axis=1)
     closest_port_names = [row[0] for row in arcpy.da.SearchCursor(port_layer, "PORT_NAME")]
 
