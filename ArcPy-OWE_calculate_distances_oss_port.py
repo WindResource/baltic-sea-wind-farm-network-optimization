@@ -12,20 +12,26 @@ def calculate_distances_oss_port():
     # Fetch feature layers from the active map
     for layer in map.listLayers():
         if layer.isFeatureLayer:
-            if "SelectedPorts" in layer.name:
+            if "SelectedPorts" in layer.name and not port_layer:
                 port_layer = layer
-            elif layer.name.startswith('OSSC'):  # Assuming substation layer names start with 'OSSC'
+            elif layer.name.startswith('OSSC') and not substation_layer:
                 substation_layer = layer
 
-    # Check if necessary layers are found
+    # Check if layers are found
     if not port_layer:
-        raise ValueError("No port layer found in the map.")
-    if not substation_layer:
-        raise ValueError("No substation layer found in the map.")
+        arcpy.AddError("No layer named 'SelectedPorts' found in the current map.")
+        exit()
 
-    # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(substation_layer, "CLEAR_SELECTION")
-    
+    if not substation_layer:
+        arcpy.AddError("No layer starting with 'OSSC' found in the current map.")
+        exit()
+
+    for layer in (port_layer, substation_layer):
+        # Deselect all currently selected features in both layers
+        arcpy.SelectLayerByAttribute_management(layer, "CLEAR_SELECTION")
+        # Add a message for processing
+        arcpy.AddMessage(f"Processing layer: {layer.name}")
+
     # Add fields if they don't exist in the substation layer
     field_names = [field.name for field in arcpy.ListFields(substation_layer)]
     if "PortName" not in field_names:
