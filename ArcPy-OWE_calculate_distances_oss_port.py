@@ -19,13 +19,11 @@ def calculate_distances_oss_port():
                 substation_layer = layer
 
     # Check if layers are found
-    if not port_layer:
-        arcpy.AddError("No layer named 'SelectedPorts' found in the current map.")
-        exit()
-
-    if not substation_layer:
-        arcpy.AddError("No layer starting with 'OSSC' found in the current map.")
-        exit()
+    required_layers = [("SelectedPorts", port_layer), ("OSSC", substation_layer)]
+    for layer_name, layer_var in required_layers:
+        if not layer_var:
+            arcpy.AddError(f"No layer named '{layer_name}' found in the current map.")
+            exit()
 
     for layer in (port_layer, substation_layer):
         # Deselect all currently selected features in both layers
