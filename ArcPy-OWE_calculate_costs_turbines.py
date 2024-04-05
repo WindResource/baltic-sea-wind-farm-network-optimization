@@ -193,7 +193,7 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
     if support_structure == 'monopile' or 'jacket':
         c1, c2, c3, c4, c5 = coeff['PSIV']
         # Calculate installation costs for jacket
-        total_costs = ((1 / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4) * (c5 * 1000) / 24
+        total_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
     elif support_structure == 'floating':
         total_costs = 0
         
@@ -202,7 +202,7 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
             c1, c2, c3, c4, c5 = coeff[vessel_type]
             
             # Calculate installation costs for the current vessel type
-            vessel_costs = ((1 / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4) * (c5 * 1000) / 24
+            vessel_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
             
             # Add the costs for the current vessel type to the total costs
             total_costs += vessel_costs
@@ -347,7 +347,7 @@ def update_fields():
                     if field_name_dec in fields:
                         row[fields.index(field_name_dec)] = rnd(deco_costs)
 
-                    # Calculate and assign logistics costs and time
+                    # Calculate and assign logistics costs
                     logi_costs = calc_logi_costs(water_depth, support_structure, distance)
                     row[fields.index("LogiC")] = rnd(logi_costs)
 
