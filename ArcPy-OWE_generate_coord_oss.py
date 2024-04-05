@@ -16,6 +16,9 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     utm_wkid = 32633  # Example: UTM Zone 33N
     utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
 
+    # Set the spatial reference to WGS 1984
+    wgs84_spatial_ref = arcpy.SpatialReference(4326)  # WKID for WGS 1984
+
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
@@ -43,23 +46,19 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     # Create the output feature class for substations
     arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=utm_spatial_ref)
 
-    # Add fields to store substation attributes
-    arcpy.AddFields_management(output_feature_class, [
-        ["StationID", "TEXT", "", "", 50, "Substation ID"],
-        ["XCoord", "DOUBLE", "", "", "", "Longitude"],
-        ["YCoord", "DOUBLE", "", "", "", "Latitude"]
-    ])
-
     # Prepare to insert new substation point features
     insert_cursor_fields = ["SHAPE@", "StationID", "XCoord", "YCoord", "Territory", "ISO"]
     insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
-
-    # Add fields 'TERRITORY1' and 'ISO_TER1' if they do not exist
-    existing_fields = [field.name for field in arcpy.ListFields(output_feature_class)]
-    for field_name in ["Territory", "ISO"]:
-        if field_name not in existing_fields:
-            arcpy.AddField_management(output_feature_class, field_name, "TEXT")
     
+    # Add fields to store substation attributes
+    arcpy.AddFields_management(output_feature_class, [
+        ["StationID", "TEXT"],
+        ["XCoord", "DOUBLE"],
+        ["YCoord", "DOUBLE"],
+        ["Territory","TEXT"],
+        ["ISO","TEXT"]
+    ])
+
     # Initialize substation index counter
     substation_index = 1
 
@@ -88,13 +87,14 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             for x, y in zip(flat_x, flat_y):
                 point = arcpy.Point(x, y)
                 if shape.contains(point):
+                    # Reproject point to WGS 1984
+                    point_geo = arcpy.PointGeometry(point, utm_spatial_ref).projectAs(wgs84_spatial_ref)
+                    x_wgs84, y_wgs84 = point_geo.centroid.X, point_geo.centroid.Y
                     substation_id = f"{iso_territory}_{substation_index}"  # Generate substation ID
+                    insert_cursor.insertRow((point, substation_id, round(x_wgs84, 6), round(y_wgs84, 6), territory, iso_territory))  # Rounding coordinates to avoid precision issues
                     substation_index += 1  # Increment substation index
-                    insert_cursor.insertRow((point, substation_id, round(x, 6), round(y, 6), territory, iso_territory))  # Rounding coordinates to avoid precision issues
             # Reset substation index for next shape
-            substation_index = 0
-
-
+            substation_index = 1
 
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
