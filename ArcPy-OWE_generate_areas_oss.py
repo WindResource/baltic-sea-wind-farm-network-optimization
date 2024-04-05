@@ -55,7 +55,7 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
     arcpy.management.CopyFeatures(helcom_mpa_layer, "in_memory\\helcom_mpa")
     arcpy.management.Project("in_memory\\helcom_mpa", "in_memory\\helcom_mpa_projected", wkid)
     
-    # Processing for country selection and buffering
+    # Processing for EEZ
     arcpy.management.SelectLayerByAttribute(eez_layer, "NEW_SELECTION", f"ISO_TER1 IN {tuple(iso_eez_country_code)}")
     arcpy.management.CopyFeatures(eez_layer, "in_memory\\selected_eez_layer")
     arcpy.management.Project("in_memory\\selected_eez_layer", "in_memory\\selected_eez_layer_projected", wkid)
