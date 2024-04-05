@@ -1,5 +1,6 @@
 import arcpy
 import os
+import numpy as np
 
 def generate_offshore_substation_coordinates(output_folder: str, spacing: float) -> None:
     """
@@ -8,7 +9,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
     Parameters:
     - output_folder: Path where the output shapefile will be saved.
-    - spacing: Desired spacing between turbines, in kilometers.
+    - spacing: Desired spacing between substations, in kilometers.
     """
     
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
@@ -50,35 +51,50 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     ])
 
     # Prepare to insert new substation point features
-    insert_cursor_fields = ["SHAPE@", "StationID", "XCoord", "YCoord"]
+    insert_cursor_fields = ["SHAPE@", "StationID", "XCoord", "YCoord", "Territory", "ISO"]
     insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
 
-    # Generate points within the bounding box of the input layer's extent
-    # considering the specified spacing
-    with arcpy.da.SearchCursor(input_layer, ["SHAPE@"]) as cursor:
-        for shape, in cursor:   
-            # Initialize a counter for substation ID numbering
-            substation_index = 0
-            
-            bounding_box = shape.extent
-            y = bounding_box.YMin
-            while y <= bounding_box.YMax:
-                x = bounding_box.XMin
-                while x <= bounding_box.XMax:
-                    # Check if the point is inside the feature's polygon (consider only offshore areas)
-                    point = arcpy.Point(x, y)
-                    if shape.contains(point):
-                        substation_id = f"Substation_{substation_index}"
-                        substation_index += 1
-                        
-                        # Insert the new substation point with its attributes
-                        row_values = (point, substation_id, round(x), round(y))
-                        insert_cursor.insertRow(row_values)
-                        
-                    x += spacing * 1000
-                y += spacing * 1000
+    # Add fields 'TERRITORY1' and 'ISO_TER1' if they do not exist
+    existing_fields = [field.name for field in arcpy.ListFields(output_feature_class)]
+    for field_name in ["Territory", "ISO"]:
+        if field_name not in existing_fields:
+            arcpy.AddField_management(output_feature_class, field_name, "TEXT")
+    
+    # Initialize substation index counter
+    substation_index = 1
 
-            arcpy.AddMessage(f"Generated substations for feature with Substation ID {substation_id}.")
+    # Generate points within the bounding box of the input layer's extent
+    # considering the specified spacing using NumPy
+    with arcpy.da.SearchCursor(input_layer, ["SHAPE@", "TERRITORY1", "ISO_TER1"]) as cursor:
+        for row in cursor:
+            shape = row[0]
+            territory = row[1]
+            iso_territory = row[2]
+            extent = shape.extent
+            # Convert extent to numpy array for easier manipulation
+            extent = np.array([extent.XMin, extent.YMin, extent.XMax, extent.YMax])
+            # Calculate number of points in x and y directions
+            num_points_x = int((extent[2] - extent[0]) / (spacing * 1000))
+            num_points_y = int((extent[3] - extent[1]) / (spacing * 1000))
+            # Generate grid of x and y coordinates
+            x_coords = np.linspace(extent[0], extent[2], num_points_x)
+            y_coords = np.linspace(extent[1], extent[3], num_points_y)
+            # Generate meshgrid of x and y coordinates
+            xx, yy = np.meshgrid(x_coords, y_coords)
+            # Flatten meshgrid to get 1D arrays
+            flat_x = xx.flatten()
+            flat_y = yy.flatten()
+            # Create points and insert them into feature class
+            for x, y in zip(flat_x, flat_y):
+                point = arcpy.Point(x, y)
+                if shape.contains(point):
+                    substation_id = f"{iso_territory}_{substation_index}"  # Generate substation ID
+                    substation_index += 1  # Increment substation index
+                    insert_cursor.insertRow((point, substation_id, round(x, 6), round(y, 6), territory, iso_territory))  # Rounding coordinates to avoid precision issues
+            # Reset substation index for next shape
+            substation_index = 0
+
+
 
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
