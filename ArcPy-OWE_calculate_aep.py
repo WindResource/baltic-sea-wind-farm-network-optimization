@@ -20,7 +20,6 @@ def calculate_aep_and_capacity_factor(weibullA, weibullK):
     # Wind turbine availability factor
     ava_factor = 0.94
     
-    # New parameters for cut-off wind speed and turbine rating
     turbine_rating = 8 * 1e3  # Turbine rating (kW)
     cutoff_wind_speed = 25  # Cut-off wind speed (m/s)
 
@@ -50,15 +49,11 @@ def calculate_aep_and_capacity_factor(weibullA, weibullK):
     # Calculate probability density function (PDF) of Weibull distribution at each wind speed
     pdf_array = weibull_dist.pdf(wind_speed_array)
 
-    # Interpolate the PDF array to match the length of power output
-    pdf_interp_func = interp1d(wind_speed_array, pdf_array, kind='linear', fill_value='extrapolate')
-    pdf_interp = pdf_interp_func(wind_speeds)
-
     # Adjusting the power output considering the cutoff wind speed
-    power_output = np.array([power_curve_func(wind_speed) if wind_speed <= cutoff_wind_speed else 0 for wind_speed in wind_speeds])
+    power_output = np.array([power_curve_func(wind_speed) if wind_speed <= cutoff_wind_speed else 0 for wind_speed in wind_speed_array])
 
     # Calculate AEP by summing the product of power output and interpolated PDF over wind speeds
-    aep = np.sum(power_output * pdf_interp) * hours_per_year * ava_factor # Convert to kWh per year
+    aep = np.sum(power_output * pdf_array) * hours_per_year * ava_factor # Convert to kWh per year
 
     # Calculate capacity factor
     capacity_factor = (aep / (turbine_rating * hours_per_year)) * 100  # Convert to percentage
