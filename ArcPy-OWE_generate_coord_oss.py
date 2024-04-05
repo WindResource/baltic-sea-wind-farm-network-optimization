@@ -70,29 +70,40 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             territory = row[1]
             iso_territory = row[2]
             extent = shape.extent
+
             # Convert extent to numpy array for easier manipulation
-            extent = np.array([extent.XMin, extent.YMin, extent.XMax, extent.YMax])
+            extent_array = np.array([extent.XMin, extent.YMin, extent.XMax, extent.YMax])
+
             # Calculate number of points in x and y directions
-            num_points_x = int((extent[2] - extent[0]) / (spacing * 1000))
-            num_points_y = int((extent[3] - extent[1]) / (spacing * 1000))
-            # Generate grid of x and y coordinates
-            x_coords = np.linspace(extent[0], extent[2], num_points_x)
-            y_coords = np.linspace(extent[1], extent[3], num_points_y)
-            # Generate meshgrid of x and y coordinates
+            num_points_x = int((extent_array[2] - extent_array[0]) / (spacing * 1000))
+            num_points_y = int((extent_array[3] - extent_array[1]) / (spacing * 1000))
+
+            # Generate grid of x and y coordinates using meshgrid
+            x_coords = np.linspace(extent_array[0], extent_array[2], num_points_x)
+            y_coords = np.linspace(extent_array[1], extent_array[3], num_points_y)
             xx, yy = np.meshgrid(x_coords, y_coords)
-            # Flatten meshgrid to get 1D arrays
-            flat_x = xx.flatten()
-            flat_y = yy.flatten()
-            # Create points and insert them into feature class
-            for x, y in zip(flat_x, flat_y):
-                point = arcpy.Point(x, y)
-                if shape.contains(point):
-                    # Reproject point to WGS 1984
-                    point_geo = arcpy.PointGeometry(point, utm_spatial_ref).projectAs(wgs84_spatial_ref)
-                    x_wgs84, y_wgs84 = point_geo.centroid.X, point_geo.centroid.Y
-                    substation_id = f"{iso_territory}_{substation_index}"  # Generate substation ID
-                    insert_cursor.insertRow((point, substation_id, round(x_wgs84, 6), round(y_wgs84, 6), territory, iso_territory))  # Rounding coordinates to avoid precision issues
-                    substation_index += 1  # Increment substation index
+
+            # Create points using numpy arrays directly
+            points = np.column_stack((xx.flatten(), yy.flatten()))
+
+            # Create geometry objects for points
+            point_geometries = [arcpy.PointGeometry(arcpy.Point(x, y), utm_spatial_ref) for x, y in points]
+
+            # Filter points using contains method of shape object
+            contained_points = [point for point, p_geom in zip(points, point_geometries) if shape.contains(p_geom.centroid)]
+
+            # Create rows to insert into feature class
+            rows = [(arcpy.Point(point[0], point[1]), f"{iso_territory}_{substation_index}",
+                    round(point[0], 6), round(point[1], 6), territory, iso_territory) for point in contained_points]
+
+            # Insert rows in batch
+            with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
+                for row in rows:
+                    insert_cursor.insertRow(row)
+
+            # Increment substation index
+            substation_index += len(contained_points)
+
             # Reset substation index for next shape
             substation_index = 1
 
