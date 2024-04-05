@@ -48,38 +48,28 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
     # Processing for country selection and buffering
     countries_layer = arcpy.management.MakeFeatureLayer(countries_feature_layer_url, "countries_layer").getOutput(0)
     arcpy.management.SelectLayerByAttribute(countries_layer, "NEW_SELECTION", f"ISO IN {tuple(iso_country_code)}")
-    arcpy.management.CopyFeatures(countries_layer, "in_memory\\selected_country")
-    arcpy.management.Project("in_memory\\selected_country", "in_memory\\selected_country_projected", wkid)
     
     # Processing for HELCOM MPA
     helcom_mpa_layer = arcpy.management.MakeFeatureLayer(helcom_mpa_feature_layer_url, "helcom_mpa_layer").getOutput(0)
-    arcpy.management.CopyFeatures(helcom_mpa_layer, "in_memory\\helcom_mpa")
-    arcpy.management.Project("in_memory\\helcom_mpa", "in_memory\\helcom_mpa_projected", wkid)
     
     # Processing for EEZ
     arcpy.management.SelectLayerByAttribute(eez_layer, "NEW_SELECTION", f"ISO_TER1 IN {tuple(iso_eez_country_code)}")
-    arcpy.management.CopyFeatures(eez_layer, "in_memory\\selected_eez_layer")
-    arcpy.management.Project("in_memory\\selected_eez_layer", "in_memory\\selected_eez_layer_projected", wkid)
 
     # Create a polygon covering the area west of 9 degrees longitude for Europe
     # The polygon is drawn to cover Europe west of 9 degrees longitude
     europe_west_of_9_deg_polygon = arcpy.Polygon(arcpy.Array([arcpy.Point(x, y) for x, y in [(-10, 90), (-10, -90), (9, -90), (9, 90), (-10, 90)]]), wkid)
 
     # Erase the part of the EEZ features that are west of the 9-degree longitude polygon
-    east_eez_layer = "in_memory\\east_eez"
-    arcpy.analysis.Erase("in_memory\\selected_eez_layer_projected", europe_west_of_9_deg_polygon, east_eez_layer)
+    east_eez_layer = arcpy.analysis.Erase(eez_layer, europe_west_of_9_deg_polygon, None)
 
     # Create buffer for the selected country
-    buffer_layer = "in_memory\\buffered_country"
-    arcpy.analysis.Buffer("in_memory\\selected_country_projected", buffer_layer, f"{buffer_distance} Kilometers", "FULL", "ROUND", "NONE", None, "GEODESIC")
+    buffer_layer = arcpy.analysis.Buffer(countries_layer, "in_memory\\buffered_country", f"{buffer_distance} Kilometers", "FULL", "ROUND", "NONE", None, "GEODESIC").getOutput(0)
 
     # Pairwise erase for the buffered country from EEZ
-    temp_erased_eez = "in_memory\\temp_erased_eez"
-    arcpy.analysis.PairwiseErase(east_eez_layer, buffer_layer, temp_erased_eez)
+    temp_erased_eez = arcpy.analysis.PairwiseErase(east_eez_layer, buffer_layer, None)
 
     # Pairwise erase for HELCOM MPA from previously erased EEZ
-    final_erased_eez = "in_memory\\final_erased_eez"
-    arcpy.analysis.PairwiseErase(temp_erased_eez, "in_memory\\helcom_mpa_projected", final_erased_eez)
+    final_erased_eez = arcpy.analysis.PairwiseErase(temp_erased_eez, helcom_mpa_layer, None)
     
     # Save the output to a new shapefile
     output_feature_class = f"{output_folder}\\OSSA_All_Baltic_Countries.shp"
@@ -89,10 +79,6 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
 
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
-
-    # Clean up in_memory datasets
-    for item in arcpy.ListFeatureClasses("*", "ALL", "in_memory"):
-        arcpy.Delete_management(item)
 
 if __name__ == "__main__":
     iso_country_code = arcpy.GetParameterAsText(0)  # ISO 2 char
