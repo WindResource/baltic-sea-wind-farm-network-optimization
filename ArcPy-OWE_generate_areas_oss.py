@@ -1,6 +1,6 @@
 import arcpy
 
-def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, output_folder, buffer_distance=5):
+def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, output_folder, buffer_distance):
     """
     Creates a new EEZ shapefile for selected countries, erases the part of the polygon features that are west of the 9-degree longitude,
     erases the pairwise buffered areas of the selected countries and HELCOM Marine Protected Areas (MPA) from the EEZ shapefile,
@@ -21,6 +21,10 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
     helcom_mpa_feature_layer_url = "https://maps.helcom.fi/arcgis/rest/services/MADS/Biodiversity/MapServer/54"
     wkid = 4326  # WGS 1984
 
+    # Set default buffer distance
+    if not buffer_distance:
+        buffer_distance = 5
+    
     # Check if ISO country codes are not provided by the user
     if not iso_country_code:
         iso_country_code = baltic_sea_iso_2
@@ -63,7 +67,7 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
     east_eez_layer = arcpy.analysis.Erase(eez_layer, europe_west_of_9_deg_polygon, None)
 
     # Create buffer for the selected country
-    buffer_layer = arcpy.analysis.Buffer(countries_layer, "in_memory\\buffered_country", f"{buffer_distance} Kilometers", "FULL", "ROUND", "NONE", None, "GEODESIC").getOutput(0)
+    buffer_layer = arcpy.analysis.Buffer(countries_layer, "in_memory\\buffered_country", f"{float(buffer_distance)} Kilometers", "FULL", "ROUND", "NONE", None, "GEODESIC").getOutput(0)
 
     # Pairwise erase for the buffered country from EEZ
     temp_erased_eez = arcpy.analysis.PairwiseErase(east_eez_layer, buffer_layer, None)
@@ -84,6 +88,6 @@ if __name__ == "__main__":
     iso_country_code = arcpy.GetParameterAsText(0)  # ISO 2 char
     iso_eez_country_code = arcpy.GetParameterAsText(1)  # ISO 3 char
     output_folder = arcpy.GetParameterAsText(2)
-    buffer_distance = float(arcpy.GetParameterAsText(3))  # Ensure this is a float
+    buffer_distance = arcpy.GetParameterAsText(3)
     
     generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, output_folder, buffer_distance)
