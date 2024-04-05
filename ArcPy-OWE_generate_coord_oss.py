@@ -96,10 +96,13 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             rows = [(arcpy.Point(point[0], point[1]), f"{iso_territory}_{substation_index}",
                     round(point[0], 6), round(point[1], 6), territory, iso_territory) for point in contained_points]
 
-            # Insert rows in batch
-            with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
-                for row in rows:
-                    insert_cursor.insertRow(row)
+            # Insert rows in batches of 100
+            batch_size = 100
+            for i in range(0, len(rows), batch_size):
+                batch_rows = rows[i:i + batch_size]
+                with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
+                    for row in batch_rows:
+                        insert_cursor.insertRow(row)
 
             # Increment substation index
             substation_index += len(contained_points)
