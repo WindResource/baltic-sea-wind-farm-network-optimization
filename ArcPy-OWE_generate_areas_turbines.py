@@ -1,3 +1,6 @@
+import arcpy
+import os
+
 def generate_turbine_areas(output_folder: str, countries_input: str = None, status: str = "Planned") -> str:
     """
     Create a single shapefile for selected countries and status based on the input shapefile, utilizing in-memory workspaces.
@@ -17,72 +20,47 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
     else:
         countries = countries_input.split(';')
 
+    wkid = 4326  # WGS 1984
+
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
     # Get the first feature layer in the map that starts with 'windfarmspoly'
-    input_layer = None
+    wf_layer = None
     for layer in map.listLayers():
         if layer.isFeatureLayer:
             if layer.name.startswith('windfarmspoly'):
-                input_layer = layer
+                wf_layer = layer
                 break
 
-    if input_layer is None:
+    if wf_layer is None:
         arcpy.AddError("No layer starting with 'windfarmspoly' found in the current map.")
         return
-    
-    arcpy.AddMessage(f"Processing layer: {input_layer.name}")
 
-    # Get the path of the feature class
-    feature_class_path = input_layer.dataSource
+    arcpy.AddMessage(f"Processing layer: {wf_layer.name}")
 
-    # Define the output spatial reference (WKID 32633 - WGS 1984 UTM Zone 33N)
-    output_spatial_reference = arcpy.SpatialReference(32633)
-
-    # Create a feature layer to hold the selected features
-    output_layer = arcpy.management.MakeFeatureLayer(feature_class_path, "temp_output_layer").getOutput(0)
-
-    # Define the query to filter out features based on selected countries and status
-    query = f"country IN {tuple(countries)} AND status = '{status}'"
-    
-    # Select features based on the query
-    arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", query)
-
-    # Define a list to hold selected features based on longitude condition
-    selected_features = []
+    # Processing for EEZ
+    arcpy.management.SelectLayerByAttribute(wf_layer, "NEW_SELECTION", f"country IN {tuple(countries)} AND status = '{status}'")
+    arcpy.management.CopyFeatures(wf_layer, "in_memory\\selected_wf_layer")
 
     # Iterate through features and select those that meet the longitude condition
-    with arcpy.da.SearchCursor(output_layer, ['SHAPE@X', 'SHAPE@', 'country', 'status']) as cursor:
+    with arcpy.da.UpdateCursor("in_memory\\selected_wf_layer", ['SHAPE@X']) as cursor:
         for row in cursor:
-            if row[0] > 9:  # Check if longitude is greater than 9
-                selected_features.append(row[1])
-    
-    # Check if there are any selected features
-    if selected_features:
-        # Create a temporary feature class to hold the selected features
-        temp_feature_class = os.path.join(arcpy.env.scratchGDB, "temp_selected_features")
-        arcpy.CopyFeatures_management(selected_features, temp_feature_class)
-        
-        # Remove specified fields before exporting
-        fields_to_remove = ['name', 'n_turbines', 'power_mw', 'year', 'dist_coast', 'area_sqkm', 'notes']
-        arcpy.management.DeleteField(temp_feature_class, fields_to_remove)
-        
-        # Define the output shapefile path
-        output_shapefile = os.path.join(output_folder, f"WFA_BalticSea_{status}.shp")
+            if row[0] < 9:  # Check if longitude is greater than 9
+                cursor.deleteRow()
 
-        # Project and export the selected features to a new shapefile
-        arcpy.management.Project(temp_feature_class, output_shapefile, output_spatial_reference)
+    # Define the output shapefile path
+    output_shapefile = os.path.join(output_folder, f"WFA_BalticSea_{status}.shp")
 
-        # Add the shapefile to the current map in ArcGIS Pro
-        map.addDataFromPath(output_shapefile)
+    # Copy the selected features to a new shapefile
+    arcpy.management.CopyFeatures("in_memory\\selected_wf_layer", output_shapefile)
 
-        # Return the path to the created shapefile
-        return output_shapefile
-    else:
-        arcpy.AddWarning(f"No features found for selected countries '{countries_input}' with status '{status}' and longitude greater than 10. No shapefile created.")
-        return ""
+    # Add the shapefile to the current map in ArcGIS Pro
+    map.addDataFromPath(output_shapefile)
+
+    # Return the path to the created shapefile
+    return output_shapefile
 
 if __name__ == "__main__":
     windfarm_folder = arcpy.GetParameterAsText(0)   # The path to the output folder
