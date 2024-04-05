@@ -47,26 +47,28 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
     # Define the output spatial reference (WKID 32633 - WGS 1984 UTM Zone 33N)
     output_spatial_reference = arcpy.SpatialReference(32633)
 
-    # Create a list to hold selected features
-    selected_features = []
+    # Create a feature layer to hold the selected features
+    output_layer = arcpy.management.MakeFeatureLayer(feature_class_path, "temp_output_layer").getOutput(0)
 
-    # Iterate through features and select those that match the selected countries and status
-    with arcpy.da.SearchCursor(feature_class_path, ['SHAPE@', 'country', 'status']) as cursor:
-        for row in cursor:
-            if row[1] in countries and row[2] == status:
-                selected_features.append(row[0])
+    # Define the query to filter out features based on selected countries and status
+    query = f"country IN {tuple(countries)} AND status = '{status}'"
     
-    # Check if there are any selected features
-    if selected_features:
-        # Create a temporary feature class to hold the selected features
-        temp_feature_class = os.path.join(arcpy.env.scratchGDB, "temp_selected_features")
-        arcpy.CopyFeatures_management(selected_features, temp_feature_class)
+    # Select features based on the query
+    arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", query)
+    
+    # Count the selected features
+    count = arcpy.management.GetCount(output_layer).getOutput(0)
+    
+    if int(count) > 0:
+        # Remove specified fields before exporting
+        fields_to_remove = ['name', 'n_turbines', 'power_mw', 'year', 'dist_coast', 'area_sqkm', 'notes']
+        arcpy.management.DeleteField(output_layer, fields_to_remove)
         
         # Define the output shapefile path
         output_shapefile = os.path.join(output_folder, f"WFA_BalticSea_{status}.shp")
 
         # Project and export the selected features to a new shapefile
-        arcpy.management.Project(temp_feature_class, output_shapefile, output_spatial_reference)
+        arcpy.management.Project(output_layer, output_shapefile, output_spatial_reference)
 
         # Add the shapefile to the current map in ArcGIS Pro
         map.addDataFromPath(output_shapefile)
