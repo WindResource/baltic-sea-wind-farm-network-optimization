@@ -114,15 +114,16 @@ def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type="AC"
         r_seabed = r_hub + (water_depth + 3) / slope
         volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
         
-        support_structure_costs = c1 * volume_island + c2 * area_island
+        supp_costs = c1 * volume_island + c2 * area_island
     else:
         # Calculate foundation costs for jacket/floating
-        support_structure_costs = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
+        supp_costs = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
     
-    substation_costs = c5 * oss_capacity * int(1e3) + c6 * int(1e6) #* int(1e3)
-    total_costs = support_structure_costs + substation_costs
+    # Power converter costs
+    conv_costs = c5 * oss_capacity * int(1e3) + c6 * int(1e6) #* int(1e3)
+    equip_costs = supp_costs + conv_costs
     
-    return total_costs
+    return supp_costs, conv_costs, equip_costs
 
 def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_type = "AC", operation = "inst"):
     """
@@ -162,12 +163,12 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
         r_seabed = r_hub + (water_depth + 3) / slope
         volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
         
-        total_costs = ((volume_island / c1) * ((2 * port_distance / 1000) / c2) + (volume_island / c3) + (volume_island / c4)) * (c5 * 1000) / 24
+        total_costs = ((volume_island / c1) * ((2 * port_distance) / c2) + (volume_island / c3) + (volume_island / c4)) * (c5 * 1000) / 24
         arcpy.AddMessage(f"1 {volume_island}")
     elif support_structure == 'jacket':
         c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
         # Calculate installation costs for jacket
-        total_costs = ((1 / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4) * (c5 * 1000) / 24
+        total_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
     elif support_structure == 'floating':
         total_costs = 0
         
@@ -176,7 +177,7 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
             c1, c2, c3, c4, c5 = coeff[vessel_type]
             
             # Calculate installation costs for the current vessel type
-            vessel_costs = ((1 / c1) * ((2 * port_distance / 1000) / c2 + c3) + c4) * (c5 * 1000) / 24
+            vessel_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
             
             # Add the costs for the current vessel type to the total costs
             total_costs += vessel_costs
@@ -196,13 +197,12 @@ def update_fields():
     def add_field_if_not_exists(layer, field_name, field_type):
         if field_name not in [field.name for field in arcpy.ListFields(layer)]:
             arcpy.AddField_management(layer, field_name, field_type)
-            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
     
     # Define the capacities for which fields are to be added
-    capacities = [500, 750, 1000, 1250, 1500]
+    capacities = [500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500]
 
     # Define the expense categories
-    expense_categories = ['Equ', 'Ins', 'Cap', 'Ope', 'Dec'] # Equipment costs, Installation costs, Capital expenses, Operating expenses, decommissioning expenses
+    expense_categories = ['Sup', 'Cnv', 'Equ', 'Ins', 'Cap', 'Ope', 'Dec'] # Equipment costs, Installation costs, Capital expenses, Operating expenses, decommissioning expenses
 
     # Define fields to be added if they don't exist
     fields_to_add = [('SuppStruct', 'TEXT')]
@@ -219,23 +219,27 @@ def update_fields():
     map = aprx.activeMap
 
     # Find the offshore substation layer
-    oss_layer = next((layer for layer in map.listLayers() if layer.name.startswith('OSSC')), None)
+    oss_layers = [layer for layer in map.listLayers() if layer.name.startswith('OSSC')]
 
-    # Check if the turbine layer exists
-    if not oss_layer:
+    # Check if any OSSC layer exists
+    if not oss_layers:
         arcpy.AddError("No layer starting with 'OSSC' found in the current map.")
         return
 
+    # Select the first OSSC layer
+    oss_layer = oss_layers[0]
+
     # Deselect all currently selected features
     arcpy.SelectLayerByAttribute_management(oss_layer, "CLEAR_SELECTION")
-    
+
     arcpy.AddMessage(f"Processing layer: {oss_layer.name}")
 
     # Check if required fields exist in the attribute table
-    fields = [field.name for field in arcpy.ListFields(oss_layer)]
+    fields = arcpy.ListFields(oss_layer)
+    field_names = {field.name for field in fields}
     required_fields = ['WaterDepth', 'Distance']
     for field in required_fields:
-        if field not in fields:
+        if field not in field_names:
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
             return
 
@@ -244,14 +248,14 @@ def update_fields():
         add_field_if_not_exists(oss_layer, field_name, field_type)
 
     # Update each row in the attribute table
-    with arcpy.da.UpdateCursor(oss_layer, fields) as cursor:
+    with arcpy.da.UpdateCursor(oss_layer, [field.name for field in fields]) as cursor:
         for row in cursor:
-            water_depth = row[fields.index("WaterDepth")]
-            port_distance = row[fields.index("Distance")]
+            water_depth = row[field_names.index("WaterDepth")]
+            port_distance = row[field_names.index("Distance")]
             
             # Determine and assign Support structure
             support_structure = determine_support_structure(water_depth)
-            row[fields.index('SuppStruct')] = support_structure.capitalize()
+            row[field_names.index('SuppStruct')] = support_structure.capitalize()
 
             for capacity in capacities:
                 for sub_type in ['AC', 'DC']:
@@ -259,23 +263,25 @@ def update_fields():
                     def rnd(r):
                         return round(r / int(1e6), 6)
                     
-                    # Equipment Costs
-                    equip_costs = calc_equip_costs(water_depth, support_structure, capacity, HVC_type=sub_type)
-                    row[fields.index(f'Equ{capacity}_{sub_type}')] = rnd(equip_costs)
+                    # Material Costs
+                    supp_costs, conv_costs, equip_costs = calc_equip_costs(water_depth, support_structure, capacity, HVC_type=sub_type)
+                    row[field_names.index(f'Sup{capacity}_{sub_type}')] = rnd(supp_costs)
+                    row[field_names.index(f'Cnv{capacity}_{sub_type}')] = rnd(conv_costs)
+                    row[field_names.index(f'Equ{capacity}_{sub_type}')] = rnd(equip_costs)
 
                     # Installation and Decommissioning Costs
                     inst_costs = calc_costs(water_depth, support_structure, port_distance, capacity, HVC_type=sub_type, operation="inst")
                     deco_costs = calc_costs(water_depth, support_structure, port_distance, capacity, HVC_type=sub_type, operation="deco")
-                    row[fields.index(f'Ins{capacity}_{sub_type}')] = rnd(inst_costs)
-                    row[fields.index(f'Dec{capacity}_{sub_type}')] = rnd(deco_costs)
+                    row[field_names.index(f'Ins{capacity}_{sub_type}')] = rnd(inst_costs)
+                    row[field_names.index(f'Dec{capacity}_{sub_type}')] = rnd(deco_costs)
 
                     # Calculate and assign the capital expenses (the sum of the equipment and installation costs)
                     capital_expenses = equip_costs + inst_costs
-                    row[fields.index(f'Cap{capacity}_{sub_type}')] = rnd(capital_expenses)
+                    row[field_names.index(f'Cap{capacity}_{sub_type}')] = rnd(capital_expenses)
 
                     # Calculate and assign operating expenses
-                    operating_expenses = 0.03 * equip_costs
-                    row[fields.index(f'Ope{capacity}_{sub_type}')] = rnd(operating_expenses)
+                    operating_expenses = 0.03 * conv_costs + 0.015 * supp_costs if support_structure == 'sandisland' else 0.03 * conv_costs
+                    row[field_names.index(f'Ope{capacity}_{sub_type}')] = rnd(operating_expenses)
 
             cursor.updateRow(row)
 
