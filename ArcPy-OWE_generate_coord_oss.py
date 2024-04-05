@@ -94,20 +94,30 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             # Filter points using the containment mask
             contained_points = points[contains_mask]
 
-            # Create rows to insert into feature class
-            rows = [(arcpy.Point(point[0], point[1]), f"{iso_territory}_{substation_index}",
-                    round(point[0], 6), round(point[1], 6), territory, iso_territory) for point in contained_points]
+            # Initialize substation index counter
+            substation_index = 1
 
-            # Insert rows in batches of 100
-            batch_size = 100
-            for i in range(0, len(rows), batch_size):
-                batch_rows = rows[i:i + batch_size]
-                with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
+            # Create rows to insert into feature class
+            rows = []
+            for point in contained_points:
+                rows.append((
+                    arcpy.Point(point[0], point[1]), 
+                    f"{iso_territory}_{substation_index}",
+                    round(point[0]), 
+                    round(point[1]), 
+                    territory, 
+                    iso_territory
+                ))
+                substation_index += 1  # Increment the substation index for each point
+
+            # Create insert cursor outside of the loop
+            with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
+                # Insert rows in batches of 100
+                batch_size = 100
+                for i in range(0, len(rows), batch_size):
+                    batch_rows = rows[i:i + batch_size]
                     for row in batch_rows:
                         insert_cursor.insertRow(row)
-
-            # Increment substation index
-            substation_index += len(contained_points)
 
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
