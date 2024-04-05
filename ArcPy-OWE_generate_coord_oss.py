@@ -41,10 +41,10 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     output_feature_class = os.path.join(output_folder, output_feature_class_name)
     
     # Reproject input_layer to UTM
-    input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory", "reprojected_layer"), utm_spatial_ref)[0]
+    input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory\\input_layer"), utm_spatial_ref)[0]
 
     # Create the output feature class for substations
-    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=utm_spatial_ref)
+    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=wgs84_spatial_ref)
 
     # Prepare to insert new substation point features
     insert_cursor_fields = ["SHAPE@", "StationID", "XCoord", "YCoord", "Territory", "ISO"]
@@ -94,18 +94,21 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             # Filter points using the containment mask
             contained_points = points[contains_mask]
 
+            # Project the contained points to WGS 1984 spatial reference
+            projected_points = [arcpy.PointGeometry(arcpy.Point(*point), utm_spatial_ref).projectAs(wgs84_spatial_ref) for point in contained_points]
+
             # Initialize substation index counter
             substation_index = 1
 
             # Create rows to insert into feature class
             rows = []
-            for point in contained_points:
+            for point in projected_points:
                 rows.append((
-                    arcpy.Point(point[0], point[1]), 
+                    point,
                     f"{iso_territory}_{substation_index}",
-                    round(point[0]), 
-                    round(point[1]), 
-                    territory, 
+                    round(point.centroid.X),
+                    round(point.centroid.Y),
+                    territory,
                     iso_territory
                 ))
                 substation_index += 1  # Increment the substation index for each point
