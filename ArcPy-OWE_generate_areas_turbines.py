@@ -1,6 +1,3 @@
-import arcpy
-import os
-
 def generate_turbine_areas(output_folder: str, countries_input: str = None, status: str = "Planned") -> str:
     """
     Create a single shapefile for selected countries and status based on the input shapefile, utilizing in-memory workspaces.
@@ -36,9 +33,6 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
         arcpy.AddError("No layer starting with 'windfarmspoly' found in the current map.")
         return
     
-    # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
-    
     arcpy.AddMessage(f"Processing layer: {input_layer.name}")
 
     # Get the path of the feature class
@@ -55,20 +49,31 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
     
     # Select features based on the query
     arcpy.management.SelectLayerByAttribute(output_layer, "NEW_SELECTION", query)
+
+    # Define a list to hold selected features based on longitude condition
+    selected_features = []
+
+    # Iterate through features and select those that meet the longitude condition
+    with arcpy.da.SearchCursor(output_layer, ['SHAPE@X', 'SHAPE@', 'country', 'status']) as cursor:
+        for row in cursor:
+            if row[0] > 9:  # Check if longitude is greater than 9
+                selected_features.append(row[1])
     
-    # Count the selected features
-    count = arcpy.management.GetCount(output_layer).getOutput(0)
-    
-    if int(count) > 0:
+    # Check if there are any selected features
+    if selected_features:
+        # Create a temporary feature class to hold the selected features
+        temp_feature_class = os.path.join(arcpy.env.scratchGDB, "temp_selected_features")
+        arcpy.CopyFeatures_management(selected_features, temp_feature_class)
+        
         # Remove specified fields before exporting
         fields_to_remove = ['name', 'n_turbines', 'power_mw', 'year', 'dist_coast', 'area_sqkm', 'notes']
-        arcpy.management.DeleteField(output_layer, fields_to_remove)
+        arcpy.management.DeleteField(temp_feature_class, fields_to_remove)
         
         # Define the output shapefile path
         output_shapefile = os.path.join(output_folder, f"WFA_BalticSea_{status}.shp")
 
         # Project and export the selected features to a new shapefile
-        arcpy.management.Project(output_layer, output_shapefile, output_spatial_reference)
+        arcpy.management.Project(temp_feature_class, output_shapefile, output_spatial_reference)
 
         # Add the shapefile to the current map in ArcGIS Pro
         map.addDataFromPath(output_shapefile)
@@ -76,7 +81,7 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
         # Return the path to the created shapefile
         return output_shapefile
     else:
-        arcpy.AddWarning(f"No features found for selected countries '{countries_input}' with status '{status}'. No shapefile created.")
+        arcpy.AddWarning(f"No features found for selected countries '{countries_input}' with status '{status}' and longitude greater than 10. No shapefile created.")
         return ""
 
 if __name__ == "__main__":
