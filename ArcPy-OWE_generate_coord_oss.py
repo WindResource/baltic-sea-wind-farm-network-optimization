@@ -71,26 +71,28 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             iso_territory = row[2]
             extent = shape.extent
 
-            # Convert extent to numpy array for easier manipulation
-            extent_array = np.array([extent.XMin, extent.YMin, extent.XMax, extent.YMax])
-
             # Calculate number of points in x and y directions
-            num_points_x = int((extent_array[2] - extent_array[0]) / (spacing * 1000))
-            num_points_y = int((extent_array[3] - extent_array[1]) / (spacing * 1000))
+            num_points_x = int((extent.width / (spacing * 1000)) + 1)
+            num_points_y = int((extent.height / (spacing * 1000)) + 1)
 
-            # Generate grid of x and y coordinates using meshgrid
-            x_coords = np.linspace(extent_array[0], extent_array[2], num_points_x)
-            y_coords = np.linspace(extent_array[1], extent_array[3], num_points_y)
+            # Generate points within the extent directly
+            x_coords = np.linspace(extent.XMin, extent.XMax, num_points_x)
+            y_coords = np.linspace(extent.YMin, extent.YMax, num_points_y)
+
+            # Create grid of x and y coordinates using meshgrid
             xx, yy = np.meshgrid(x_coords, y_coords)
 
-            # Create points using numpy arrays directly
+            # Flatten the grid to create a 2D array of points
             points = np.column_stack((xx.flatten(), yy.flatten()))
 
-            # Create geometry objects for points
-            point_geometries = [arcpy.PointGeometry(arcpy.Point(x, y), utm_spatial_ref) for x, y in points]
+            # Create point geometries for all points
+            point_geometries = [arcpy.PointGeometry(arcpy.Point(*point), utm_spatial_ref) for point in points]
 
-            # Filter points using contains method of shape object
-            contained_points = [point for point, p_geom in zip(points, point_geometries) if shape.contains(p_geom.centroid)]
+            # Check containment of all points using vectorized operation
+            contains_mask = np.array([shape.contains(pt.centroid) for pt in point_geometries])
+
+            # Filter points using the containment mask
+            contained_points = points[contains_mask]
 
             # Create rows to insert into feature class
             rows = [(arcpy.Point(point[0], point[1]), f"{iso_territory}_{substation_index}",
@@ -106,9 +108,6 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
             # Increment substation index
             substation_index += len(contained_points)
-
-            # Reset substation index for next shape
-            substation_index = 1
 
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
