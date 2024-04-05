@@ -106,8 +106,8 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
                 rows.append((
                     point,
                     f"{iso_territory}_{substation_index}",
-                    round(point.centroid.X),
-                    round(point.centroid.Y),
+                    round(point.centroid.X, 3),
+                    round(point.centroid.Y, 3),
                     territory,
                     iso_territory
                 ))
