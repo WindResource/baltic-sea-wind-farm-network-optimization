@@ -1,31 +1,7 @@
 import arcpy
 import pandas as pd
-import pyproj
 import time
 import os
-
-def lon_lat_to_utm(lon_array, lat_array):
-    """
-    Convert longitude and latitude coordinates to UTM coordinates.
-
-    Parameters:
-        lon_array (numpy.ndarray): Array of longitude values.
-        lat_array (numpy.ndarray): Array of latitude values.
-
-    Returns:
-        tuple: Tuple containing arrays of UTM x-coordinates and y-coordinates.
-    """
-    # Define the projection from WGS84 (EPSG:4326) to UTM Zone 33N (EPSG:32633)
-    wgs84 = pyproj.Proj(init='epsg:4326')
-    utm33n = pyproj.Proj(init='epsg:32633')
-
-    try:
-        # Perform the transformation
-        x_array, y_array = pyproj.transform(wgs84, utm33n, lon_array, lat_array)
-        return x_array, y_array
-    except Exception as e:
-        arcpy.Addmessage(f"Error occurred during coordinate transformation: {e}")
-        return None, None
 
 def identify_countries(point_features):
     """
@@ -37,57 +13,85 @@ def identify_countries(point_features):
     Returns:
         str: Path to the modified point features shapefile.
     """
+    # Define ISO 2 char and ISO 3 char for Baltic Sea countries
+    iso_country_code = ['DK', 'EE', 'FI', 'DE', 'LV', 'LT', 'PL', 'SE']
+    iso_eez_country_code = ['DNK', 'EST', 'FIN', 'DEU', 'LVA', 'LTU', 'POL', 'SWE']
+    # Mapping between 3-letter and 2-letter ISO country codes
+    iso_mp = { "DNK": "DK", "EST": "EE", "FIN": "FI", "DEU": "DE", "LVA": "LV", "LTU": "LT", "POL": "PL", "SWE": "SE" }
+    
     feature_layer_url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World_Countries_(Generalized)/FeatureServer/0"
+    wgs84 = arcpy.SpatialReference(4326)
     
-    # UTM Zone
-    utm_wkid = 32633  # UTM Zone 33N
+    # Ensure the EEZ layer is available in the current map
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
+    eez_layer = None
+    for layer in map.listLayers():
+        if layer.name.startswith('eez_v12'):
+            eez_layer = layer
+            break
+    if eez_layer is None:
+        arcpy.AddError("No EEZ layer found. Ensure a layer starting with 'eez_v12' is loaded in the map.")
+        return
     
-    try:
-        # Create feature layer from URL
-        countries_layer = arcpy.management.MakeFeatureLayer(feature_layer_url, "countries_layer").getOutput(0)
-        
-        # Convert the feature layer to a polygon feature layer
-        arcpy.management.CopyFeatures(countries_layer, "in_memory\\countries_polygon")
+    # Select EEZ countries
+    arcpy.management.SelectLayerByAttribute(eez_layer, "NEW_SELECTION", f"ISO_TER1 IN {tuple(iso_eez_country_code)}")
+    # Copy features to in memory
+    arcpy.management.CopyFeatures(eez_layer, "in_memory\\eez_layer")
+    
+    # Ensure iso_country_code and iso_eez_country_code are lists
+    if isinstance(iso_country_code, str):
+        iso_country_code = [iso_country_code]
 
-        # Project the feature layer to the specified UTM Zone
-        arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", utm_wkid)
+    # Create feature layer from URL
+    countries_layer = arcpy.management.MakeFeatureLayer(feature_layer_url, "countries_layer").getOutput(0)
+    # Select countries
+    arcpy.management.SelectLayerByAttribute(countries_layer, "NEW_SELECTION", f"ISO IN {tuple(iso_country_code)}")
+    # Convert the feature layer to a polygon feature layer
+    arcpy.management.CopyFeatures(countries_layer, "in_memory\\countries_polygon")
+    # Project the feature layer to the specified UTM Zone
+    arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", wgs84)
 
-        # Perform the first spatial join between the point features and the projected country polygons using "WITHIN" criteria
-        arcpy.analysis.SpatialJoin(point_features, "in_memory\\countries_projected", "in_memory\\point_country_join",
-                                    join_type="KEEP_ALL", match_option="WITHIN")
-        
-        # Perform the second spatial join between the points with null country values and country polygons within a certain distance using "CLOSEST" criteria
-        arcpy.analysis.SpatialJoin(point_features, "in_memory\\countries_projected", "in_memory\\point_country_join_distance_close",
-                                    join_type="KEEP_ALL", match_option="CLOSEST", search_radius="150 Kilometers")
-        
-        # Add the Country and ISO fields to the original point features
-        arcpy.management.AddField(point_features, "Country", "TEXT")
-        arcpy.management.AddField(point_features, "ISO", "TEXT")
-        
-        # Update the "Country" and "ISO" fields from the first spatial join
-        with arcpy.da.UpdateCursor(point_features, ["Country", "ISO"]) as update_cursor:
-            with arcpy.da.SearchCursor("in_memory\\point_country_join", ["COUNTRY", "ISO"]) as search_cursor:
-                for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
-                        update_row[0] = country_value if country_value else "Unknown"
-                        update_row[1] = iso_cc_value if iso_cc_value else "Unknown"
-                        update_cursor.updateRow(update_row)
+    # Copy features to in memory
+    arcpy.management.CopyFeatures(point_features, "in_memory\\point_features")
+    # Perform the first spatial join between the point features and the projected country polygons using "WITHIN" criteria
+    arcpy.analysis.SpatialJoin("in_memory\\point_features", "in_memory\\countries_projected", "in_memory\\point_country_join_first",
+                                join_type="KEEP_ALL", match_option="WITHIN")
+    
+    # Perform the second spatial join between the points with null country values and country polygons within a certain distance using "CLOSEST" criteria
+    arcpy.analysis.SpatialJoin("in_memory\\point_features", "in_memory\\eez_layer", "in_memory\\point_country_join_second",
+                                join_type="KEEP_ALL", match_option="CLOSEST", search_radius="2 Kilometers")
+    
+    # Add the Country and ISO fields to the original point features
+    arcpy.management.AddFields("in_memory\\point_features", [("Country", "TEXT"),("ISO", "TEXT")])
+    
+    # Update the "Country" and "ISO" fields from the first spatial join
+    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO"]) as update_cursor:
+        with arcpy.da.SearchCursor("in_memory\\point_country_join_first", ["COUNTRY", "ISO"]) as search_cursor:
+            for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
+                    update_row[0] = country_value if country_value else "Unknown"
+                    update_row[1] = iso_cc_value if iso_cc_value else "Unknown"
+                    update_cursor.updateRow(update_row)
 
-        # Update the "Country" and "ISO" fields from the second spatial join
-        with arcpy.da.UpdateCursor(point_features, ["Country", "ISO"]) as update_cursor:
-            with arcpy.da.SearchCursor("in_memory\\point_country_join_distance_close", ["COUNTRY", "ISO"]) as search_cursor:
-                for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
-                    if update_row[0] == "Unknown" or update_row[1] == "Unknown":  # Check if Country or ISO is Unknown
-                        update_row[0] = str(country_value) if country_value else "Unknown"
-                        update_row[1] = str(iso_cc_value) if iso_cc_value else "Unknown"
-                        update_cursor.updateRow(update_row)
 
-        return point_features
+    # Update the "Country" and "ISO" fields from the second spatial join  
+    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO", "Type"]) as update_cursor:
+        with arcpy.da.SearchCursor("in_memory\\point_country_join_second", ["TERRITORY1", "ISO_TER1"]) as search_cursor:
+            for (country, ISO, type), (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
+                if country == "Unknown" or ISO == "Unknown":  # Check if Country or ISO is Unknown
+                    if type in ['Station', 'Substation', 'Sub_station'] and (country_value or iso_cc_value):
+                        country = country_value
+                        ISO = iso_mp.get(iso_cc_value, "Unknown")
+                        update_cursor.updateRow((country, ISO, type))
+                    else:
+                        update_cursor.deleteRow()
+                elif type not in ['Station', 'Substation', 'Sub_station']:
+                    update_cursor.deleteRow()
 
-    except Exception as e:
-        import traceback
-        arcpy.AddMessage("An error occurred:")
-        arcpy.AddMessage(traceback.format_exc())
-        return None
+    # Convert the feature layer to a point feature layer
+    arcpy.management.CopyFeatures("in_memory\\point_features", point_features)
+    
+    return point_features
 
 def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> None:
     """
@@ -96,78 +100,65 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
     Parameters:
         excel_file (str): Path to the Excel file.
         highvoltage_vertices_folder (str): Path to the output folder for the shapefile.
-        feature_layer_url (str): URL of the feature layer containing country boundaries.
     """
+    # Define the spatial reference for EPSG:4326 (WGS84)
+    spatial_ref = arcpy.SpatialReference(4326)  
     start_time = time.time()
-    try:
-        arcpy.AddMessage("Reading Excel data...")
-        # Read Excel data using pandas
-        df = pd.read_excel(excel_file)
 
-        arcpy.AddMessage("Creating output shapefile...")
-        # Define the output shapefile path
-        output_shapefile = os.path.join(highvoltage_vertices_folder, "highvoltage_vertices_Europe.shp")
+    arcpy.AddMessage("Reading Excel data...")
+    # Read Excel data using pandas
+    df = pd.read_excel(excel_file)
 
-        # Define the spatial reference for EPSG:32633
-        spatial_ref = arcpy.SpatialReference(32633)
+    # Create a new shapefile to store the point features with EPSG:4326 spatial reference
+    output_shapefile = os.path.join(highvoltage_vertices_folder, "highvoltage_vertices_Europe.shp")
+    # Check if the shapefile already exists, delete it if it does
+    if arcpy.Exists(output_shapefile):
+        arcpy.Delete_management(output_shapefile)
+    # Create the shapefile
+    arcpy.management.CreateFeatureclass(highvoltage_vertices_folder, "highvoltage_vertices_Europe.shp", "POINT", spatial_reference=spatial_ref)
 
-        # Create a new shapefile to store the point features with EPSG:32633 spatial reference
-        arcpy.management.CreateFeatureclass(highvoltage_vertices_folder, "highvoltage_vertices.shp", "POINT", spatial_reference=spatial_ref)
+    # Define fields to store attributes
+    fields = [
+        ("Longitude", "DOUBLE"),
+        ("Latitude", "DOUBLE"),
+        ("Type", "TEXT"),
+        ("Voltage", "TEXT"),
+        ("Frequency", "TEXT")
+    ]
 
-        arcpy.AddMessage("Adding fields to shapefile...")
-        # Define fields to store attributes
-        fields = [
-            ("Xcoord", "DOUBLE"),
-            ("Ycoord", "DOUBLE"),
-            ("Type", "TEXT"),
-            ("Voltage", "TEXT"),
-            ("Frequency", "TEXT")
-        ]
+    # Add fields to the shapefile
+    arcpy.management.AddFields(output_shapefile, fields)
 
-        # Add fields to the shapefile
-        for field_name, field_type in fields:
-            arcpy.management.AddField(output_shapefile, field_name, field_type)
+    # Open an insert cursor to add features to the output shapefile
+    with arcpy.da.InsertCursor(output_shapefile, ["SHAPE@XY", "Longitude", "Latitude", "Type", "Voltage", "Frequency"]) as cursor:
+        for row in df.itertuples():
+            longitude, latitude = row.lon, row.lat
+            typ, voltage, frequency = row.typ.capitalize(), row.voltage, row.frequency
 
-        # Convert lon and lat to UTM (WKID 32633)
-        arcpy.AddMessage("Converting longitude and latitude to UTM...")
-        lon_array = df['lon'].values
-        lat_array = df['lat'].values
-        x_array, y_array = lon_lat_to_utm(lon_array, lat_array)
+            # Check if voltage is null
+            if pd.isnull(voltage):
+                voltage = ""
 
-        arcpy.AddMessage("Creating point features and adding to feature class...")
-        # Open an insert cursor to add features to the output shapefile
-        with arcpy.da.InsertCursor(output_shapefile, ["SHAPE@XY", "Xcoord", "Ycoord", "Type", "Voltage", "Frequency"]) as cursor:
-            for i, row in enumerate(df.iterrows()):
-                voltage, frequency = row[1]['voltage'], row[1]['frequency']
-                typ = row[1]['typ'].capitalize()
-                x, y = x_array[i], y_array[i]
+            # Check if frequency is null
+            if pd.isnull(frequency):
+                frequency = ""
 
-                # Check if voltage is null
-                if pd.isnull(voltage):
-                    voltage = ""
+            # Insert the row with the geometry and attributes
+            cursor.insertRow([(longitude, latitude), longitude, latitude, typ, voltage, frequency])
 
-                # Check if frequency is null
-                if pd.isnull(frequency):
-                    frequency = ""
+    arcpy.AddMessage("Identifying countries...")
+    # Identify countries and add the country field to the point features
+    output_shapefile = identify_countries(output_shapefile)
 
-                # Insert the row with the geometry and attributes
-                cursor.insertRow([(x, y), round(x), round(y), typ, voltage, frequency])
+    arcpy.AddMessage("Adding shapefile to the map...")
+    # Add the shapefile to the map
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map_object = aprx.activeMap
+    map_object.addDataFromPath(output_shapefile)
 
-        arcpy.AddMessage("Identifying countries...")
-        # Identify countries and add the country field to the point features
-        output_shapefile = identify_countries(output_shapefile)
+    end_time = time.time()
+    arcpy.AddMessage(f"Total processing time: {end_time - start_time} seconds")
 
-        arcpy.AddMessage("Adding shapefile to the map...")
-        # Add the shapefile to the map
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map_object = aprx.activeMap
-        map_object.addDataFromPath(output_shapefile)
-
-        end_time = time.time()
-        arcpy.AddMessage(f"Total processing time: {end_time - start_time} seconds")
-
-    except Exception as e:
-        arcpy.AddMessage(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     # Get user parameters
