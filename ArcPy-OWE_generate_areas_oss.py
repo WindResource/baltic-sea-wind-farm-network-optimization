@@ -64,10 +64,10 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
     europe_west_of_9_deg_polygon = arcpy.Polygon(arcpy.Array([arcpy.Point(x, y) for x, y in [(-10, 90), (-10, -90), (9, -90), (9, 90), (-10, 90)]]), wkid)
 
     # Erase the part of the EEZ features that are west of the 9-degree longitude polygon
-    east_eez_layer = arcpy.analysis.Erase(eez_layer, europe_west_of_9_deg_polygon, None)
+    east_eez_layer = arcpy.analysis.PairwiseErase(eez_layer, europe_west_of_9_deg_polygon, None)
 
     # Create buffer for the selected country
-    buffer_layer = arcpy.analysis.Buffer(countries_layer, "in_memory\\buffered_country", f"{float(buffer_distance)} Kilometers", "FULL", "ROUND", "NONE", None, "GEODESIC").getOutput(0)
+    buffer_layer = arcpy.analysis.PairwiseBuffer(countries_layer, "in_memory\\buffered_country", f"{float(buffer_distance)} Kilometers", "FULL", "ROUND", "NONE", None, "GEODESIC").getOutput(0)
 
     # Pairwise erase for the buffered country from EEZ
     temp_erased_eez = arcpy.analysis.PairwiseErase(east_eez_layer, buffer_layer, None)
