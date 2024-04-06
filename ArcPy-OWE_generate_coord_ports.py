@@ -18,7 +18,7 @@ def process_feature_service(output_folder: str, country_name: str = None) -> Non
     feature_service_url = "https://services.arcgis.com/hRUr1F8lE8Jq2uJo/ArcGIS/rest/services/World_Port_Index/FeatureServer/0"
 
     # WGS 1984 WKID
-    wgs84 = 4326  # WGS 1984
+    wgs84 = arcpy.SpatialReference(4326)  # WGS 1984
 
     # Create a feature layer from the feature service
     feature_layer = arcpy.management.MakeFeatureLayer(feature_service_url, "World_Port_Index").getOutput(0)
@@ -42,11 +42,11 @@ def process_feature_service(output_folder: str, country_name: str = None) -> Non
 
     if count > 0:
         # Convert the feature layer to a point feature layer
-        arcpy.management.FeatureToPoint(feature_layer, f"in_memory\\BalticSea__Points", "INSIDE")
+        arcpy.management.FeatureToPoint(feature_layer, "in_memory\\BalticSea_Points", "INSIDE")
 
         # Project the point feature layer to WGS 1984
-        arcpy.management.Project(f"in_memory\\BalticSea_Points", f"in_memory\\BalticSea_Points_Projected", wgs84)
-        
+        arcpy.management.Project("in_memory\\BalticSea_Points", "in_memory\\BalticSea_Points_Projected", wgs84)
+
         # Create a new shapefile in the output folder
         output_shapefile = os.path.join(output_folder, "BalticSea_SelectedPorts.shp")
 
@@ -54,14 +54,20 @@ def process_feature_service(output_folder: str, country_name: str = None) -> Non
         if arcpy.Exists(output_shapefile):
             arcpy.management.Delete(output_shapefile)        
 
+        # Save the projected point features from the in-memory workspace to the specified output shapefile.
         arcpy.management.CopyFeatures(f"in_memory\\BalticSea_Points_Projected", output_shapefile)
 
+        # Delete unnecessary fields in the output shapefile
+        fields_to_keep = ["FID", "INDEX_NO", "REGION_NO", "PORT_NAME", "COUNTRY", "LATITUDE", "LONGITUDE", "HARBORSIZE", "HARBORTYPE"]
+        fields_to_delete = [field.name for field in arcpy.ListFields(output_shapefile) if field.name not in fields_to_keep and not field.required]
+        arcpy.management.DeleteField(output_shapefile, fields_to_delete)
+        
         # Use arcpy.mp to add the layer to the map
         aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map_object = aprx.activeMap
+        map = aprx.activeMap
 
-        # Add the layer to the map
-        map_object.addLayer(output_shapefile)
+        # Add the generated shapefile to the current map
+        map.addDataFromPath(output_shapefile)
 
     else:
         arcpy.AddMessage(f"No features found for Baltic Sea countries")
