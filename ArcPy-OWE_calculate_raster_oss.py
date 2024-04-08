@@ -1,53 +1,7 @@
 import arcpy
 import numpy as np
 
-def project_raster() -> arcpy.Raster:
-    """
-    Project the bathymetry raster to the specified coordinate system.
-
-    Returns:
-    - arcpy.Raster: Projected raster.
-    """
-    try:
-        # Set the spatial reference to UTM Zone 33N
-        utm_wkid = 32633  # UTM Zone 33N
-        utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
-
-        # Get the current map
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map = aprx.activeMap
-
-        # Get the first layer in the map that ends with 'bathymetry.tif'
-        input_layer = None
-        for layer in map.listLayers():
-            if layer.name.endswith('bathymetry.tif'):
-                input_layer = layer
-                break
-
-        if input_layer is None:
-            arcpy.AddError("No bathymetry raster ending with 'bathymetry' found in the active map.")
-            return None
-
-        arcpy.AddMessage(f"Projecting bathymetry raster '{input_layer}' to UTM Zone 33N...")
-
-        # Project the raster using arcpy.ProjectRaster_management
-        result = arcpy.management.ProjectRaster(input_layer, "in_memory\\projected_raster", utm_spatial_ref)
-        
-        # Get the output raster from the result object
-        projected_raster = result.getOutput(0)
-
-        arcpy.AddMessage("Raster projection completed.")
-
-        return projected_raster
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to project bathymetry raster: {e}")
-        return None
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred during bathymetry raster projection: {e}")
-        return None
-
-def calculate_raster(projected_raster: arcpy.Raster) -> None:
+def calculate_raster() -> None:
     """
     Calculate water depth from a projected bathymetry raster and add it to the attribute table of a offshore substation feature layer.
 
@@ -57,11 +11,7 @@ def calculate_raster(projected_raster: arcpy.Raster) -> None:
     Returns:
     - None
     """
-
-    # Ensure that projected_raster is an arcpy Raster object
-    if isinstance(projected_raster, str):
-        projected_raster = arcpy.Raster(projected_raster)
-
+    
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
@@ -71,43 +21,52 @@ def calculate_raster(projected_raster: arcpy.Raster) -> None:
     for layer in map.listLayers():
         if layer.isFeatureLayer:
             if layer.name.startswith('OSSC'):
-                input_layer = layer
+                coord_layer = layer
+            if 'bathymetry' in layer.name:
+                raster_layer = layer
                 break
     
-    if input_layer is None:
+    if coord_layer is None:
         arcpy.AddError("No feature layer starting with 'OSSC' found in the current map.")
+    if raster_layer is None:
+        arcpy.AddError("No feature layer with 'bathymetry' found in the current map.")
         return
 
     arcpy.AddMessage(f"Processing layer: {input_layer.name}")
     
     # Convert raster to numpy array
-    raster_array = arcpy.RasterToNumPyArray(projected_raster, nodata_to_value=np.nan)
+    raster_array = arcpy.RasterToNumPyArray(raster_layer, nodata_to_value=np.nan)
 
     # Invert the sign of the water depth values
     raster_array = - raster_array
     
     # Get raster properties
-    extent = projected_raster.extent
-    cell_width = projected_raster.meanCellWidth
-    cell_height = projected_raster.meanCellHeight
+    extent = raster_layer.extent
+    cell_width = raster_layer.meanCellWidth
+    cell_height = raster_layer.meanCellHeight
 
     # Add 'WaterDepth' field if it does not exist in the feature layer
     field_name = "WaterDepth"
     if field_name not in [field.name for field in arcpy.ListFields(input_layer)]:
         arcpy.management.AddField(input_layer, field_name, "DOUBLE")
 
-    # Update the attribute table with water depth values
-    with arcpy.da.UpdateCursor(input_layer, ["SHAPE@", field_name]) as cursor:
-        for row in cursor:
-            # Get the centroid of the shape
-            centroid = row[0].centroid
-            
-            # Get the cell indices
-            col = int((centroid.X - extent.XMin) / cell_width)
-            row_index = int((extent.YMax - centroid.Y) / cell_height)
-            
-            # Get the water depth value from the numpy array
-            water_depth = raster_array[row_index, col]
+    # Get the X and Y coordinates of all points in the input layer
+    xy_points = np.array([[point.X, point.Y] for point, in arcpy.da.SearchCursor(input_layer, "SHAPE@XY")])
+
+    # Calculate the column indices of the cells containing all points
+    cell_columns = np.round((xy_points[:, 0] - extent.XMin) / cell_width).astype(int)
+
+    # Calculate the row indices of the cells containing all points
+    cell_rows = np.round((extent.YMax - xy_points[:, 1]) / cell_height).astype(int)
+
+    # Get water depth values for all points using numpy indexing
+    water_depths = raster_array[cell_rows, cell_columns]
+
+    # Update the 'WaterDepth' field in the attribute table for all points
+    with arcpy.da.UpdateCursor(input_layer, ["OID@", field_name]) as cursor:
+        for i, row in enumerate(cursor):
+            # Extract water depth value for the current point
+            water_depth = water_depths[i]
             
             # Update the 'WaterDepth' field
             row[1] = float(water_depth) if not np.isnan(water_depth) else None
@@ -117,15 +76,4 @@ def calculate_raster(projected_raster: arcpy.Raster) -> None:
 
 # Check if the script is executed standalone or as a module
 if __name__ == "__main__":
-    try:
-        # Project the bathymetry raster
-        projected_raster = project_raster()
-
-        if projected_raster:
-            # Calculate water depth for the turbine layer using the projected raster
-            calculate_raster(projected_raster)
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddMessage(f"Failed to process wind turbine feature layer: {e}")
-    except Exception as e:
-        arcpy.AddMessage(f"An unexpected error occurred: {e}")
+    calculate_raster()
