@@ -35,10 +35,8 @@ def identify_countries(point_features):
         return
     
     # Select EEZ countries
-    arcpy.management.SelectLayerByAttribute(eez_layer, "NEW_SELECTION", f"ISO_TER1 IN {tuple(iso_eez_country_code)}")
-    # Copy features to in memory
-    arcpy.management.CopyFeatures(eez_layer, "in_memory\\eez_layer")
-    
+    arcpy.analysis.Select(eez_layer, "in_memory\\eez_layer", f"ISO_TER1 IN {tuple(iso_eez_country_code)}")
+
     # Ensure iso_country_code and iso_eez_country_code are lists
     if isinstance(iso_country_code, str):
         iso_country_code = [iso_country_code]
@@ -46,9 +44,7 @@ def identify_countries(point_features):
     # Create feature layer from URL
     countries_layer = arcpy.management.MakeFeatureLayer(feature_layer_url, "countries_layer").getOutput(0)
     # Select countries
-    arcpy.management.SelectLayerByAttribute(countries_layer, "NEW_SELECTION", f"ISO IN {tuple(iso_country_code)}")
-    # Convert the feature layer to a polygon feature layer
-    arcpy.management.CopyFeatures(countries_layer, "in_memory\\countries_polygon")
+    arcpy.analysis.Select(countries_layer, "in_memory\\countries_polygon", f"ISO IN {tuple(iso_country_code)}")
     # Project the feature layer to the specified UTM Zone
     arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", wgs84)
 
@@ -88,14 +84,11 @@ def identify_countries(point_features):
                 elif type not in ['Station', 'Substation', 'Sub_station']:
                     update_cursor.deleteRow()
                     
-    # # Create a buffer around the EEZ layer boundary
-    # arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "200 Kilometers")
+    # Create a buffer around the EEZ layer boundary
+    arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "200 Kilometers")
 
-    # # Select point features within the buffer
-    # arcpy.management.SelectLayerByLocation("in_memory\\point_features", "WITHIN", "in_memory\\eez_buffer")
-    
-    # Convert the feature layer to a point feature layer
-    arcpy.management.CopyFeatures("in_memory\\point_features", point_features)
+    # Select point features within the buffer
+    arcpy.analysis.PairwiseClip("in_memory\\point_features", "in_memory\\eez_buffer", point_features)
     
     return point_features
 
