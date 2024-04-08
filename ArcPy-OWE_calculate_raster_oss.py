@@ -79,11 +79,7 @@ def calculate_raster() -> None:
                     water_depth = raster_array[cell_row, cell_column]
                     
                     # Update the 'WaterDepth' field in the attribute table
-                    if not np.isnan(water_depth):
-                        row[1] = float(-water_depth)  # Inverse the sign
-                    else:
-                        if row[1] is None:  # If there was no previous value
-                            row[1] = -999  # Assign 0 if water depth cannot be determined
+                    row[1] = float(-water_depth) if not np.isnan(water_depth) else row[1] or 0
                     cursor.updateRow(row)
 
     arcpy.AddMessage("Water depth calculation and attribute update completed.")
