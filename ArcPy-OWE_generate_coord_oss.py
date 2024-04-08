@@ -83,7 +83,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             points = np.column_stack((xx.flatten(), yy.flatten()))
 
             # Create point geometries for all points
-            point_geometries = [arcpy.PointGeometry(arcpy.Point(*point), utm_spatial_ref) for point in points]
+            point_geometries = [arcpy.PointGeometry(arcpy.Point(*point), utm33) for point in points]
 
             # Check containment of all points using vectorized operation
             contains_mask = np.array([shape.contains(pt.centroid) for pt in point_geometries])
@@ -92,7 +92,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             contained_points = points[contains_mask]
 
             # Project the contained points to WGS 1984 spatial reference
-            projected_points = [arcpy.PointGeometry(arcpy.Point(*point), utm_spatial_ref).projectAs(wgs84_spatial_ref) for point in contained_points]
+            projected_points = [arcpy.PointGeometry(arcpy.Point(*point), utm33).projectAs(wgs84) for point in contained_points]
 
             # Initialize substation index counter
             substation_index = 1
