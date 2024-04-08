@@ -47,7 +47,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory\\input_layer"), utm33)[0]
     
     # Create one output feature class for all turbine points
-    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=utm33)
+    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=wgs84)
 
     # Add necessary fields to the output feature class
     arcpy.AddFields_management(output_feature_class, [
