@@ -1,5 +1,6 @@
 import arcpy
 import os
+import numpy as np
 
 def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, turbine_diameter: float, turbine_spacing: float) -> None:
     """
@@ -12,92 +13,127 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     - turbine_diameter: Diameter of each wind turbine in meters.
     - turbine_spacing: Desired spacing between turbines, in terms of turbine diameters.
     """
-    
+
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
-    utm_wkid = 32633  # Example: UTM Zone 33N
-    utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
+    utm33 = arcpy.SpatialReference(32633)  # Example: UTM Zone 33N
+    wgs84 = arcpy.SpatialReference(4326)
+    
+    
+    # Get the current map
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
 
-    try:
-        # Get the current map
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map = aprx.activeMap
+    # Get the first layer in the map that starts with 'WFA'
+    input_layer = None
+    for layer in map.listLayers():
+        if layer.name.startswith('WFA'):
+            input_layer = layer
+            break
+    
+    if input_layer is None:
+        arcpy.AddError("No layer starting with 'WFA' found in the current map.")
+        return
+    
+    # Deselect all currently selected features
+    arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
+    
+    arcpy.AddMessage(f"Processing layer: {input_layer.name}")
 
-        # Get the first layer in the map that starts with 'WFA'
-        input_layer = None
-        for layer in map.listLayers():
-            if layer.name.startswith('WFA'):
-                input_layer = layer
-                break
+    # Modify output feature class name
+    output_feature_class_name = input_layer.name.replace('WFA', 'WTC') + ".shp"
+    output_feature_class = os.path.join(output_folder, output_feature_class_name)
+
+    # Reproject input_layer to UTM
+    input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory\\input_layer"), utm33)[0]
+    
+    # Create one output feature class for all turbine points
+    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=utm33)
+
+    # Add necessary fields to the output feature class
+    arcpy.AddFields_management(output_feature_class, [
+        ["TurbineID", "TEXT", "", "", 50, "Turbine ID"],
+        ["XCoord", "DOUBLE", "", "", "", "Longitude"],
+        ["YCoord", "DOUBLE", "", "", "", "Latitude"],
+        ["Capacity", "DOUBLE", "", "", "", "Capacity (MW)"],
+        ["Diameter", "DOUBLE", "", "", "", "Diameter (m)"],
+        ["FeatureFID", "LONG", "", "", "", "Feature FID"],
+        ["Country", "TEXT", "", "", 100, "Country"],
+        ["Name", "TEXT", "", "", 100, "Name"],
+        ["Status", "TEXT", "", "", 50, "Status"]
+    ])
+
+    # Prepare to insert new turbine point features
+    insert_cursor_fields = ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter", "FeatureFID", "Country", "Name", "Status"]
+    insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
+
+    # Calculate the spacing in meters
+    spacing = turbine_spacing * turbine_diameter
         
-        if input_layer is None:
-            arcpy.AddError("No layer starting with 'WFA' found in the current map.")
-            return
-        
-        # Deselect all currently selected features
-        arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
-        
-        arcpy.AddMessage(f"Processing layer: {input_layer.name}")
+    # Generate points within the bounding box of the input layer's extent
+    # considering the specified spacing using NumPy
+    search_fields = ["SHAPE@", "OID@", "Country", "Name", "Status"]
+    with arcpy.da.SearchCursor(input_layer, search_fields) as feature_cursor:
+        for row, (shape, fid, country, name, status) in enumerate(feature_cursor):
+            extent = shape.extent
 
-        # Modify output feature class name
-        output_feature_class_name = input_layer.name.replace('WFA', 'WTC') + ".shp"
-        output_feature_class = os.path.join(output_folder, output_feature_class_name)
+            # Calculate number of points in x and y directions
+            num_points_x = int((extent.width / (spacing)) + 1)
+            num_points_y = int((extent.height / (spacing)) + 1)
 
-        # Create one output feature class for all turbine points
-        arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=utm_spatial_ref)
+            # Generate points within the extent directly
+            x_coords = np.linspace(extent.XMin, extent.XMax, num_points_x)
+            y_coords = np.linspace(extent.YMin, extent.YMax, num_points_y)
 
-        # Add necessary fields to the output feature class
-        arcpy.AddFields_management(output_feature_class, [
-            ["TurbineID", "TEXT", "", "", 50, "Turbine ID"],
-            ["XCoord", "DOUBLE", "", "", "", "Longitude"],
-            ["YCoord", "DOUBLE", "", "", "", "Latitude"],
-            ["Capacity", "DOUBLE", "", "", "", "Capacity (MW)"],
-            ["Diameter", "DOUBLE", "", "", "", "Diameter (m)"],
-            ["FeatureFID", "LONG", "", "", "", "Feature FID"],
-            ["Country", "TEXT", "", "", 100, "Country"],
-            ["Name", "TEXT", "", "", 100, "Name"],
-            ["Status", "TEXT", "", "", 50, "Status"]
-        ])
+            # Create grid of x and y coordinates using meshgrid
+            xx, yy = np.meshgrid(x_coords, y_coords)
 
-        # Prepare to insert new turbine point features
-        insert_cursor_fields = ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter", "FeatureFID", "Country", "Name", "Status"]
-        insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
+            # Flatten the grid to create a 2D array of points
+            points = np.column_stack((xx.flatten(), yy.flatten()))
 
-        # Calculate the spacing in meters
-        spacing = turbine_spacing * turbine_diameter
-        
-        # Iterate through each feature in the input layer
-        search_fields = ["SHAPE@", "OID@", "Country", "Name", "Status"]
-        with arcpy.da.SearchCursor(input_layer, search_fields) as feature_cursor:
-            for feature_index, (shape, fid, country, name, status) in enumerate(feature_cursor):
-                # Reset turbine index for each feature
-                turbine_index = 0
-                
-                # Generate points within the feature's bounding box
-                bounding_box = shape.extent
-                y = bounding_box.YMin
-                while y <= bounding_box.YMax:
-                    x = bounding_box.XMin
-                    while x <= bounding_box.XMax:
-                        point = arcpy.Point(x, y)
-                        if shape.contains(point):  # Check if the point is inside the feature's polygon
-                            turbine_id = f"Turbine_{feature_index}_{turbine_index}"
-                            turbine_index += 1
-                            
-                            # Insert the new turbine point with its attributes
-                            row_values = (point, turbine_id, round(x), round(y), turbine_capacity, turbine_diameter, fid, country, name, status)
-                            insert_cursor.insertRow(row_values)
-                        x += spacing
-                    y += spacing
+            # Create point geometries for all points
+            point_geometries = [arcpy.PointGeometry(arcpy.Point(*point), utm33) for point in points]
 
-                arcpy.AddMessage(f"Processed feature with FID {fid}, Country {country}, Name {name}, and Status {status} with turbines.")
-        
-        # Add the generated shapefile to the current map
-        map.addDataFromPath(output_feature_class)
+            # Check containment of all points using vectorized operation
+            contains_mask = np.array([shape.contains(pt.centroid) for pt in point_geometries])
 
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to process the shapefile: {e}")
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred: {e}")
+            # Filter points using the containment mask
+            contained_points = points[contains_mask]
+
+            # Project the contained points to WGS 1984 spatial reference
+            projected_points = [arcpy.PointGeometry(arcpy.Point(*point), utm33).projectAs(wgs84) for point in contained_points]
+
+            # Initialize substation index counter
+            turbine_index = 1
+
+            # Create rows to insert into feature class
+            rows = []
+            for point in projected_points:
+                rows.append((
+                    point,
+                    f"{fid}_{turbine_index}",
+                    round(point.centroid.X, 3),
+                    round(point.centroid.Y, 3),
+                    turbine_capacity,
+                    turbine_diameter,
+                    fid,
+                    country,
+                    name,
+                    status
+                ))
+                turbine_index += 1  # Increment the substation index for each point
+
+            # Create insert cursor outside of the loop
+            with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
+                # Insert rows in batches of 100
+                batch_size = 100
+                for i in range(0, len(rows), batch_size):
+                    batch_rows = rows[i:i + batch_size]
+                    for row in batch_rows:
+                        insert_cursor.insertRow(row)
+            
+    # Add the generated shapefile to the current map
+    map.addDataFromPath(output_feature_class)
+    
 
 if __name__ == "__main__":
     # Example user inputs
