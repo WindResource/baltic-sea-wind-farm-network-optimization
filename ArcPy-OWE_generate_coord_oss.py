@@ -13,11 +13,8 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     """
     
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
-    utm_wkid = 32633  # Example: UTM Zone 33N
-    utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
-
-    # Set the spatial reference to WGS 1984
-    wgs84_spatial_ref = arcpy.SpatialReference(4326)  # WKID for WGS 1984
+    utm33 = arcpy.SpatialReference(32633)
+    wgs84 = arcpy.SpatialReference(4326)
 
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -41,10 +38,10 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     output_feature_class = os.path.join(output_folder, output_feature_class_name)
     
     # Reproject input_layer to UTM
-    input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory\\input_layer"), utm_spatial_ref)[0]
+    input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory\\input_layer"), utm33)[0]
 
     # Create the output feature class for substations
-    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=wgs84_spatial_ref)
+    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=wgs84)
 
     # Prepare to insert new substation point features
     insert_cursor_fields = ["SHAPE@", "StationID", "XCoord", "YCoord", "Territory", "ISO"]
