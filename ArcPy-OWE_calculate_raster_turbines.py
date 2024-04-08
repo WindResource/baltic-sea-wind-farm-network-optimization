@@ -98,14 +98,15 @@ def calculate_raster() -> None:
                         # Update the corresponding variable based on the key and update the attribute table with obtained values
                         if key == 'bathymetry':
                             water_depth = value
-                            row[1] = float(-water_depth) if not np.isnan(water_depth) else row[1] or -999
+                            row[1] = float(- water_depth) if not np.isnan(water_depth) else row[1] or -999
                         elif key == 'Weibull-A':
                             weibull_a_value = value
-                            row[2] = float(weibull_a_value) if not np.isnan(weibull_a_value) else row[2] or -999
+                            row[2] = float(round(weibull_a_value, 3)) if not np.isnan(weibull_a_value) else row[2] or -999
                         elif key == 'Weibull-k':
                             weibull_k_value = value
-                            row[3] = float(weibull_k_value) if not np.isnan(weibull_k_value) else row[3] or -999
-                        cursor.updateRow(row)
+                            row[3] = float(round(weibull_k_value, 3)) if not np.isnan(weibull_k_value) else row[3] or -999
+                        
+                        if not np.isnan(value): cursor.updateRow(row)
                         
     arcpy.AddMessage("Water depth, Weibull-A, and Weibull-k calculation and attribute update completed.")
 
