@@ -138,10 +138,10 @@ def calc_equip_costs(water_depth, support_structure, year, turbine_capacity):
     }
 
     # Look up coefficients for each element in the arrays
-    c1, c2, c3 = np.vectorize(lambda ss, yr: support_structure_coeff[(ss, yr)][0])(support_structure, year)
-    c2_vals = np.vectorize(lambda ss, yr: support_structure_coeff[(ss, yr)][1])(support_structure, year)
-    c3_vals = np.vectorize(lambda ss, yr: support_structure_coeff[(ss, yr)][2])(support_structure, year)
-    support_structure_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2_vals * water_depth) + (c3_vals * 1000)
+    c1 = np.vectorize(lambda ss, yr: support_structure_coeff[(ss, yr)][0])(support_structure, year)
+    c2 = np.vectorize(lambda ss, yr: support_structure_coeff[(ss, yr)][1])(support_structure, year)
+    c3 = np.vectorize(lambda ss, yr: support_structure_coeff[(ss, yr)][2])(support_structure, year)
+    support_structure_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
     turbine_costs = turbine_capacity * turbine_coeff[year]
 
     equip_costs = support_structure_costs + turbine_costs
