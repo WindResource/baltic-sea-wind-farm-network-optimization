@@ -57,9 +57,11 @@ def calculate_raster() -> None:
     # Add fields if they do not exist in the feature layer
     fields_to_add = ["WaterDepth", "WeibullA", "WeibullK"]
     existing_fields = [field.name for field in arcpy.ListFields(coord_layer)]
-    for field in fields_to_add:
-        if field not in existing_fields:
-            arcpy.management.AddField(coord_layer, field, "DOUBLE")
+    fields_to_add = [field for field in fields_to_add if field not in existing_fields]  # Filter fields that do not exist
+
+    if fields_to_add:  # Only add fields if there are any to add
+        field_infos = [[field, "DOUBLE"] for field in fields_to_add]
+        arcpy.management.AddFields(coord_layer, field_infos)
 
     # Update the attribute table with water depth, Weibull-A, and Weibull-k values
     with arcpy.da.UpdateCursor(coord_layer, ["SHAPE@", "WaterDepth", "WeibullA", "WeibullK"]) as cursor:
@@ -93,20 +95,18 @@ def calculate_raster() -> None:
                         # Get the value from the numpy array
                         value = raster_array[cell_row, cell_column]
 
-                        # Update the corresponding variable based on the key
+                        # Update the corresponding variable based on the key and update the attribute table with obtained values
                         if key == 'bathymetry':
                             water_depth = value
+                            row[1] = float(-water_depth) if not np.isnan(water_depth) else row[1] or -999
                         elif key == 'Weibull-A':
                             weibull_a_value = value
+                            row[2] = float(weibull_a_value) if not np.isnan(weibull_a_value) else row[2] or -999
                         elif key == 'Weibull-k':
                             weibull_k_value = value
-            
-            # Update the attribute table with obtained values
-            row[1] = float(-water_depth) if not np.isnan(water_depth) else -999
-            row[2] = float(weibull_a_value) if not np.isnan(weibull_a_value) else -999
-            row[3] = float(weibull_k_value) if not np.isnan(weibull_k_value) else -999
-            cursor.updateRow(row)
-
+                            row[3] = float(weibull_k_value) if not np.isnan(weibull_k_value) else row[3] or -999
+                        cursor.updateRow(row)
+                        
     arcpy.AddMessage("Water depth, Weibull-A, and Weibull-k calculation and attribute update completed.")
 
 # Check if the script is executed standalone or as a module
