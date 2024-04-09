@@ -5,6 +5,7 @@ def process_feature_service(output_folder: str, country_name: str = None) -> Non
     """
     Process the feature service by selecting features based on the specified country,
     convert them to point features, project to WGS 1984, and save the output as a shapefile.
+    Additionally, adds a PortID field combining the country code and a counter.
 
     Parameters:
         output_folder (str): The folder where the output shapefile will be saved.
@@ -47,6 +48,20 @@ def process_feature_service(output_folder: str, country_name: str = None) -> Non
         # Project the point feature layer to WGS 1984
         arcpy.management.Project("in_memory\\BalticSea_Points", "in_memory\\BalticSea_Points_Projected", wgs84)
 
+        # Add a new PortID field combining country code and a counter
+        arcpy.management.AddField("in_memory\\BalticSea_Points_Projected", "PortID", "TEXT", field_length=10)
+        
+        # Initialize a counter for each country
+        counter_dict = {country: 1 for country in countries_to_process}
+
+        # Calculate the PortID field value for each feature
+        with arcpy.da.UpdateCursor("in_memory\\BalticSea_Points_Projected", ["COUNTRY", "PortID"]) as cursor:
+            for row in cursor:
+                country_code = row[0]
+                row[1] = f"{country_code}_{counter_dict[country_code]}"
+                counter_dict[country_code] += 1
+                cursor.updateRow(row)
+
         # Create a new shapefile in the output folder
         output_shapefile = os.path.join(output_folder, "BalticSea_SelectedPorts.shp")
 
@@ -55,10 +70,10 @@ def process_feature_service(output_folder: str, country_name: str = None) -> Non
             arcpy.management.Delete(output_shapefile)        
 
         # Save the projected point features from the in-memory workspace to the specified output shapefile.
-        arcpy.management.CopyFeatures(f"in_memory\\BalticSea_Points_Projected", output_shapefile)
+        arcpy.management.CopyFeatures("in_memory\\BalticSea_Points_Projected", output_shapefile)
 
         # Delete unnecessary fields in the output shapefile
-        fields_to_keep = ["FID", "INDEX_NO", "REGION_NO", "PORT_NAME", "COUNTRY", "LATITUDE", "LONGITUDE", "HARBORSIZE", "HARBORTYPE"]
+        fields_to_keep = ["FID", "INDEX_NO", "REGION_NO", "PORT_NAME", "COUNTRY", "LATITUDE", "LONGITUDE", "HARBORSIZE", "HARBORTYPE", "PortID"]
         fields_to_delete = [field.name for field in arcpy.ListFields(output_shapefile) if field.name not in fields_to_keep and not field.required]
         arcpy.management.DeleteField(output_shapefile, fields_to_delete)
         
