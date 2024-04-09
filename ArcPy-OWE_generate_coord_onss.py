@@ -122,12 +122,12 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
     df = pd.read_excel(excel_file)
 
     # Create a new shapefile to store the point features with EPSG:4326 spatial reference
-    output_shapefile = os.path.join(highvoltage_vertices_folder, "OnSS_BSR.shp")
+    output_shapefile = os.path.join(highvoltage_vertices_folder, "OnSS_BalticSea.shp")
     # Check if the shapefile already exists, delete it if it does
     if arcpy.Exists(output_shapefile):
         arcpy.Delete_management(output_shapefile)
     # Create the shapefile
-    arcpy.management.CreateFeatureclass(highvoltage_vertices_folder, "OnSS_BSR.shp", "POINT", spatial_reference=spatial_ref)
+    arcpy.management.CreateFeatureclass(highvoltage_vertices_folder, "OnSS_BalticSea.shp", "POINT", spatial_reference=spatial_ref)
 
     # Define fields to store attributes
     fields = [
