@@ -16,7 +16,7 @@ def haversine(lat1, lon1, lat2, lon2):
     return distance
 
 def calculate_distances_oss_port():
-    """Calculate distances between substation points and nearest port points."""
+    """Calculate distances between substation points and nearest port points within Baltic Sea countries."""
     # Setup and obtain layers as previously described
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
@@ -51,34 +51,45 @@ def calculate_distances_oss_port():
         arcpy.AddField_management(substation_layer, "PortName", "TEXT")
     if "Distance" not in field_names:
         arcpy.AddField_management(substation_layer, "Distance", "DOUBLE")
+    
+    # Define the list of Baltic Sea country codes
+    baltic_sea_countries = ["DK", "EE", "FI", "DE", "LV", "LT", "PL", "SE"]
 
-    # Get point coordinates for faster calculations
-    substation_points = np.array([(row[0].firstPoint.Y, row[0].firstPoint.X) for row in arcpy.da.SearchCursor(substation_layer, "SHAPE@")])
-    port_points = np.array([(row[0].firstPoint.Y, row[0].firstPoint.X) for row in arcpy.da.SearchCursor(port_layer, "SHAPE@")])
+    for country_code in baltic_sea_countries:
+        # Select substation features with the current country code
+        arcpy.SelectLayerByAttribute_management(substation_layer, "NEW_SELECTION", f"ISO = '{country_code}'")
+        
+        # Select port features with the current country code
+        arcpy.SelectLayerByAttribute_management(port_layer, "NEW_SELECTION", f"COUNTRY = '{country_code}'")
+        
+        # Get selected substation and port points
+        substation_points = np.array([(row[0].firstPoint.Y, row[0].firstPoint.X) for row in arcpy.da.SearchCursor(substation_layer, "SHAPE@")])
+        port_points = np.array([(row[0].firstPoint.Y, row[0].firstPoint.X) for row in arcpy.da.SearchCursor(port_layer, "SHAPE@")])
+        
+        # Initialize distances array
+        distances = np.zeros((len(substation_points), len(port_points)))
+        
+        # Continue with the distance calculation and updating as before
+        # Compute distances using Haversine formula
+        for i, substation_point in enumerate(substation_points):
+            for j, port_point in enumerate(port_points):
+                distances[i, j] = haversine(substation_point[0], substation_point[1], port_point[0], port_point[1])
 
-    # Initialize an array to store distances
-    distances = np.zeros((len(substation_points), len(port_points)))
+        # Find indices of closest ports for each substation
+        closest_port_indices = np.argmin(distances, axis=1)
+        closest_port_names = [row[0] for row in arcpy.da.SearchCursor(port_layer, "PORT_NAME")]
 
-    # Compute distances using Haversine formula
-    for i, substation_point in enumerate(substation_points):
-        for j, port_point in enumerate(port_points):
-            distances[i, j] = haversine(substation_point[0], substation_point[1], port_point[0], port_point[1])
+        # Cursor to update substation features
+        with arcpy.da.UpdateCursor(substation_layer, ["SHAPE@", "PortName", "Distance"]) as substation_cursor:
+            for i, substation_row in enumerate(substation_cursor):
+                closest_port_index = closest_port_indices[i]
+                closest_port_distance = distances[i, closest_port_index]
+                closest_port_name = closest_port_names[closest_port_index]
 
-    # Find indices of closest ports for each substation
-    closest_port_indices = np.argmin(distances, axis=1)
-    closest_port_names = [row[0] for row in arcpy.da.SearchCursor(port_layer, "PORT_NAME")]
-
-    # Cursor to update substation features
-    with arcpy.da.UpdateCursor(substation_layer, ["SHAPE@", "PortName", "Distance"]) as substation_cursor:
-        for i, substation_row in enumerate(substation_cursor):
-            closest_port_index = closest_port_indices[i]
-            closest_port_distance = distances[i, closest_port_index]
-            closest_port_name = closest_port_names[closest_port_index]
-
-            # Update fields in substation layer with closest port information
-            substation_row[1] = closest_port_name
-            substation_row[2] = closest_port_distance
-            substation_cursor.updateRow(substation_row)
+                # Update fields in substation layer with closest port information
+                substation_row[1] = closest_port_name.lower().capitalize()
+                substation_row[2] = round(closest_port_distance, 3)
+                substation_cursor.updateRow(substation_row)
 
 if __name__ == "__main__":
     calculate_distances_oss_port()
