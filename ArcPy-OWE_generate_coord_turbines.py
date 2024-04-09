@@ -19,7 +19,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     wgs84 = arcpy.SpatialReference(4326)
     
     # Define a dictionary mapping country names to their corresponding two-letter country codes
-    country_codes = {
+    iso_mp = {
         "Denmark": "DK",
         "Estonia": "EE",
         "Finland": "FI",
@@ -35,47 +35,48 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     map = aprx.activeMap
 
     # Get the first layer in the map that starts with 'WFA'
-    input_layer = None
+    wfa_layer = None
     for layer in map.listLayers():
         if layer.name.startswith('WFA'):
-            input_layer = layer
+            wfa_layer = layer
             break
     
-    if input_layer is None:
+    if wfa_layer is None:
         arcpy.AddError("No layer starting with 'WFA' found in the current map.")
         return
     
     # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
+    arcpy.SelectLayerByAttribute_management(wfa_layer, "CLEAR_SELECTION")
     
-    arcpy.AddMessage(f"Processing layer: {input_layer.name}")
+    arcpy.AddMessage(f"Processing layer: {wfa_layer.name}")
 
     # Modify output feature class name
-    output_feature_class_name = input_layer.name.replace('WFA', 'WTC') + ".shp"
-    output_feature_class = os.path.join(output_folder, output_feature_class_name)
+    wtc_name = wfa_layer.name.replace('WFA', 'WTC') + ".shp"
+    wtc_layer = os.path.join(output_folder, wtc_name)
 
     # Reproject input_layer to UTM
-    input_layer = arcpy.management.Project(input_layer, os.path.join("in_memory\\input_layer"), utm33)[0]
+    wfa_layer = arcpy.management.Project(wfa_layer, os.path.join("in_memory\\input_layer"), utm33)[0]
     
     # Create one output feature class for all turbine points
-    arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=wgs84)
+    arcpy.CreateFeatureclass_management(output_folder, wtc_name, "POINT", spatial_reference=wgs84)
 
     # Add necessary fields to the output feature class
-    arcpy.AddFields_management(output_feature_class, [
-        ["Country", "TEXT", "", "", 100, "Country"],
-        ["Name", "TEXT", "", "", 100, "Name"],
-        ["FeatureFID", "LONG", "", "", "", "Feature FID"],
-        ["TurbineID", "TEXT", "", "", 50, "Turbine ID"],
-        ["Status", "TEXT", "", "", 50, "Status"],
-        ["Longitude", "DOUBLE", "", "", "", "Longitude"],
-        ["Latitude", "DOUBLE", "", "", "", "Latitude"],
-        ["Capacity", "DOUBLE", "", "", "", "Capacity (MW)"],
-        ["Diameter", "DOUBLE", "", "", "", "Diameter (m)"]
+    arcpy.AddFields_management(wtc_layer, [
+        ["Country", "TEXT", "", 10],
+        ["ISO", "TEXT", "", 5],       
+        ["Name", "TEXT", "", 80],
+        ["FeatureFID", "LONG"],
+        ["TurbineID", "TEXT", "", 10],
+        ["Status", "TEXT", "", 10],
+        ["Longitude", "DOUBLE"],
+        ["Latitude", "DOUBLE"],
+        ["Capacity", "DOUBLE"],
+        ["Diameter", "DOUBLE"]
     ])
 
     # Prepare to insert new turbine point features
-    insert_cursor_fields = ["SHAPE@", "Country", "Name", "FeatureFID", "TurbineID",  "Status", "Longitude", "Latitude", "Capacity", "Diameter"]
-    insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
+    insert_cursor_fields = ["SHAPE@", "Country", "ISO", "Name", "FeatureFID", "TurbineID",  "Status", "Longitude", "Latitude", "Capacity", "Diameter"]
+    insert_cursor = arcpy.da.InsertCursor(wtc_layer, insert_cursor_fields)
 
     # Calculate the spacing in meters
     spacing = turbine_spacing * turbine_diameter
@@ -83,7 +84,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     # Generate points within the bounding box of the input layer's extent
     # considering the specified spacing using NumPy
     search_fields = ["SHAPE@", "OID@", "Country", "Name", "Status"]
-    with arcpy.da.SearchCursor(input_layer, search_fields) as feature_cursor:
+    with arcpy.da.SearchCursor(wfa_layer, search_fields) as feature_cursor:
         for row, (shape, fid, country, name, status) in enumerate(feature_cursor):
             extent = shape.extent
 
@@ -119,11 +120,12 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
             # Create rows to insert into feature class
             rows = []
             for point in projected_points:
-                country_code = country_codes.get(country, "XX")  # Default to "XX" if country code is not found
-                turbine_id = f"{country_code}_F{fid}_T{turbine_index}"  # Modified TurbineID generation
+                iso = iso_mp.get(country, "XX")  # Default to "XX" if country code is not found
+                turbine_id = f"{iso}_F{fid}_T{turbine_index}"  # Modified TurbineID generation
                 rows.append((
                     point,
                     country,
+                    iso,
                     name,
                     fid,
                     turbine_id,
@@ -143,7 +145,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
                     insert_cursor.insertRow(row)
             
     # Add the generated shapefile to the current map
-    map.addDataFromPath(output_feature_class)
+    map.addDataFromPath(wtc_layer)
     
 
 if __name__ == "__main__":
