@@ -18,7 +18,18 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     utm33 = arcpy.SpatialReference(32633)  # Example: UTM Zone 33N
     wgs84 = arcpy.SpatialReference(4326)
     
-    
+    # Define a dictionary mapping country names to their corresponding two-letter country codes
+    country_codes = {
+        "Denmark": "DK",
+        "Estonia": "EE",
+        "Finland": "FI",
+        "Germany": "DE",
+        "Latvia": "LV",
+        "Lithuania": "LT",
+        "Poland": "PL",
+        "Sweden": "SE"
+    }
+
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
@@ -52,8 +63,8 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     # Add necessary fields to the output feature class
     arcpy.AddFields_management(output_feature_class, [
         ["TurbineID", "TEXT", "", "", 50, "Turbine ID"],
-        ["XCoord", "DOUBLE", "", "", "", "Longitude"],
-        ["YCoord", "DOUBLE", "", "", "", "Latitude"],
+        ["Longitude", "DOUBLE", "", "", "", "Longitude"],
+        ["Latitude", "DOUBLE", "", "", "", "Latitude"],
         ["Capacity", "DOUBLE", "", "", "", "Capacity (MW)"],
         ["Diameter", "DOUBLE", "", "", "", "Diameter (m)"],
         ["FeatureFID", "LONG", "", "", "", "Feature FID"],
@@ -108,9 +119,11 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
             # Create rows to insert into feature class
             rows = []
             for point in projected_points:
+                country_code = country_codes.get(country, "XX")  # Default to "XX" if country code is not found
+                turbine_id = f"{country_code}_F{fid}_T{turbine_index}"  # Modified TurbineID generation
                 rows.append((
                     point,
-                    f"{fid}_{turbine_index}",
+                    turbine_id,
                     round(point.centroid.X, 3),
                     round(point.centroid.Y, 3),
                     turbine_capacity,
@@ -122,14 +135,12 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
                 ))
                 turbine_index += 1  # Increment the substation index for each point
 
-            # Create insert cursor outside of the loop
-            with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
-                # Insert rows in batches of 100
-                batch_size = 100
-                for i in range(0, len(rows), batch_size):
-                    batch_rows = rows[i:i + batch_size]
-                    for row in batch_rows:
-                        insert_cursor.insertRow(row)
+            # Insert rows in batches of 100
+            batch_size = 100
+            for i in range(0, len(rows), batch_size):
+                batch_rows = rows[i:i + batch_size]
+                for row in batch_rows:
+                    insert_cursor.insertRow(row)
             
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
