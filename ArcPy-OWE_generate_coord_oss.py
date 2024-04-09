@@ -53,15 +53,15 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
     # Add fields to store substation attributes
     arcpy.management.AddFields(output_feature_class, [
+        ["Territory", "TEXT"],
+        ["ISO", "TEXT"],
         ["OSS_ID", "TEXT"],
         ["Longitude", "DOUBLE"],
-        ["Latitude", "DOUBLE"],
-        ["Territory", "TEXT"],
-        ["ISO", "TEXT"]
+        ["Latitude", "DOUBLE"]
     ])
 
     # Prepare to insert new substation point features
-    insert_cursor_fields = ["SHAPE@", "OSS_ID", "Longitude", "Latitude", "Territory", "ISO"]
+    insert_cursor_fields = ["SHAPE@", "Territory", "ISO", "OSS_ID", "Longitude", "Latitude"]
     with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
         # Initialize substation index counter
         substation_index = 1
@@ -110,11 +110,11 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
                 rows.append((
                     point,
-                    f"{iso_territory_2l}_{substation_index}",
-                    round(point.centroid.X, 3),
-                    round(point.centroid.Y, 3),
                     territory,
-                    iso_territory
+                    iso_territory_2l,
+                    f"{iso_territory_2l}_{substation_index}",
+                    round(point.centroid.X, 6),
+                    round(point.centroid.Y, 6)
                 ))
                 substation_index += 1  # Increment the substation index for each point
 
