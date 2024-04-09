@@ -65,23 +65,12 @@ def identify_countries(point_features):
     # Add the Country and ISO fields to the original point features
     arcpy.management.AddFields("in_memory\\point_features", [("Country", "TEXT"),("ISO", "TEXT"),("OnSS_ID", "TEXT")])
     
-    # Initialize a counter dictionary to keep track of the number of substations in each country
-    substation_counter = {}
-
     # Update the "Country" and "ISO" fields from the first spatial join
-    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO", "OnSS_ID"]) as update_cursor:
+    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO"]) as update_cursor:
         with arcpy.da.SearchCursor("in_memory\\point_country_join_first", ["COUNTRY", "ISO"]) as search_cursor:
             for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
                 update_row[0] = country_value if country_value else "Unknown"
                 update_row[1] = iso_cc_value if iso_cc_value else "Unknown"
-                update_cursor.updateRow(update_row)
-                # Generate OnSS_ID for substations within each country
-                if iso_cc_value in substation_counter:
-                    substation_counter[iso_cc_value] += 1
-                else:
-                    substation_counter[iso_cc_value] = 1
-                onss_id = f"{iso_cc_value}_{substation_counter[iso_cc_value]}"
-                update_row[2] = onss_id
                 update_cursor.updateRow(update_row)
 
     # Update the "Country" and "ISO" fields from the second spatial join  
@@ -98,9 +87,22 @@ def identify_countries(point_features):
                 elif type not in ['Station', 'Substation', 'Sub_station']:
                     update_cursor.deleteRow()
                     
-    # Copy features to in memory
+    # Generate OnSS_ID for substations within each country
+    substation_counter = {}
+    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO", "OnSS_ID"]) as update_cursor:
+        for update_row in update_cursor:
+            country, iso, onss_id = update_row
+            if iso in substation_counter:
+                substation_counter[iso] += 1
+            else:
+                substation_counter[iso] = 1
+            onss_id = f"{iso}_{substation_counter[iso]}"
+            update_row[2] = onss_id
+            update_cursor.updateRow(update_row)
+
+    # Copy features to in-memory
     arcpy.management.CopyFeatures("in_memory\\point_features", point_features)
-    
+
     return point_features
 
 def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> None:
