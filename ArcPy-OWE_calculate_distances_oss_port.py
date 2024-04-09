@@ -1,5 +1,19 @@
 import arcpy
 import numpy as np
+from math import radians, sin, cos, sqrt, atan2
+
+def haversine(lat1, lon1, lat2, lon2):
+    # Convert latitude and longitude from degrees to radians
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+
+    # Haversine formula
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    distance = 6371 * c  # Radius of Earth in kilometers
+
+    return distance
 
 def calculate_distances_oss_port():
     """Calculate distances between substation points and nearest port points."""
@@ -39,11 +53,16 @@ def calculate_distances_oss_port():
         arcpy.AddField_management(substation_layer, "Distance", "DOUBLE")
 
     # Get point coordinates for faster calculations
-    substation_points = np.array([(row[0].firstPoint.X, row[0].firstPoint.Y) for row in arcpy.da.SearchCursor(substation_layer, "SHAPE@")])
-    port_points = np.array([(row[0].firstPoint.X, row[0].firstPoint.Y) for row in arcpy.da.SearchCursor(port_layer, "SHAPE@")])
+    substation_points = np.array([(row[0].firstPoint.Y, row[0].firstPoint.X) for row in arcpy.da.SearchCursor(substation_layer, "SHAPE@")])
+    port_points = np.array([(row[0].firstPoint.Y, row[0].firstPoint.X) for row in arcpy.da.SearchCursor(port_layer, "SHAPE@")])
 
-    # Compute distances using Euclidean distance formula
-    distances = np.sqrt(np.sum((substation_points[:, None] - port_points) ** 2, axis=2))
+    # Initialize an array to store distances
+    distances = np.zeros((len(substation_points), len(port_points)))
+
+    # Compute distances using Haversine formula
+    for i, substation_point in enumerate(substation_points):
+        for j, port_point in enumerate(port_points):
+            distances[i, j] = haversine(substation_point[0], substation_point[1], port_point[0], port_point[1])
 
     # Find indices of closest ports for each substation
     closest_port_indices = np.argmin(distances, axis=1)
@@ -52,17 +71,13 @@ def calculate_distances_oss_port():
     # Cursor to update substation features
     with arcpy.da.UpdateCursor(substation_layer, ["SHAPE@", "PortName", "Distance"]) as substation_cursor:
         for i, substation_row in enumerate(substation_cursor):
-            # Round function
-            def rnd(r):
-                return round(r / int(1e3), 3)
-            
             closest_port_index = closest_port_indices[i]
             closest_port_distance = distances[i, closest_port_index]
             closest_port_name = closest_port_names[closest_port_index]
 
             # Update fields in substation layer with closest port information
             substation_row[1] = closest_port_name
-            substation_row[2] = rnd(closest_port_distance)
+            substation_row[2] = closest_port_distance
             substation_cursor.updateRow(substation_row)
 
 if __name__ == "__main__":
