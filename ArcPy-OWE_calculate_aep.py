@@ -14,11 +14,18 @@ def calculate_aep_and_capacity_factor(weibullA, weibullK):
     Returns:
         tuple: A tuple containing the AEP (in kWh) and the Capacity Factor (as a percentage).
     """
+    alpha = 0.11  # Exponent of the power law for scaling wind speed
+    hub_height = 112 # Wind turbine hub height
+
     # Average number of hours in a year
     hours_per_year = 365.25 * 24
     
     # Wind turbine availability factor
     ava_factor = 0.94
+    
+    # Define wind speed range
+    speed_min = 0
+    speed_max = 50
     
     turbine_rating = 8 * 1e3  # Turbine rating (kW)
     cutoff_wind_speed = 25  # Cut-off wind speed (m/s)
@@ -36,12 +43,11 @@ def calculate_aep_and_capacity_factor(weibullA, weibullK):
     power_values = np.array(list(power_curve_data.values()))  # Power values are already in kW
     power_curve_func = interp1d(wind_speeds, power_values, kind='linear', fill_value='extrapolate')
 
-    # Define the Weibull distribution with the provided parameters
-    weibull_dist = weibull_min(weibullK, scale=weibullA)
+    # Scale the Weibull parameters to hub height using the power law
+    weibullA_hh = weibullA * (hub_height / 100) ** alpha
 
-    # Define wind speed range
-    speed_min = 0
-    speed_max = 50
+    # Define the Weibull distribution with the scaled parameters
+    weibull_dist = weibull_min(weibullK, scale=weibullA_hh)
 
     # Create wind speed array for integration
     wind_speed_array = np.linspace(speed_min, speed_max, num=1000)
