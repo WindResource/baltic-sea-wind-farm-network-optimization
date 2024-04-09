@@ -26,14 +26,8 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
-    # Get the first feature layer in the map that starts with 'windfarmspoly'
-    wf_layer = None
-    for layer in map.listLayers():
-        if layer.isFeatureLayer:
-            if layer.name.startswith('windfarmspoly'):
-                wf_layer = layer
-                break
-
+    # Get the first layer in the map that starts with 'windfarmspoly'
+    wf_layer = next((layer for layer in map.listLayers() if layer.name.startswith('windfarmspoly')), None)
     if wf_layer is None:
         arcpy.AddError("No layer starting with 'windfarmspoly' found in the current map.")
         return
