@@ -62,19 +62,19 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
 
     # Add necessary fields to the output feature class
     arcpy.AddFields_management(output_feature_class, [
+        ["Country", "TEXT", "", "", 100, "Country"],
+        ["Name", "TEXT", "", "", 100, "Name"],
+        ["FeatureFID", "LONG", "", "", "", "Feature FID"],
         ["TurbineID", "TEXT", "", "", 50, "Turbine ID"],
+        ["Status", "TEXT", "", "", 50, "Status"],
         ["Longitude", "DOUBLE", "", "", "", "Longitude"],
         ["Latitude", "DOUBLE", "", "", "", "Latitude"],
         ["Capacity", "DOUBLE", "", "", "", "Capacity (MW)"],
-        ["Diameter", "DOUBLE", "", "", "", "Diameter (m)"],
-        ["FeatureFID", "LONG", "", "", "", "Feature FID"],
-        ["Country", "TEXT", "", "", 100, "Country"],
-        ["Name", "TEXT", "", "", 100, "Name"],
-        ["Status", "TEXT", "", "", 50, "Status"]
+        ["Diameter", "DOUBLE", "", "", "", "Diameter (m)"]
     ])
 
     # Prepare to insert new turbine point features
-    insert_cursor_fields = ["SHAPE@", "TurbineID", "XCoord", "YCoord", "Capacity", "Diameter", "FeatureFID", "Country", "Name", "Status"]
+    insert_cursor_fields = ["SHAPE@", "Country", "Name", "FeatureFID", "TurbineID",  "Status", "Longitude", "Latitude", "Capacity", "Diameter"]
     insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
 
     # Calculate the spacing in meters
@@ -123,15 +123,15 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
                 turbine_id = f"{country_code}_F{fid}_T{turbine_index}"  # Modified TurbineID generation
                 rows.append((
                     point,
-                    turbine_id,
-                    round(point.centroid.X, 3),
-                    round(point.centroid.Y, 3),
-                    turbine_capacity,
-                    turbine_diameter,
-                    fid,
                     country,
                     name,
-                    status
+                    fid,
+                    turbine_id,
+                    status,
+                    round(point.centroid.X, 6),
+                    round(point.centroid.Y, 6),
+                    turbine_capacity,
+                    turbine_diameter
                 ))
                 turbine_index += 1  # Increment the substation index for each point
 
