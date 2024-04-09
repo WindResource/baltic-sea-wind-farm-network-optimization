@@ -48,8 +48,12 @@ def identify_countries(point_features):
     # Project the feature layer to the specified UTM Zone
     arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", wgs84)
 
-    # Copy features to in memory
-    arcpy.management.CopyFeatures(point_features, "in_memory\\point_features")
+    # Create a buffer around the EEZ layer boundary
+    arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "200 Kilometers")
+
+    # Select point features within the buffer
+    arcpy.analysis.PairwiseClip(point_features, "in_memory\\eez_buffer", "in_memory\\point_features")
+    
     # Perform the first spatial join between the point features and the projected country polygons using "WITHIN" criteria
     arcpy.analysis.SpatialJoin("in_memory\\point_features", "in_memory\\countries_projected", "in_memory\\point_country_join_first",
                                 join_type="KEEP_ALL", match_option="WITHIN")
@@ -59,16 +63,26 @@ def identify_countries(point_features):
                                 join_type="KEEP_ALL", match_option="CLOSEST", search_radius="2 Kilometers")
     
     # Add the Country and ISO fields to the original point features
-    arcpy.management.AddFields("in_memory\\point_features", [("Country", "TEXT"),("ISO", "TEXT")])
+    arcpy.management.AddFields("in_memory\\point_features", [("Country", "TEXT"),("ISO", "TEXT"),("OnSS_ID", "TEXT")])
     
+    # Initialize a counter dictionary to keep track of the number of substations in each country
+    substation_counter = {}
+
     # Update the "Country" and "ISO" fields from the first spatial join
-    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO"]) as update_cursor:
+    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO", "OnSS_ID"]) as update_cursor:
         with arcpy.da.SearchCursor("in_memory\\point_country_join_first", ["COUNTRY", "ISO"]) as search_cursor:
             for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
-                    update_row[0] = country_value if country_value else "Unknown"
-                    update_row[1] = iso_cc_value if iso_cc_value else "Unknown"
-                    update_cursor.updateRow(update_row)
-
+                update_row[0] = country_value if country_value else "Unknown"
+                update_row[1] = iso_cc_value if iso_cc_value else "Unknown"
+                update_cursor.updateRow(update_row)
+                # Generate OnSS_ID for substations within each country
+                if iso_cc_value in substation_counter:
+                    substation_counter[iso_cc_value] += 1
+                else:
+                    substation_counter[iso_cc_value] = 1
+                onss_id = f"{iso_cc_value}_{substation_counter[iso_cc_value]}"
+                update_row[2] = onss_id
+                update_cursor.updateRow(update_row)
 
     # Update the "Country" and "ISO" fields from the second spatial join  
     with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO", "Type"]) as update_cursor:
@@ -84,11 +98,8 @@ def identify_countries(point_features):
                 elif type not in ['Station', 'Substation', 'Sub_station']:
                     update_cursor.deleteRow()
                     
-    # Create a buffer around the EEZ layer boundary
-    arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "200 Kilometers")
-
-    # Select point features within the buffer
-    arcpy.analysis.PairwiseClip("in_memory\\point_features", "in_memory\\eez_buffer", point_features)
+    # Copy features to in memory
+    arcpy.management.CopyFeatures("in_memory\\point_features", point_features)
     
     return point_features
 
