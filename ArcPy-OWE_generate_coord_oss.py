@@ -16,6 +16,18 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     utm33 = arcpy.SpatialReference(32633)
     wgs84 = arcpy.SpatialReference(4326)
 
+    # Dictionary mapping 3-letter ISO country codes to 2-letter country codes for Baltic Sea countries
+    iso_territory_dict = {
+        "DNK": "DK",  # Denmark
+        "EST": "EE",  # Estonia
+        "FIN": "FI",  # Finland
+        "DEU": "DE",  # Germany
+        "LVA": "LV",  # Latvia
+        "LTU": "LT",  # Lithuania
+        "POL": "PL",  # Poland
+        "SWE": "SE"   # Sweden
+    }
+
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
@@ -50,8 +62,8 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     # Add fields to store substation attributes
     arcpy.AddFields_management(output_feature_class, [
         ["StationID", "TEXT"],
-        ["XCoord", "DOUBLE"],
-        ["YCoord", "DOUBLE"],
+        ["Longitude", "DOUBLE"],
+        ["Latitude", "DOUBLE"],
         ["Territory","TEXT"],
         ["ISO","TEXT"]
     ])
@@ -100,9 +112,12 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             # Create rows to insert into feature class
             rows = []
             for point in projected_points:
+                # Get the corresponding 2-letter country code from the mapping dictionary
+                iso_territory_2l = iso_territory_dict.get(iso_territory, "XX")
+
                 rows.append((
                     point,
-                    f"{iso_territory}_{substation_index}",
+                    f"{iso_territory_2l}_{substation_index}",
                     round(point.centroid.X, 3),
                     round(point.centroid.Y, 3),
                     territory,
