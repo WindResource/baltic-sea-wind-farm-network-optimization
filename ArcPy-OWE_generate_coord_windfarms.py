@@ -9,69 +9,73 @@ def generate_windfarm_coordinates(output_folder: str) -> None:
     Parameters:
     - output_folder: Path where the output shapefile will be saved.
     """
-    
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
-    utm_wkid = 32633  # Example: UTM Zone 33N
-    utm_spatial_ref = arcpy.SpatialReference(utm_wkid)
+    wgs84 = arcpy.SpatialReference(4326)
+    
+    # Dictionary mapping country names to ISO 3166-1 alpha-2 country codes for Baltic Sea countries
+    iso_mp = {
+        "Denmark": "DK",
+        "Estonia": "EE",
+        "Finland": "FI",
+        "Germany": "DE",
+        "Latvia": "LV",
+        "Lithuania": "LT",
+        "Poland": "PL",
+        "Sweden": "SE"
+    }
 
-    try:
-        # Get the current map
-        aprx = arcpy.mp.ArcGISProject("CURRENT")
-        map = aprx.activeMap
+    # Get the current map
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
 
-        # Get the first layer in the map that starts with 'WFA'
-        input_layer = None
-        for layer in map.listLayers():
-            if layer.name.startswith('WFA'):
-                input_layer = layer
-                break
-        
-        if input_layer is None:
-            arcpy.AddError("No layer starting with 'WFA' found in the current map.")
-            return
+    # Get the first layer in the map that starts with 'WFA'
+    wfa_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WFA')), None)
+    if wfa_layer is None:
+        arcpy.AddError("No layer starting with 'WFA' found in the current map.")
+        return
 
-        # Deselect all currently selected features
-        arcpy.SelectLayerByAttribute_management(input_layer, "CLEAR_SELECTION")
-        
-        arcpy.AddMessage(f"Processing layer: {input_layer.name}")
+    # Deselect all currently selected features
+    arcpy.SelectLayerByAttribute_management(wfa_layer, "CLEAR_SELECTION")
+    
+    arcpy.AddMessage(f"Processing layer: {wfa_layer.name}")
 
-        # Modify output feature class name, WFC is wind farm connection
-        output_feature_class_name = input_layer.name.replace('WFA', 'WFC') + ".shp"
-        output_feature_class = os.path.join(output_folder, output_feature_class_name)
+    # Modify output feature class name, WFC is wind farm connection
+    wfc_name = wfa_layer.name.replace('WFA', 'WFC') + ".shp"
+    wfc_layer = os.path.join(output_folder, wfc_name)
 
-        # Create one output feature class for all wind farm connection point
-        arcpy.CreateFeatureclass_management(output_folder, output_feature_class_name, "POINT", spatial_reference=utm_spatial_ref)
+    # Create one output feature class for all wind farm connection point
+    arcpy.CreateFeatureclass_management(output_folder, wfc_name, "POINT", spatial_reference=wgs84)
 
-        # Add necessary fields to the output feature class
-        arcpy.AddFields_management(output_feature_class, [
-            ["FarmID", "TEXT", "", "", 50, "Wind Farm ID"]
-        ])
+    # Add necessary fields to the output feature class
+    arcpy.AddFields_management(wfc_layer, [
+        ["ISO", "TEXT", "", "", 50, "Country"],
+        ["WF_ID", "TEXT", "", "", 50, "Wind Farm ID"]
+    ])
 
-        # Prepare to insert new connection point features
-        insert_cursor_fields = ["SHAPE@", "FarmID"]
-        insert_cursor = arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
+    # Prepare to insert new connection point features
+    insert_cursor_fields = ["SHAPE@", "ISO", "WF_ID"]
+    insert_cursor = arcpy.da.InsertCursor(wfc_layer, insert_cursor_fields)
 
-        # Iterate through each feature in the input layer
-        search_fields = ["SHAPE@", "OID@"]  # We only need the geometry and object ID
-        with arcpy.da.SearchCursor(input_layer, search_fields) as feature_cursor:
-            for shape, oid in feature_cursor:
-                # Calculate the midpoint of the feature
-                midpoint = shape.centroid
-                
-                # Insert the new connection point with its attribute
-                farm_id = f"Farm_{oid}"
-                row_values = (midpoint, farm_id)
-                insert_cursor.insertRow(row_values)
-        
-        # Add the generated shapefile to the current map
-        map.addDataFromPath(output_feature_class)
+    # Iterate through each feature in the input layer
+    search_fields = ["SHAPE@", "OID@", "country"]  # We only need the geometry and object ID
+    with arcpy.da.SearchCursor(wfa_layer, search_fields) as feature_cursor:
+        for shape, oid, country in feature_cursor:
+            # Calculate the midpoint of the feature
+            midpoint = shape.centroid
+            
+            # Get the ISO code for the country from the dictionary
+            iso_code = iso_mp.get(country, None)
+            
+            # Insert the new connection point with its attribute
+            oid += 1
+            farm_id = f"{iso_code}_F{oid}"
+            row_values = (midpoint, iso_code, farm_id)
+            insert_cursor.insertRow(row_values)
+    
+    # Add the generated shapefile to the current map
+    map.addDataFromPath(wfc_layer)
 
-        arcpy.AddMessage("Wind farm connection point features creation complete.")
-
-    except arcpy.ExecuteError as e:
-        arcpy.AddError(f"Failed to process the shapefile: {e}")
-    except Exception as e:
-        arcpy.AddError(f"An unexpected error occurred: {e}")
+    arcpy.AddMessage("Wind farm connection point features creation complete.")
 
 # Test the function
 if __name__ == "__main__":
