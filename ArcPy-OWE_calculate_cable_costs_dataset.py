@@ -37,14 +37,12 @@ def HVAC_cost(length, desired_capacity, desired_voltage):
 
     # Iterate over each row (cable)
     for cable_index, cable in enumerate(data_array):
-        total_capacity = 0
         n_cables = 1  # Initialize number of cables for this row
         # Calculate total capacity for this row with increasing number of cables until desired capacity is reached
-        while total_capacity < desired_capacity:
+        while True:
             voltage, capacitance, ampacity = cable[0], cable[3], cable[4]
-            calculated_capacity = np.sqrt(max(0, ((np.sqrt(3) * voltage * n_cables * ampacity) ** 2 - (0.5 * voltage**2 * 2*np.pi * frequency * capacitance * length) ** 2))))
-            total_capacity += calculated_capacity
-            if total_capacity >= desired_capacity:
+            calculated_capacity = np.sqrt(max(0, ((np.sqrt(3) * voltage * n_cables * ampacity) ** 2 - (0.5 * voltage**2 * 2*np.pi * frequency * capacitance * length) ** 2)))
+            if calculated_capacity >= desired_capacity:
                 # Add the current row index and number of cables to valid_combinations
                 valid_combinations.append((cable_index, n_cables))
                 break  # Exit the loop since desired capacity is reached
