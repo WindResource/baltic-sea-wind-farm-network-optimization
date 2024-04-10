@@ -22,15 +22,15 @@ def HVAC_cost(length, desired_capacity, desired_voltage):
 
     # Convert data_tuples to a NumPy array
     data_array = np.array(data_tuples)
+    
+    # Filter data based on desired voltage
+    data_array = data_array[data_array[:, 0] == desired_voltage]
 
     # Define the scaling factors for each column: (Tension (kV), Section (mm^2), Resistance (mΩ/km), Capacitance (nF/km), Ampacity (A), Equipment cost (eu/m), Installation cost (eu/m))
     scaling_factors = np.array([1e3, 1, 1e-3, 1e-9, 1, 1e3, 1e3])
 
     # Apply scaling to each column in data_array
     data_array *= scaling_factors
-
-    # Filter data based on desired voltage
-    data_array = data_array[data_array[:, 0] >= desired_voltage]
 
     # List to store valid combinations
     valid_combinations = []
@@ -52,8 +52,8 @@ def HVAC_cost(length, desired_capacity, desired_voltage):
 
 # Example usage
 desired_capacity = 5000  # Specify your desired capacity here
-desired_voltage = 220  # Specify your desired voltage here
-valid_cable_combinations = HVAC_cost(length=300, desired_capacity=desired_capacity, desired_voltage=desired_voltage)
+desired_voltage = 400  # Specify your desired voltage here
+valid_cable_combinations = HVAC_cost(length=500, desired_capacity=desired_capacity, desired_voltage=desired_voltage)
 print("Valid cable combinations for desired capacity of", desired_capacity, "and voltage of", desired_voltage, "are:")
 for row_index, n_cables in valid_cable_combinations:
     print("Row:", row_index, "- Number of cables:", n_cables)
