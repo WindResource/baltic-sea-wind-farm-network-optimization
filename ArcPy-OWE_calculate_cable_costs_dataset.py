@@ -28,7 +28,7 @@ def HVAC_costs(length, desired_capacity, desired_voltage):
 
     # Define the scaling factors for each column: 
     """
-    Tension (kV) > (V)
+    Voltage (kV) > (V)
     Section (mm^2)
     Resistance (mΩ/km) > (Ω/m)
     Capacitance (nF/km) > (F/m)
@@ -60,23 +60,27 @@ def HVAC_costs(length, desired_capacity, desired_voltage):
             n_cables += 1
 
     # Calculate the total costs for each cable combination
-    total_costs = [(cable[5] * length * n_cables) for cable, n_cables in cable_count]
-
+    equip_costs_array = [(cable[5] * length * n_cables) for cable, n_cables in cable_count]
+    inst_costs_array = [(cable[6] * length * n_cables) for cable, n_cables in cable_count]
+    
+    # Calculate total costs
+    total_costs_array = np.add(equip_costs_array, inst_costs_array)
+    
     # Find the cable combination with the minimum total cost
-    min_cost_index = np.argmin(total_costs)
-    min_cost_combination = cable_count[min_cost_index]
+    min_cost_index = np.argmin(total_costs_array)
+    equip_costs = equip_costs_array[min_cost_index]
+    inst_costs = inst_costs_array[min_cost_index]
+    total_costs = total_costs_array[min_cost_index]
 
-    return min_cost_combination
+    return equip_costs, inst_costs, total_costs
 
 # Example usage
 desired_capacity_MW = 800  # Specify your desired capacity here
 desired_capacity = desired_capacity_MW * int(1e6)
-desired_voltage = 400  # Specify your desired voltage here
+desired_voltage = 220  # Specify your desired voltage here
 length = 5000 # Required length
-min_cost_combination = HVAC_costs(length, desired_capacity=desired_capacity, desired_voltage=desired_voltage)
+equip_costs, inst_costs, total_costs = HVAC_costs(length, desired_capacity, desired_voltage)
 
-section, n_cables = min_cost_combination
-min_total_cost = section[5] * length * n_cables
-
-print("Minimum total cost for desired capacity of", desired_capacity, "and voltage of", desired_voltage, "is:", min_total_cost)
-print("Section:", section[1], "- Number of cables:", n_cables)
+print(equip_costs)
+print(inst_costs)
+print(total_costs)
