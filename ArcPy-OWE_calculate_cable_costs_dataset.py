@@ -1,6 +1,6 @@
 import numpy as np
 
-def HVAC_cost(length, desired_capacity, desired_voltage):
+def HVAC_costs(length, desired_capacity, desired_voltage):
     frequency = 50  # Assuming constant frequency
     
     # Define data_tuples where each tuple represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
@@ -26,34 +26,57 @@ def HVAC_cost(length, desired_capacity, desired_voltage):
     # Filter data based on desired voltage
     data_array = data_array[data_array[:, 0] == desired_voltage]
 
-    # Define the scaling factors for each column: (Tension (kV), Section (mm^2), Resistance (mΩ/km), Capacitance (nF/km), Ampacity (A), Equipment cost (eu/m), Installation cost (eu/m))
-    scaling_factors = np.array([1e3, 1, 1e-3, 1e-9, 1, 1e3, 1e3])
+    # Define the scaling factors for each column: 
+    """
+    Tension (kV) > (V)
+    Section (mm^2)
+    Resistance (mΩ/km) > (Ω/m)
+    Capacitance (nF/km) > (F/m)
+    Ampacity (A)
+    Equipment cost (eu/m)
+    Installation cost (eu/m)
+    """
+    scaling_factors = np.array([1e3, 1, 1e-6, 1e-12, 1, 1, 1])
 
     # Apply scaling to each column in data_array
     data_array *= scaling_factors
 
-    # List to store valid combinations
-    valid_combinations = []
+    # List to store cable rows and counts
+    cable_count = []
 
     # Iterate over each row (cable)
-    for cable_index, cable in enumerate(data_array):
+    for cable in data_array:
         n_cables = 1  # Initialize number of cables for this row
         # Calculate total capacity for this row with increasing number of cables until desired capacity is reached
         while True:
             voltage, capacitance, ampacity = cable[0], cable[3], cable[4]
-            calculated_capacity = np.sqrt(max(0, ((np.sqrt(3) * voltage * n_cables * ampacity) ** 2 - (0.5 * voltage**2 * 2*np.pi * frequency * capacitance * length) ** 2)))
+            calculated_capacity = np.sqrt(max(0, ((np.sqrt(3) * voltage * n_cables * ampacity) ** 2 - (.5 * voltage**2 * 2*np.pi * frequency * capacitance * length) ** 2)))
             if calculated_capacity >= desired_capacity:
                 # Add the current row index and number of cables to valid_combinations
-                valid_combinations.append((cable_index, n_cables))
+                cable_count.append((cable, n_cables))
                 break  # Exit the loop since desired capacity is reached
+            elif n_cables > 200:  # If the number of cables exceeds 200, break the loop
+                break
             n_cables += 1
 
-    return valid_combinations
+    # Calculate the total costs for each cable combination
+    total_costs = [(cable[5] * length * n_cables) for cable, n_cables in cable_count]
+
+    # Find the cable combination with the minimum total cost
+    min_cost_index = np.argmin(total_costs)
+    min_cost_combination = cable_count[min_cost_index]
+
+    return min_cost_combination
 
 # Example usage
-desired_capacity = 5000  # Specify your desired capacity here
+desired_capacity_MW = 800  # Specify your desired capacity here
+desired_capacity = desired_capacity_MW * int(1e6)
 desired_voltage = 400  # Specify your desired voltage here
-valid_cable_combinations = HVAC_cost(length=500, desired_capacity=desired_capacity, desired_voltage=desired_voltage)
-print("Valid cable combinations for desired capacity of", desired_capacity, "and voltage of", desired_voltage, "are:")
-for row_index, n_cables in valid_cable_combinations:
-    print("Row:", row_index, "- Number of cables:", n_cables)
+length = 5000 # Required length
+min_cost_combination = HVAC_costs(length, desired_capacity=desired_capacity, desired_voltage=desired_voltage)
+
+section, n_cables = min_cost_combination
+min_total_cost = section[5] * length * n_cables
+
+print("Minimum total cost for desired capacity of", desired_capacity, "and voltage of", desired_voltage, "is:", min_total_cost)
+print("Section:", section[1], "- Number of cables:", n_cables)
