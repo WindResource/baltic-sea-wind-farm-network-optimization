@@ -1,6 +1,19 @@
 import numpy as np
 
-def HVAC_costs(length, desired_capacity, desired_voltage):
+def HVAC_cable_costs(length, desired_capacity, desired_voltage):
+    """
+    Calculate the costs associated with selecting HVAC cables for a given length, desired capacity,
+    and desired voltage.
+
+    Parameters:
+        length (float): The length of the cable (in meters).
+        desired_capacity (float): The desired capacity of the cable (in watts).
+        desired_voltage (int): The desired voltage of the cable (in kilovolts).
+
+    Returns:
+        tuple: A tuple containing the equipment costs, installation costs, and total costs
+                associated with the selected HVAC cables.
+    """
     frequency = 50  # Assuming constant frequency
     
     # Define data_tuples where each tuple represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
@@ -70,17 +83,65 @@ def HVAC_costs(length, desired_capacity, desired_voltage):
     min_cost_index = np.argmin(total_costs_array)
     equip_costs = equip_costs_array[min_cost_index]
     inst_costs = inst_costs_array[min_cost_index]
-    total_costs = total_costs_array[min_cost_index]
+    cap_costs = equip_costs + inst_costs
+    oper_costs = 0.2 * 1e-2 * equip_costs
+    deco_costs = 0.5 * inst_costs
+    
+    # Discount rate
+    discount_rate = 0.05
+
+    # Initialize costs
+    equip_costs = equip_costs_array[min_cost_index]
+    inst_costs = inst_costs_array[min_cost_index]
+    cap_costs = equip_costs + inst_costs
+    ope_costs_yearly = 0.2 * 1e-2 * equip_costs
+    deco_costs = 0.5 * inst_costs
+
+    # Define years for installation, operational, and decommissioning
+    inst_year = 1  # First year
+    ope_year = 6   # Sixth year
+    dec_year = 23  # Twentieth year
+    end_year = 25  # End year
+
+    # Discount rate
+    discount_rate = 0.05
+
+    # Define the years as a function of inst_year and end_year
+    years = range(inst_year, end_year + 1)
+
+    # Initialize total operational costs
+    ope_costs = 0
+
+    # Adjust costs for each year
+    for year in years:
+        # Adjust installation costs
+        if year == inst_year:
+            equip_costs *= (1 + discount_rate) ** -year
+            inst_costs *= (1 + discount_rate) ** -year
+        # Adjust operational costs
+        if year >= inst_year and year < ope_year:
+            inst_costs *= (1 + discount_rate) ** -year
+        elif year >= ope_year and year < dec_year:
+            ope_costs_yearly *= (1 + discount_rate) ** -year
+            ope_costs += ope_costs_yearly  # Accumulate yearly operational costs
+        # Adjust decommissioning costs
+        if year >= dec_year and year <= end_year:
+            deco_costs *= (1 + discount_rate) ** -year
+
+    # Calculate total present value of costs
+    total_costs = equip_costs + inst_costs + ope_costs + deco_costs
+
+    print("Total present value of costs over 20 years with a discount rate of 5%:", total_costs)
 
     return equip_costs, inst_costs, total_costs
 
-# Example usage
 desired_capacity_MW = 800  # Specify your desired capacity here
 desired_capacity = desired_capacity_MW * int(1e6)
 desired_voltage = 220  # Specify your desired voltage here
 length = 5000 # Required length
-equip_costs, inst_costs, total_costs = HVAC_costs(length, desired_capacity, desired_voltage)
+equip_costs, inst_costs, total_costs = HVAC_cable_costs(length, desired_capacity, desired_voltage)
 
-print(equip_costs)
-print(inst_costs)
-print(total_costs)
+print(round(equip_costs, 3))
+print(round(inst_costs, 3))
+print(round(total_costs, 3))
+
