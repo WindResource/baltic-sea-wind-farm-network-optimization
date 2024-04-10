@@ -1,18 +1,27 @@
 import arcpy
 
-def identify_within_polygon() -> None:
+def identify_icecover() -> None:
+    """
+    Identifies whether wind turbine coordinates ("WTC") are located within areas of maximum ice extent ("Ice"). 
+    Updates an "IceCover" field in the wind turbine layer accordingly.
+
+    Returns:
+        None
+    """
+    
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
-    # Get the first layer in the map that starts with 'WTC'
+    # Get the first layer in the map that starts with 'WTC' (points) and 'Ice' (polygon)
     wt_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
     ic_layer = next((layer for layer in map.listLayers() if layer.name.startswith('Ice')), None)
 
     if wt_layer is None:
         arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+        return
     if ic_layer is None:
-        arcpy.AddError("No layer starting with 'Ice' found in the current map.")    
+        arcpy.AddError("No layer starting with 'Ice' found in the current map.")
         return
 
     # Deselect all currently selected features
@@ -20,32 +29,26 @@ def identify_within_polygon() -> None:
         arcpy.SelectLayerByAttribute_management(layer, "CLEAR_SELECTION")
     
     arcpy.AddMessage(f"Processing layer: {wt_layer.name}")
-    
-    # Check if the "WithinIceCover" field already exists
+
+    # Check if the "IceCover" field already exists
     field_names = [field.name for field in arcpy.ListFields(wt_layer)]
     if "IceCover" not in field_names:
-        # Add new field to the point feature layer to store results
-        arcpy.management.AddField(wt_layer, "IceCover", "TEXT")
+        # Add new field to store ice cover information
+        arcpy.AddField_management(wt_layer, "IceCover", "TEXT", field_length = 5)
 
-    # Perform a spatial join
-    arcpy.analysis.SpatialJoin(wt_layer, ic_layer, "in_memory\\SpatialJoinResult", "JOIN_ONE_TO_ONE", "KEEP_ALL", "", "WITHIN")
+    # Set "IceCover" field to "No" for all features
+    arcpy.CalculateField_management(wt_layer, "IceCover", "'No'", "PYTHON3")
 
-    # Get the name of the unique identifier field of the input layer
-    unique_id_field = arcpy.Describe(wt_layer).OIDFieldName
+    # Select points within the ice polygon
+    arcpy.SelectLayerByLocation_management(wt_layer, "WITHIN", ic_layer)
 
-    # Update the "WithinIceCover" field based on the spatial join result
-    with arcpy.da.UpdateCursor("in_memory\\SpatialJoinResult", ["IceCover", unique_id_field]) as cursor:
-        for row in cursor:
-            if row[0] is not None:
-                row[0] = "Yes"
-            else:
-                row[0] = "No"
-            cursor.updateRow(row)
+    # Update the "IceCover" field for selected points
+    arcpy.CalculateField_management(wt_layer, "IceCover", "'Yes'", "PYTHON3")
 
-    # Join the result back to the original point feature layer
-    arcpy.management.JoinField(wt_layer, unique_id_field, "in_memory\\SpatialJoinResult", "TARGET_FID", "IceCover")
+    # Clear selection
+    arcpy.SelectLayerByAttribute_management(wt_layer, "CLEAR_SELECTION")
 
     arcpy.AddMessage("Process completed successfully.")
 
 if __name__ == "__main__":
-    identify_within_polygon()
+    identify_icecover()
