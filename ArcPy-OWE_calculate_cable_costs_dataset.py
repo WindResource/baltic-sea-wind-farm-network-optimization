@@ -1,6 +1,150 @@
 import numpy as np
 
-def HVDC_export_cable_costs(distance, capacity):
+def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
+    """
+    Calculate the total present value of cable costs.
+
+    Parameters:
+        equip_costs (float): Equipment costs.
+        inst_costs (float): Installation costs.
+        ope_costs_yearly (float): Yearly operational costs.
+        deco_costs (float): Decommissioning costs.
+
+    Returns:
+        tuple: A tuple containing the equipment costs, installation costs, and total present value of costs.
+    """
+    # Define years for installation, operational, and decommissioning
+    inst_year = 0  # First year
+    ope_year = inst_year + 5
+    dec_year = ope_year + 25  
+    end_year = dec_year + 2  # End year
+
+    # Discount rate
+    discount_rate = 0.05
+
+    # Define the years as a function of inst_year and end_year
+    years = range(inst_year, end_year + 1)
+
+    # Initialize total operational costs
+    ope_costs = 0
+    
+    # Adjust costs for each year
+    for year in years:
+        # Adjust installation costs
+        if year == inst_year:
+            equip_costs *= (1 + discount_rate) ** -year
+            inst_costs *= (1 + discount_rate) ** -year
+        # Adjust operational costs
+        if year >= inst_year and year < ope_year:
+            inst_costs *= (1 + discount_rate) ** -year
+        elif year >= ope_year and year < dec_year:
+            ope_costs_yearly *= (1 + discount_rate) ** -year
+            ope_costs += ope_costs_yearly  # Accumulate yearly operational costs
+        # Adjust decommissioning costs
+        if year >= dec_year and year <= end_year:
+            deco_costs *= (1 + discount_rate) ** -year
+
+    # Calculate total present value of costs
+    total_costs = equip_costs + inst_costs + ope_costs + deco_costs
+
+    return total_costs, equip_costs, inst_costs, ope_costs, deco_costs
+
+
+def HVAC_interarray_cable_costs(distance, desired_capacity, desired_voltage, water_depth):
+    """
+    Calculate the costs associated with selecting HVAC interarray cables for a given distance, desired capacity, desired voltage, and water depth.
+
+    Parameters:
+        distance (float): The distance of the cable route (in meters).
+        desired_capacity (float): The desired capacity of the cable (in watts).
+        desired_voltage (int): The desired voltage of the cable (in kilovolts).
+        water_depth (float): The water depth where the cables will be installed (in meters).
+
+    Returns:
+        tuple: A tuple containing the equipment costs, installation costs, yearly operational costs, and decommissioning costs associated with the selected HVAC interarray cables.
+    """
+    length = 1.05 * distance
+    
+    cable_data = [
+        (66, 95, 0.25, 24, 180, 113, 113),
+        (66, 150, 0.16, 30, 215, 134, 121),
+        (66, 300, 0.08, 42, 298, 186, 149),
+        (66, 400, 0.06, 49, 357, 223, 156),
+        (66, 630, 0.04, 59, 456, 285, 171),
+        (66, 800, 0.03, 69, 577, 361, 180),
+        (132, 120, 0.2, 80, 288, 152, 114),
+        (132, 150, 0.16, 87, 358, 188, 122),
+        (132, 300, 0.08, 123, 747, 393, 216),
+        (132, 400, 0.06, 136, 900, 474, 213),
+        (132, 630, 0.04, 162, 1228, 646, 226),
+        (132, 800, 0.03, 201, 1779, 936, 281)
+    ]
+    
+    # Convert data_tuples to a NumPy array
+    data_array = np.array(cable_data)
+    
+    # Filter data based on desired voltage
+    data_array = data_array[data_array[:, 0] == desired_voltage]
+
+    # Define the scaling factors for each column: 
+    """
+    Voltage (kV) > (V)
+    Section (mm^2)
+    Resistance (Ω/km) > (Ω/m)
+    Capacity (MW)
+    Equipment cost dynamic cables (floating support) (eu/m)
+    Equipment cost static cables (static support) (eu/m)
+    Installation cost (eu/m)
+    """
+    scaling_factors = np.array([1e3, 1, 1e-3, 1, 1, 1, 1])
+
+    # Apply scaling to each column in data_array
+    data_array *= scaling_factors
+    
+    # List to store cable rows and counts
+    cable_count = []
+    
+    # Iterate over each row (cable)
+    for cable in data_array:
+        n_cables = 1  # Initialize number of cables for this row
+        # Calculate total capacity for this row with increasing number of cables until desired capacity is reached
+        while True:
+            capacity = cable[3]
+            calculated_capacity = n_cables * capacity
+            if calculated_capacity >= desired_capacity:
+                # Add the current row index and number of cables to valid_combinations
+                cable_count.append((cable, n_cables))
+                break  # Exit the loop since desired capacity is reached
+            elif n_cables > 200:  # If the number of cables exceeds 200, break the loop
+                break
+            n_cables += 1
+
+    # Select the equipment cost based on water depth
+    equip_costs = cable[4] if water_depth < 150 else cable[5]
+
+    # Calculate the total costs for each cable combination
+    equip_costs_array = [(equip_costs * length * n_cables) for cable, n_cables in cable_count]
+    inst_costs_array = [(cable[6] * length * n_cables) for cable, n_cables in cable_count]
+    
+    # Calculate total costs
+    total_costs_array = np.add(equip_costs_array, inst_costs_array)
+    
+    # Find the cable combination with the minimum total cost
+    min_cost_index = np.argmin(total_costs_array)
+
+    # Initialize costs
+    equip_costs = equip_costs_array[min_cost_index]
+    inst_costs = inst_costs_array[min_cost_index]
+    ope_costs_yearly = 0.2 * 1e-2 * equip_costs
+    deco_costs = 0.5 * inst_costs
+    
+    # Calculate present value
+    total_costs, equip_costs, inst_costs, ope_costs, deco_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
+    
+    return total_costs, equip_costs, inst_costs, ope_costs, deco_costs
+
+
+def HVDC_export_cable_costs(distance, desired_capacity):
     """
     Calculate the costs associated with selecting HVDC (High Voltage Direct Current) export cables for a given distance and capacity.
 
@@ -15,12 +159,15 @@ def HVDC_export_cable_costs(distance, capacity):
     
     rated_cost = 1.35 * 1e3   # (eu/(W*m))
     
-    equip_costs = rated_cost * capacity * length
+    equip_costs = rated_cost * desired_capacity * length
     inst_costs = 0.5 * equip_costs
     ope_costs_yearly = 0.2 * 1e-2 * equip_costs
     deco_costs = 0.5 * inst_costs
     
-    return equip_costs, inst_costs, ope_costs_yearly, deco_costs
+    # Calculate present value
+    total_costs, equip_costs, inst_costs, ope_costs, deco_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
+    
+    return total_costs, equip_costs, inst_costs, ope_costs, deco_costs
 
 def HVAC_export_cable_costs(distance, desired_capacity, desired_voltage):
     """
@@ -40,8 +187,10 @@ def HVAC_export_cable_costs(distance, desired_capacity, desired_voltage):
     
     length = 1.2 * distance
     
+    desired_capacity *= 1e6 # (MW)
+    
     # Define data_tuples where each column represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
-    data_tuples = [
+    cable_data = [
         (132, 630, 39.5, 209, 818, 406, 335),
         (132, 800, 32.4, 217, 888, 560, 340),
         (132, 1000, 27.5, 238, 949, 727, 350),
@@ -58,10 +207,10 @@ def HVAC_export_cable_costs(distance, desired_capacity, desired_voltage):
     ]
 
     # Convert data_tuples to a NumPy array
-    data_array = np.array(data_tuples)
+    data_array = np.array(cable_data)
     
     # Filter data based on desired voltage
-    data_array = data_array[data_array[:, 0] == desired_voltage]
+    data_array = data_array[data_array[:, 0] >= desired_voltage]
 
     # Define the scaling factors for each column: 
     """
@@ -115,57 +264,7 @@ def HVAC_export_cable_costs(distance, desired_capacity, desired_voltage):
     return equip_costs, inst_costs, ope_costs_yearly, deco_costs
 
 
-def total_costs(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
-    """
-    Calculate the total present value of cable costs.
-
-    Parameters:
-        equip_costs (float): Equipment costs.
-        inst_costs (float): Installation costs.
-        ope_costs_yearly (float): Yearly operational costs.
-        deco_costs (float): Decommissioning costs.
-
-    Returns:
-        tuple: A tuple containing the equipment costs, installation costs, and total present value of costs.
-    """
-    # Define years for installation, operational, and decommissioning
-    inst_year = 0  # First year
-    ope_year = inst_year + 5
-    dec_year = ope_year + 25  
-    end_year = dec_year + 2  # End year
-
-    # Discount rate
-    discount_rate = 0.05
-
-    # Define the years as a function of inst_year and end_year
-    years = range(inst_year, end_year + 1)
-
-    # Initialize total operational costs
-    ope_costs = 0
-    
-    # Adjust costs for each year
-    for year in years:
-        # Adjust installation costs
-        if year == inst_year:
-            equip_costs *= (1 + discount_rate) ** -year
-            inst_costs *= (1 + discount_rate) ** -year
-        # Adjust operational costs
-        if year >= inst_year and year < ope_year:
-            inst_costs *= (1 + discount_rate) ** -year
-        elif year >= ope_year and year < dec_year:
-            ope_costs_yearly *= (1 + discount_rate) ** -year
-            ope_costs += ope_costs_yearly  # Accumulate yearly operational costs
-        # Adjust decommissioning costs
-        if year >= dec_year and year <= end_year:
-            deco_costs *= (1 + discount_rate) ** -year
-
-    # Calculate total present value of costs
-    total_costs = equip_costs + inst_costs + ope_costs + deco_costs
-
-    return equip_costs, inst_costs, total_costs
-
-desired_capacity_MW = 800  # Specify your desired capacity here
-desired_capacity = desired_capacity_MW * int(1e6)
+desired_capacity = 800
 desired_voltage = 220  # Specify your desired voltage here
 length = 5000 # Required length
 equip_costs, inst_costs, total_costs = HVAC_export_cable_costs(length, desired_capacity, desired_voltage)
