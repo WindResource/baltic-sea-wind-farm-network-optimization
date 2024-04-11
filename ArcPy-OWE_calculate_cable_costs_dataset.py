@@ -1,6 +1,28 @@
 import numpy as np
 
-def HVAC_cable_costs(length, desired_capacity, desired_voltage):
+def HVDC_export_cable_costs(distance, capacity):
+    """
+    Calculate the costs associated with selecting HVDC (High Voltage Direct Current) export cables for a given distance and capacity.
+
+    Parameters:
+        distance (float): The distance of the cable route (in meters).
+        capacity (float): The capacity of the cable (in watts).
+
+    Returns:
+        tuple: A tuple containing the equipment costs, installation costs, yearly operational costs, and decommissioning costs associated with the selected HVDC cables.
+    """
+    length = 1.3 * distance
+    
+    rated_cost = 1.35 * 1e3   # (eu/(W*m))
+    
+    equip_costs = rated_cost * capacity * length
+    inst_costs = 0.5 * equip_costs
+    ope_costs_yearly = 0.2 * 1e-2 * equip_costs
+    deco_costs = 0.5 * inst_costs
+    
+    return equip_costs, inst_costs, ope_costs_yearly, deco_costs
+
+def HVAC_export_cable_costs(distance, desired_capacity, desired_voltage):
     """
     Calculate the costs associated with selecting HVAC cables for a given length, desired capacity,
     and desired voltage.
@@ -16,7 +38,9 @@ def HVAC_cable_costs(length, desired_capacity, desired_voltage):
     """
     frequency = 50  # Assuming constant frequency
     
-    # Define data_tuples where each tuple represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
+    length = 1.2 * distance
+    
+    # Define data_tuples where each column represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
     data_tuples = [
         (132, 630, 39.5, 209, 818, 406, 335),
         (132, 800, 32.4, 217, 888, 560, 340),
@@ -81,27 +105,34 @@ def HVAC_cable_costs(length, desired_capacity, desired_voltage):
     
     # Find the cable combination with the minimum total cost
     min_cost_index = np.argmin(total_costs_array)
-    equip_costs = equip_costs_array[min_cost_index]
-    inst_costs = inst_costs_array[min_cost_index]
-    cap_costs = equip_costs + inst_costs
-    oper_costs = 0.2 * 1e-2 * equip_costs
-    deco_costs = 0.5 * inst_costs
-    
-    # Discount rate
-    discount_rate = 0.05
 
     # Initialize costs
     equip_costs = equip_costs_array[min_cost_index]
     inst_costs = inst_costs_array[min_cost_index]
-    cap_costs = equip_costs + inst_costs
     ope_costs_yearly = 0.2 * 1e-2 * equip_costs
     deco_costs = 0.5 * inst_costs
 
+    return equip_costs, inst_costs, ope_costs_yearly, deco_costs
+
+
+def total_costs(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
+    """
+    Calculate the total present value of cable costs.
+
+    Parameters:
+        equip_costs (float): Equipment costs.
+        inst_costs (float): Installation costs.
+        ope_costs_yearly (float): Yearly operational costs.
+        deco_costs (float): Decommissioning costs.
+
+    Returns:
+        tuple: A tuple containing the equipment costs, installation costs, and total present value of costs.
+    """
     # Define years for installation, operational, and decommissioning
-    inst_year = 1  # First year
-    ope_year = 6   # Sixth year
-    dec_year = 23  # Twentieth year
-    end_year = 25  # End year
+    inst_year = 0  # First year
+    ope_year = inst_year + 5
+    dec_year = ope_year + 25  
+    end_year = dec_year + 2  # End year
 
     # Discount rate
     discount_rate = 0.05
@@ -111,7 +142,7 @@ def HVAC_cable_costs(length, desired_capacity, desired_voltage):
 
     # Initialize total operational costs
     ope_costs = 0
-
+    
     # Adjust costs for each year
     for year in years:
         # Adjust installation costs
@@ -131,15 +162,13 @@ def HVAC_cable_costs(length, desired_capacity, desired_voltage):
     # Calculate total present value of costs
     total_costs = equip_costs + inst_costs + ope_costs + deco_costs
 
-    print("Total present value of costs over 20 years with a discount rate of 5%:", total_costs)
-
     return equip_costs, inst_costs, total_costs
 
 desired_capacity_MW = 800  # Specify your desired capacity here
 desired_capacity = desired_capacity_MW * int(1e6)
 desired_voltage = 220  # Specify your desired voltage here
 length = 5000 # Required length
-equip_costs, inst_costs, total_costs = HVAC_cable_costs(length, desired_capacity, desired_voltage)
+equip_costs, inst_costs, total_costs = HVAC_export_cable_costs(length, desired_capacity, desired_voltage)
 
 print(round(equip_costs, 3))
 print(round(inst_costs, 3))
