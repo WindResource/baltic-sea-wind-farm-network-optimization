@@ -252,7 +252,7 @@ def gen_dataset(output_folder: str):
     support_structure = determine_support_structure(water_depth_array)
 
     # Define capacities for which costs are to be calculated
-    capacities = np.array([500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2200, 2300, 2400, 2500])
+    capacities = np.arange(500, 2500 + 100, 100)
 
     # Expand water_depth_array and support_structure to match each capacity, alternating between AC and DC for HVC type
     expanded_water_depth = np.repeat(water_depth_array[:, np.newaxis], len(capacities) * 2, axis=1).flatten()
@@ -292,7 +292,6 @@ def gen_dataset(output_folder: str):
         ('AC', object),  # Store all capacities and corresponding costs as a single array or list
         ('DC', object),  # Store all capacities and corresponding costs as a single array or list
     ]
-
 
     # Calculate reshaped_total_costs
     reshaped_total_costs = total_costs.reshape((-1, len(capacities) * 2))
