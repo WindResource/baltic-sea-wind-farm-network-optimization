@@ -94,6 +94,7 @@ Functions:
 
 import arcpy
 import os
+import numpy as np
 
 def determine_support_structure(water_depth):
     """
@@ -114,7 +115,7 @@ def determine_support_structure(water_depth):
         arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
         return "default"
 
-def calc_equip_costs(water_depth, support_structure, year, turbine_capacity):
+def equip_costs(water_depth, support_structure, turbine_capacity, year):
     """
     Calculates the equipment costs based on water depth values, year, and turbine capacity.
 
@@ -122,7 +123,7 @@ def calc_equip_costs(water_depth, support_structure, year, turbine_capacity):
     - float: Calculated equipment costs.
     """
     # Coefficients for equipment cost calculation based on the support structure and year
-    support_structure_coeff = {
+    supp_coeff = {
         ('monopile', '2020'): (201, 613, 812),
         ('monopile', '2030'): (181, 552, 370),
         ('monopile', '2050'): (171, 521, 170),
@@ -142,13 +143,13 @@ def calc_equip_costs(water_depth, support_structure, year, turbine_capacity):
     }
 
     # Calculate equipment costs using the provided formula
-    c1, c2, c3 = support_structure_coeff[(support_structure, year)]
-    support_structure_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
+    c1, c2, c3 = supp_coeff[(support_structure, year)]
+    supp_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
     turbine_costs = turbine_capacity * turbine_coeff[year]
 
-    equip_costs = support_structure_costs + turbine_costs
+    equip_costs = supp_costs + turbine_costs
     
-    return equip_costs
+    return supp_costs, turbine_costs, equip_costs
 
 def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, operation):
     """
@@ -185,7 +186,7 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
     }
 
     # Choose the appropriate coefficients based on the operation type
-    coeff = inst_coeff if operation == 'installation' else deco_coeff
+    coeff = inst_coeff if operation == 'inst' else deco_coeff
 
     # Determine support structure based on water depth
     support_structure = determine_support_structure(water_depth).lower()
@@ -240,130 +241,150 @@ def calc_logi_costs(water_depth, support_structure, port_distance, failure_rate=
 
     return logi_costs
 
-def update_fields():
+def save_structured_array_to_txt(filename, structured_array):
     """
-    Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
-    decommissioning, logistics costs, logistics time, and Opex.
+    Saves a structured numpy array to a text file.
 
-    Returns:
-    - None
+    Parameters:
+    - filename (str): The path to the file where the array should be saved.
+    - structured_array (numpy structured array): The array to save.
     """
-    # Function to add a field if it does not exist in the layer
-    def add_field_if_not_exists(layer, field_name, field_type):
-        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
-            arcpy.AddField_management(layer, field_name, field_type)
-            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
+    # Open the file in write mode
+    with open(filename, 'w') as file:
+        # Write header
+        header = ', '.join(structured_array.dtype.names)
+        file.write(header + '\n')
 
-    # Define fields to be added if they don't exist
-    fields_to_add = [
-        ('SuppStruct', 'TEXT'),
-        ('EquiC20', 'DOUBLE'),
-        ('EquiC30', 'DOUBLE'),
-        ('EquiC50', 'DOUBLE'),
-        ('InstC', 'DOUBLE'),
-        ('Capex20', 'DOUBLE'),
-        ('Capex30', 'DOUBLE'),
-        ('Capex50', 'DOUBLE'),
-        ('LogiC', 'DOUBLE'),
-        ('Opex20', 'DOUBLE'),
-        ('Opex30', 'DOUBLE'),
-        ('Opex50', 'DOUBLE'),
-        ('Decex', 'DOUBLE'),
-    ]
+        # Write data rows
+        for row in structured_array:
+            row_str = ', '.join(str(value) for value in row)
+            file.write(row_str + '\n')
+
+def gen_dataset(output_folder: str):
+    """
+    Generates a numpy dataset containing longitude, latitude, AC and DC capacities, and total costs for each OSS_ID.
+    """
     
     # Access the current ArcGIS project
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
-    # Find the wind turbine layer in the map
-    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
+    # Find the offshore substation layer
+    wtc_layer = [layer for layer in map.listLayers() if layer.name.startswith('WTC')][0]
 
-    # Check if the turbine layer exists
-    if not turbine_layer:
+    wfc_layer = [layer for layer in map.listLayers() if layer.name.startswith('WFC')][0]
+    
+    # Check if any OSSC layer exists
+    if not wtc_layer:
         arcpy.AddError("No layer starting with 'WTC' found in the current map.")
         return
+    if not wfc_layer:
+        arcpy.AddError("No layer starting with 'WFC' found in the current map.")
+        return
 
-    # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(turbine_layer, "CLEAR_SELECTION")
-    
-    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
+    arcpy.AddMessage(f"Processing layer: {wtc_layer.name}")
 
     # Check if required fields exist in the attribute table
-    required_fields = ['WaterDepth', 'Capacity', 'Distance']
-    existing_fields = [field.name for field in arcpy.ListFields(turbine_layer)]
+    required_fields = ['WaterDepth','Distance']
     for field in required_fields:
-        if field not in existing_fields:
+        if field not in [f.name for f in arcpy.ListFields(wtc_layer)]:
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
             return
 
-    # Add new fields to the attribute table if they do not exist
-    for field_name, field_type in fields_to_add:
-        add_field_if_not_exists(turbine_layer, field_name, field_type)
+    # Convert attribute table to NumPy array
+    array_wtc = arcpy.da.FeatureClassToNumPyArray(wtc_layer,'*')
+    water_depth_array = array_wtc['WaterDepth']
+    distance_array = array_wtc['Distance']
+    capacity_array = array_wtc['Capacity']
+    wfid_array = array_wtc['WF_ID']
+    wtid_array = array_wtc['WT_ID']
 
-    # Get the list of fields in the attribute table
-    fields = [field.name for field in arcpy.ListFields(turbine_layer)]
+    array_wf = arcpy.da.FeatureClassToNumPyArray(wfc_layer,'*')
+    longitude_array = array_wf['Longitude']
+    latitide_array = array_wf['Latitude']
 
-    # Update each row in the attribute table
-    with arcpy.da.UpdateCursor(turbine_layer, fields) as cursor:
-        for row in cursor:
-            # Extract water depth and turbine capacity from the current row
-            water_depth = row[fields.index("WaterDepth")]  # Invert the sign
-            turbine_capacity = row[fields.index("Capacity")]
-            distance = row[fields.index("Distance")]
-            
-            # Determine support structure and assign it to the corresponding field
-            support_structure = determine_support_structure(water_depth)
-            row[fields.index("SuppStruct")] = support_structure.capitalize()
+    # Determine support structure for all water depths
+    supp_array = determine_support_structure(water_depth_array)
 
-            # Iterate over each year and calculate costs and time
-            for year in ['2020', '2030', '2050']:
-                field_name_ec = f"EquiC{year[2:]}"
-                field_name_cap = f"Capex{year[2:]}"
+    # Calculate equipment costs for expanded arrays
+    supp_costs, turbine_costs, equip_costs_wt = equip_costs(water_depth_array, supp_array, capacity_array, year = "2020")
 
-                if field_name_ec in fields and field_name_cap in fields:
-                    # Round function
-                    def rnd(r):
-                        return round(r / int(1e6), 6)
-                    
-                    # Calculate equipment costs for the current year
-                    equi_costs = calc_equip_costs(water_depth, support_structure, year, turbine_capacity)
-                    row[fields.index(field_name_ec)] = rnd(equi_costs)
+    # Installation and decomissioning expenses
+    inst_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "inst")
+    deco_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "inst")
 
-                    # Calculate installation and decommissioning costs
-                    inst_costs = calc_costs(water_depth, support_structure, distance,
-                                                        turbine_capacity, 'installation')
-                    deco_costs = calc_costs(water_depth, support_structure, distance,
-                                                        turbine_capacity, 'decommissioning')
+    # Calculate capital expenses
+    cap_expenses_wt = np.add(equip_costs_wt, inst_costs_wt)
 
-                    # Assign calculated values to the corresponding fields
-                    row[fields.index("InstC")] = rnd(inst_costs)
+    # Operating expenses calculation with conditional logic for support structures
+    # Using numpy.where to apply condition across the array
+    ope_expenses_wt = 0.025 * turbine_costs
 
-                    # Calculate and assign total capital expenditure for the current year
-                    capex = equi_costs + inst_costs
-                    row[fields.index(field_name_cap)] = rnd(capex)
+    # Calculate total expenses
+    total_costs_wt = np.add(cap_expenses_wt, deco_costs_wt, ope_expenses_wt)
 
-                    # Assign decommissioning costs if the field exists
-                    field_name_dec = "Decex"
-                    if field_name_dec in fields:
-                        row[fields.index(field_name_dec)] = rnd(deco_costs)
+    # Find unique values of 'WF_ID' and their corresponding counts
+    unique_wf_ids, counts = np.unique(wfid_array, return_counts=True)
 
-                    # Calculate and assign logistics costs
-                    logi_costs = calc_logi_costs(water_depth, support_structure, distance)
-                    row[fields.index("LogiC")] = rnd(logi_costs)
+    # Initialize an array to store the sum of 'total_costs_wt' for each unique 'WF_ID'
+    total_costs_sum_per_wf_id = np.zeros_like(unique_wf_ids, dtype=float)
 
-                    # Calculate material costs and assign operating expenses if the field exists
-                    material_costs = 0.025 * equi_costs
-                    field_name_opex = f"Opex{year[2:]}"
-                    if field_name_opex in fields:
-                        row[fields.index(field_name_opex)] = rnd(material_costs + logi_costs)
+    # Calculate the cumulative sum of 'total_costs_wt' using np.add.at
+    np.add.at(total_costs_sum_per_wf_id, wfid_array, total_costs_wt)
 
-            cursor.updateRow(row)
+    # Return the total costs per WF_ID
+    total_costs_wf = total_costs_sum_per_wf_id / counts
+    
+    
+    # Save the results or update the layer attributes as required by your project needs
+    arcpy.AddMessage("Data updated successfully.")
+    
+    ## some code here
 
-    arcpy.AddMessage(f"Attribute table of {turbine_layer} updated successfully.")
+    # Define the data type for a structured array with all necessary fields
+    dtype = [
+        ('WT_ID', 'U10'),  # Adjust string length as needed
+        ('Longitude', float),
+        ('Latitude', float),
+        ('Capacity', float),
+        ('TotalCost', float)
+    ]
+
+    # Initialize an empty list to store data dictionaries
+    data_list = []
+
+    # Iterate over the indices of the unique WF_IDs
+    for i, wf_id in enumerate(unique_wf_ids):
+        # Find the indices where WF_ID equals the current unique WF_ID
+        indices = np.where(wfid_array == wf_id)[0]
+        # Iterate over the indices and create a data dictionary for each record
+        for index in indices:
+            data_dict = {
+                'WT_ID': wtid_array[index],
+                'Longitude': longitude_array[index],
+                'Latitude': latitide_array[index],
+                'Capacity': capacity_array[index],
+                'TotalCost': total_costs_wf[i]  # Use the corresponding total cost for the WF_ID
+            }
+            # Append the data dictionary to the data list
+            data_list.append(data_dict)
+
+    # Convert the list of dictionaries to a structured array
+    data_array = np.array([(d['WT_ID'], d['Longitude'], d['Latitude'], d['Capacity'], d['TotalCost']) for d in data_list], dtype=dtype)
+
+    # Save the structured array to a .npy file in the specified folder
+    np.save(os.path.join(output_folder, 'oss_data.npy'), data_array)
+    arcpy.AddMessage("Data saved successfully.")
+
+    # Assuming the structured array is named 'data_array'
+    save_structured_array_to_txt(os.path.join(output_folder, 'oss_data.txt'), data_array)
+    arcpy.AddMessage("Data saved successfully.")
+
 
 if __name__ == "__main__":
-    update_fields()
-
+    # Prompt the user to input the folder path where they want to save the output files
+    output_folder = arcpy.GetParameterAsText(0)
+    gen_dataset(output_folder)
 
 
 
