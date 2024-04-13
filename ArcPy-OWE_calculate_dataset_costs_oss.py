@@ -306,8 +306,8 @@ def gen_dataset(output_folder: str):
             'OSS_ID': array['OSS_ID'][i],
             'Longitude': array['Longitude'][i],
             'Latitude': array['Latitude'][i],
-            'AC': {},  # Initialize empty dictionary to store capacities and costs for AC
-            'DC': {},  # Initialize empty dictionary to store capacities and costs for DC
+            'AC': [],  # Initialize empty list to store costs for AC
+            'DC': [],  # Initialize empty list to store costs for DC
         }
         
         # Iterate over each capacity
@@ -316,9 +316,9 @@ def gen_dataset(output_folder: str):
             total_costs_ac = reshaped_total_costs[i, capacity_index * 2]
             total_costs_dc = reshaped_total_costs[i, capacity_index * 2 + 1]
             
-            # Add capacity and total costs to the corresponding dictionary
-            oss_data['AC'][int(capacity)] = np.int(np.round(total_costs_ac / 1000))
-            oss_data['DC'][int(capacity)] = np.int(np.round(total_costs_dc / 1000))
+            # Append total costs to the corresponding lists
+            oss_data['AC'].append(np.int(np.round(total_costs_ac / 1000)))
+            oss_data['DC'].append(np.int(np.round(total_costs_dc / 1000)))
         
         # Append data for the current OSS_ID to the list
         data_list.append(oss_data)
