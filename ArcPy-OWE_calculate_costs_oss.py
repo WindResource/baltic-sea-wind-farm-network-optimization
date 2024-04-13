@@ -147,16 +147,12 @@ def determine_support_structure(water_depth):
     - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
     """
     # Define depth ranges for different support structures
-    if 0 <= water_depth < 30:
+    if water_depth < 30:
         return "sandisland"
     elif 30 <= water_depth < 150:
         return "jacket"
     elif 150 <= water_depth:
         return "floating"
-    else:
-        # If water depth is outside specified ranges, assign default support structure
-        arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
-        return "default"
 
 def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type="AC"):
     """
@@ -236,6 +232,7 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
         equiv_capacity = 0.5 * oss_capacity if HVC_type == "AC" else oss_capacity
         
         # Calculate installation costs for sand island
+        water_depth = max(0, water_depth)
         area_island = (equiv_capacity * 5)
         slope = 0.75
         r_hub = np.sqrt(area_island/np.pi)
@@ -243,7 +240,7 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
         volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
         
         total_costs = ((volume_island / c1) * ((2 * port_distance) / c2) + (volume_island / c3) + (volume_island / c4)) * (c5 * 1000) / 24
-        arcpy.AddMessage(f"1 {volume_island}")
+        
     elif support_structure == 'jacket':
         c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
         # Calculate installation costs for jacket
@@ -272,16 +269,12 @@ def update_fields():
     Returns:
     - None
     """
-    # Function to add a field if it does not exist in the layer
-    def add_field_if_not_exists(layer, field_name, field_type):
-        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
-            arcpy.AddField_management(layer, field_name, field_type)
     
     # Define the capacities for which fields are to be added
-    capacities = [500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500]
+    capacities = [500, 1000, 1500, 2000, 2500]
 
     # Define the expense categories
-    expense_categories = ['Sup', 'Cnv', 'Equ', 'Ins', 'Cap', 'Ope', 'Dec'] # Equipment costs, Installation costs, Capital expenses, Operating expenses, decommissioning expenses
+    expense_categories = ['Sup', 'Cnv', 'Equ', 'Ins', 'Cap', 'Ope', 'Dec']
 
     # Define fields to be added if they don't exist
     fields_to_add = [('SuppStruct', 'TEXT')]
@@ -315,23 +308,26 @@ def update_fields():
 
     # Check if required fields exist in the attribute table
     fields = arcpy.ListFields(oss_layer)
-    field_names = {field.name for field in fields}
+    field_names = [field.name for field in fields]
     required_fields = ['WaterDepth', 'Distance']
     for field in required_fields:
         if field not in field_names:
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
             return
 
+    # Check if fields to be added already exist
+    fields_not_exist = [field_name for field_name, field_type in fields_to_add if field_name not in field_names]
+
     # Add new fields to the attribute table if they do not exist
-    for field_name, field_type in fields_to_add:
-        add_field_if_not_exists(oss_layer, field_name, field_type)
+    if fields_not_exist:
+        arcpy.management.AddFields(oss_layer, fields_to_add)
 
     # Update each row in the attribute table
-    with arcpy.da.UpdateCursor(oss_layer, [field.name for field in fields]) as cursor:
+    with arcpy.da.UpdateCursor(oss_layer, field_names) as cursor:
         for row in cursor:
             water_depth = row[field_names.index("WaterDepth")]
             port_distance = row[field_names.index("Distance")]
-            
+
             # Determine and assign Support structure
             support_structure = determine_support_structure(water_depth)
             row[field_names.index('SuppStruct')] = support_structure.capitalize()
@@ -341,7 +337,7 @@ def update_fields():
                     # Round function
                     def rnd(r):
                         return round(r / int(1e6), 6)
-                    
+
                     # Material Costs
                     supp_costs, conv_costs, equip_costs = calc_equip_costs(water_depth, support_structure, capacity, HVC_type=sub_type)
                     row[field_names.index(f'Sup{capacity}_{sub_type}')] = rnd(supp_costs)
@@ -369,8 +365,6 @@ def update_fields():
 
 if __name__ == "__main__":
     update_fields()
-    
-    plot_capital_expenses()
 
 
 
