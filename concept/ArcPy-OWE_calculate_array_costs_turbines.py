@@ -214,89 +214,74 @@ def calc_logi_costs(water_depth, support_structure, port_distance, failure_rate=
 
     return logi_costs
 
+import pandas as pd
+import numpy as np
+
 def update_fields():
     """
-    Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
-    decommissioning, logistics costs, and operating expenses.
-
-    Returns:
-    - None
+    Update the attribute table of the Offshore SubStation Coordinates (OSSC) layer.
     """
-    # Function to add a field if it does not exist in the layer
-    def add_field_if_not_exists(layer, field_name, field_type):
-        if field_name not in [field.name for field in arcpy.ListFields(layer)]:
-            arcpy.AddField_management(layer, field_name, field_type)
-            arcpy.AddMessage(f"Added field '{field_name}' to the attribute table.")
-
-    # Access the current ArcGIS project
+    # Placeholder setup for ArcGIS objects
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
-
-    # Find the wind turbine layer in the map
-    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
-
-    # Check if the turbine layer exists
-    if not turbine_layer:
-        arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+    oss_layers = [layer for layer in map.listLayers() if layer.name.startswith('OSSC')]
+    if not oss_layers:
+        arcpy.AddError("No OSSC layer found.")
         return
-
-    # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(turbine_layer, "CLEAR_SELECTION")
+    oss_layer = oss_layers[0]
+    arcpy.SelectLayerByAttribute_management(oss_layer, "CLEAR_SELECTION")
     
-    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
+    # Check required fields exist
+    required_fields = ['WaterDepth', 'Distance']
+    array = arcpy.da.FeatureClassToNumPyArray(oss_layer, required_fields)
+    water_depth_array = array['WaterDepth']
+    distance_array = array['Distance']
 
-    # Check if required fields exist in the attribute table
-    required_fields = ['WaterDepth', 'Capacity', 'Distance']
-    existing_fields = [field.name for field in arcpy.ListFields(turbine_layer)]
-    for field in required_fields:
-        if field not in existing_fields:
-            arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
-            return
+    # Determine support structure
+    support_structure = determine_support_structure(water_depth_array)
 
-    # Get the list of fields in the attribute table
-    fields = [field.name for field in arcpy.ListFields(turbine_layer)]
+    # Define capacities and HVC types
+    capacities = np.array([500, 1000, 1500, 2000, 2500])
+    HVC_types = np.array(['AC', 'DC'])
 
-    # Create NumPy arrays for each required field
-    water_depth = arcpy.da.FeatureClassToNumPyArray(turbine_layer, "WaterDepth")
-    turbine_capacity = arcpy.da.FeatureClassToNumPyArray(turbine_layer, "Capacity")
-    distance = arcpy.da.FeatureClassToNumPyArray(turbine_layer, "Distance")
+    # Use np.newaxis to prepare for broadcasting
+    water_depth_expanded = water_depth_array[:, np.newaxis, np.newaxis]
+    distance_expanded = distance_array[:, np.newaxis, np.newaxis]
+    support_structure_expanded = support_structure[:, np.newaxis, np.newaxis]
+    capacities_expanded = capacities[np.newaxis, :, np.newaxis]
+    HVC_types_expanded = HVC_types[np.newaxis, np.newaxis, :]
 
-    # Vectorize support structure calculation
-    support_structure = determine_support_structure(water_depth)
+    # Broadcasting to match dimensions: locations x capacities x HVC_types
+    final_shape = (water_depth_array.size, capacities.size, HVC_types.size)
+    expanded_water_depth = np.broadcast_to(water_depth_expanded, final_shape).flatten()
+    expanded_distance = np.broadcast_to(distance_expanded, final_shape).flatten()
+    expanded_support_structure = np.broadcast_to(support_structure_expanded, final_shape).flatten()
+    expanded_capacities = np.broadcast_to(capacities_expanded, final_shape).flatten()
+    expanded_HVC_types = np.broadcast_to(HVC_types_expanded, final_shape).flatten()
 
-    # Calculate equipment costs for each year
-    years = np.array(['2020', '2030', '2050'])
-    equi_costs = calc_equip_costs(water_depth[:, np.newaxis], support_structure[:, np.newaxis], years, turbine_capacity[:, np.newaxis])
+    # Calculate costs
+    # Example calculation function call (ensure your functions support these expanded arrays)
+    supp_costs, conv_costs, equip_costs = calc_equip_costs(expanded_water_depth, expanded_support_structure, expanded_capacities, expanded_HVC_types)
+    inst_costs = calc_costs(expanded_water_depth, expanded_support_structure, expanded_distance, expanded_capacities, expanded_HVC_types, 'inst')
+    deco_costs = calc_costs(expanded_water_depth, expanded_support_structure, expanded_distance, expanded_capacities, expanded_HVC_types, 'deco')
 
-    # Calculate installation and decommissioning costs
-    inst_costs = calc_costs(water_depth[:, np.newaxis], support_structure[:, np.newaxis], distance[:, np.newaxis], turbine_capacity[:, np.newaxis], 'installation')
-    deco_costs = calc_costs(water_depth[:, np.newaxis], support_structure[:, np.newaxis], distance[:, np.newaxis], turbine_capacity[:, np.newaxis], 'decommissioning')
+    # Convert results to DataFrame
+    df = pd.DataFrame({
+        'WaterDepth': expanded_water_depth,
+        'Distance': expanded_distance,
+        'SupportStructure': expanded_support_structure,
+        'Capacity': expanded_capacities,
+        'HVCType': expanded_HVC_types,
+        'SupportCosts': supp_costs,
+        'ConverterCosts': conv_costs,
+        'EquipmentCosts': equip_costs,
+        'InstallationCosts': inst_costs,
+        'DecommissioningCosts': deco_costs,
+    })
 
-    # Calculate and assign logistics costs
-    logi_costs = calc_logi_costs(water_depth[:, np.newaxis], support_structure[:, np.newaxis], distance[:, np.newaxis])
-
-    # Calculate and assign operating expenses
-    opex_costs = 0.025 * equi_costs + logi_costs
-
-    # Update each row in the attribute table
-    with arcpy.da.UpdateCursor(turbine_layer, fields) as cursor:
-        for row, eq_cost, inst_cost, deco_cost, logi_cost, opex_cost in zip(cursor, equi_costs, inst_costs, deco_costs, logi_costs, opex_costs):
-            row[fields.index("SuppStruct")] = determine_support_structure(row[fields.index("WaterDepth")]).capitalize()
-            row[fields.index("EquiC20")] = eq_cost[0]
-            row[fields.index("EquiC30")] = eq_cost[1]
-            row[fields.index("EquiC50")] = eq_cost[2]
-            row[fields.index("InstC")] = inst_cost
-            row[fields.index("Capex20")] = eq_cost[0] + inst_cost
-            row[fields.index("Capex30")] = eq_cost[1] + inst_cost
-            row[fields.index("Capex50")] = eq_cost[2] + inst_cost
-            row[fields.index("Decex")] = deco_cost
-            row[fields.index("LogiC")] = logi_cost
-            row[fields.index("Opex20")] = opex_cost[0]
-            row[fields.index("Opex30")] = opex_cost[1]
-            row[fields.index("Opex50")] = opex_cost[2]
-            cursor.updateRow(row)
-
-    arcpy.AddMessage(f"Attribute table of {turbine_layer} updated successfully.")
+    # Save DataFrame to an Excel file
+    df.to_excel('results.xlsx', index=False)
+    arcpy.AddMessage("Data saved to results.xlsx.")
 
 if __name__ == "__main__":
     update_fields()
