@@ -57,7 +57,7 @@ None
 
 import arcpy
 import numpy as np
-import pandas as pd
+import os
 
 def determine_support_structure(water_depth):
     """
@@ -211,7 +211,7 @@ def save_structured_array_to_txt(filename, structured_array):
             row_str = ', '.join(str(value) for value in row)
             file.write(row_str + '\n')
 
-def gen_dataset():
+def gen_dataset(output_folder: str):
     """
     Generates a numpy dataset containing longitude, latitude, AC and DC capacities, and total costs for each OSS_ID.
     """
@@ -283,7 +283,7 @@ def gen_dataset():
 
     # Save the results or update the layer attributes as required by your project needs
     arcpy.AddMessage("Data updated successfully.")
-
+    
     # Define the data type for a structured array with all necessary fields
     dtype = [
         ('OSS_ID', 'U10'),  # Adjust string length as needed
@@ -318,8 +318,8 @@ def gen_dataset():
             total_costs_dc = reshaped_total_costs[i, capacity_index * 2 + 1]
             
             # Add capacity and total costs to the corresponding dictionary
-            oss_data['AC'][capacity] = np.round(total_costs_ac)
-            oss_data['DC'][capacity] = np.round(total_costs_dc)
+            oss_data['AC'][int(capacity)] = np.int(np.round(total_costs_ac / 1000))
+            oss_data['DC'][int(capacity)] = np.int(np.round(total_costs_dc / 1000))
         
         # Append data for the current OSS_ID to the list
         data_list.append(oss_data)
@@ -327,22 +327,18 @@ def gen_dataset():
     # Convert the list of dictionaries to a structured array
     data_array = np.array([(d['OSS_ID'], d['Longitude'], d['Latitude'], d['AC'], d['DC']) for d in data_list], dtype=dtype)
 
-    # Save the structured array to a .npy file
-    np.save('calculated_data.npy', data_array)
-
-    # Confirm successful save
-    print("Data saved successfully to calculated_data.npy.")
-
-
-
+    # Save the structured array to a .npy file in the specified folder
+    np.save(os.path.join(output_folder, 'oss_data.npy'), data_array)
+    arcpy.AddMessage("Data saved successfully.")
 
     # Assuming the structured array is named 'data_array'
-    save_structured_array_to_txt('calculated_data.txt', data_array)
-    print("Data saved successfully to calculated_data.txt.")
+    save_structured_array_to_txt(os.path.join(output_folder, 'oss_data.txt'), data_array)
+    arcpy.AddMessage("Data saved successfully.")
 
 if __name__ == "__main__":
-    gen_dataset()
-
+    # Prompt the user to input the folder path where they want to save the output files
+    output_folder = arcpy.GetParameterAsText(0)
+    gen_dataset(output_folder)
 
 
 
