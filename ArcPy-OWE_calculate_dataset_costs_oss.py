@@ -211,10 +211,6 @@ def save_structured_array_to_txt(filename, structured_array):
             row_str = ', '.join(str(value) for value in row)
             file.write(row_str + '\n')
 
-
-import numpy as np
-import arcpy
-
 def gen_dataset():
     """
     Generates a numpy dataset containing longitude, latitude, AC and DC capacities, and total costs for each OSS_ID.
@@ -256,7 +252,7 @@ def gen_dataset():
     support_structure = determine_support_structure(water_depth_array)
 
     # Define capacities for which costs are to be calculated
-    capacities = np.array([500, 1000, 1500, 2000, 2500])
+    capacities = np.array([500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2200, 2300, 2400, 2500])
 
     # Expand water_depth_array and support_structure to match each capacity, alternating between AC and DC for HVC type
     expanded_water_depth = np.repeat(water_depth_array[:, np.newaxis], len(capacities) * 2, axis=1).flatten()
@@ -293,35 +289,52 @@ def gen_dataset():
         ('OSS_ID', 'U10'),  # Adjust string length as needed
         ('Longitude', float),
         ('Latitude', float),
-        ('AC', [('Capacity', float), ('TotalCosts', float)]),
-        ('DC', [('Capacity', float), ('TotalCosts', float)]),
+        ('AC', object),  # Store all capacities and corresponding costs as a single array or list
+        ('DC', object),  # Store all capacities and corresponding costs as a single array or list
     ]
 
-    # Create an empty structured array
-    data_array = np.empty(len(array), dtype=dtype)
 
-    # Fill the array
-    data_array['OSS_ID'] = array['OSS_ID']
-    data_array['Longitude'] = array['Longitude']
-    data_array['Latitude'] = array['Latitude']
-
-    # Reshape total_costs to have a shape compatible with data_array
+    # Calculate reshaped_total_costs
     reshaped_total_costs = total_costs.reshape((-1, len(capacities) * 2))
 
-    # Repeat capacities for each OSS_ID
-    repeated_capacities = np.repeat(capacities, 1)
+    # Initialize an empty list to store data for each OSS_ID
+    data_list = []
 
-    # Assign values to AC and DC fields using slicing
-    data_array['AC']['Capacity'] = repeated_capacities.repeat(len(array)//len(capacities))
-    data_array['AC']['TotalCosts'] = reshaped_total_costs[:, ::2].flatten()
-    data_array['DC']['Capacity'] = repeated_capacities.repeat(len(array)//len(capacities))
-    data_array['DC']['TotalCosts'] = reshaped_total_costs[:, 1::2].flatten()
+    # Iterate over each OSS_ID
+    for i in range(len(array)):
+        # Create a dictionary to store data for the current OSS_ID
+        oss_data = {
+            'OSS_ID': array['OSS_ID'][i],
+            'Longitude': array['Longitude'][i],
+            'Latitude': array['Latitude'][i],
+            'AC': {},  # Initialize empty dictionary to store capacities and costs for AC
+            'DC': {},  # Initialize empty dictionary to store capacities and costs for DC
+        }
+        
+        # Iterate over each capacity
+        for capacity_index, capacity in enumerate(capacities):
+            # Calculate total costs for AC and DC
+            total_costs_ac = reshaped_total_costs[i, capacity_index * 2]
+            total_costs_dc = reshaped_total_costs[i, capacity_index * 2 + 1]
+            
+            # Add capacity and total costs to the corresponding dictionary
+            oss_data['AC'][capacity] = np.round(total_costs_ac)
+            oss_data['DC'][capacity] = np.round(total_costs_dc)
+        
+        # Append data for the current OSS_ID to the list
+        data_list.append(oss_data)
+
+    # Convert the list of dictionaries to a structured array
+    data_array = np.array([(d['OSS_ID'], d['Longitude'], d['Latitude'], d['AC'], d['DC']) for d in data_list], dtype=dtype)
 
     # Save the structured array to a .npy file
     np.save('calculated_data.npy', data_array)
 
     # Confirm successful save
     print("Data saved successfully to calculated_data.npy.")
+
+
+
 
     # Assuming the structured array is named 'data_array'
     save_structured_array_to_txt('calculated_data.txt', data_array)
