@@ -212,12 +212,12 @@ def save_structured_array_to_txt(filename, structured_array):
             file.write(row_str + '\n')
 
 
-def update_fields():
-    """
-    Update the attribute table of the Offshore SubStation Coordinates (OSSC) layer.
+import numpy as np
+import arcpy
 
-    Returns:
-    - None
+def gen_dataset():
+    """
+    Generates a numpy dataset containing longitude, latitude, AC and DC capacities, and total costs for each OSS_ID.
     """
     
     # Access the current ArcGIS project
@@ -293,36 +293,43 @@ def update_fields():
         ('OSS_ID', 'U10'),  # Adjust string length as needed
         ('Longitude', float),
         ('Latitude', float),
-        ('Capacity', float),
-        ('HVCType', 'U2'),  # 'AC' or 'DC'
-        ('TotalCosts', float),
+        ('AC', [('Capacity', float), ('TotalCosts', float)]),
+        ('DC', [('Capacity', float), ('TotalCosts', float)]),
     ]
 
-    # Number of records
-    n_records = len(expanded_water_depth)  # Assuming this represents the total number of records
-
     # Create an empty structured array
-    data_array = np.empty(n_records, dtype=dtype)
+    data_array = np.empty(len(array), dtype=dtype)
 
     # Fill the array
-    data_array['OSS_ID'] = np.tile(array['OSS_ID'], n_records // len(array['OSS_ID']))  # Example for repeating OSS_ID, adjust logic as needed
-    data_array['Longitude'] = np.tile(array['Longitude'], n_records // len(array['Longitude']))  # Repeat for each record
-    data_array['Latitude'] = np.tile(array['Latitude'], n_records // len(array['Latitude']))  # Repeat for each record
-    # Populate other fields similarly
-    data_array['HVCType'] = HVC_types
-    data_array['Capacity'] = expanded_capacities
-    data_array['TotalCosts'] = np.round(total_costs)
+    data_array['OSS_ID'] = array['OSS_ID']
+    data_array['Longitude'] = array['Longitude']
+    data_array['Latitude'] = array['Latitude']
+
+    # Reshape total_costs to have a shape compatible with data_array
+    reshaped_total_costs = total_costs.reshape((-1, len(capacities) * 2))
+
+    # Repeat capacities for each OSS_ID
+    repeated_capacities = np.repeat(capacities, 1)
+
+    # Assign values to AC and DC fields using slicing
+    data_array['AC']['Capacity'] = repeated_capacities.repeat(len(array)//len(capacities))
+    data_array['AC']['TotalCosts'] = reshaped_total_costs[:, ::2].flatten()
+    data_array['DC']['Capacity'] = repeated_capacities.repeat(len(array)//len(capacities))
+    data_array['DC']['TotalCosts'] = reshaped_total_costs[:, 1::2].flatten()
 
     # Save the structured array to a .npy file
     np.save('calculated_data.npy', data_array)
 
     # Confirm successful save
     print("Data saved successfully to calculated_data.npy.")
-    
+
     # Assuming the structured array is named 'data_array'
     save_structured_array_to_txt('calculated_data.txt', data_array)
     print("Data saved successfully to calculated_data.txt.")
 
 if __name__ == "__main__":
-    update_fields()
+    gen_dataset()
+
+
+
 
