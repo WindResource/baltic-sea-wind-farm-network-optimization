@@ -81,8 +81,6 @@ def determine_support_structure(water_depth):
 
     return support_structure
 
-import numpy as np
-
 def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type):
     """
     Calculates the offshore substation equipment costs for expanded arrays of inputs.
