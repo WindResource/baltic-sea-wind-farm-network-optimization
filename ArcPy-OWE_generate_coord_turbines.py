@@ -65,8 +65,8 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
         ["Country", "TEXT", "", 10],
         ["ISO", "TEXT", "", 5],       
         ["Name", "TEXT", "", 80],
-        ["FeatureFID", "LONG"],
-        ["TurbineID", "TEXT", "", 10],
+        ["WF_ID", "TEXT", "", 10],
+        ["WT_ID", "TEXT", "", 10],
         ["Status", "TEXT", "", 10],
         ["Longitude", "DOUBLE"],
         ["Latitude", "DOUBLE"],
@@ -75,7 +75,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     ])
 
     # Prepare to insert new turbine point features
-    insert_cursor_fields = ["SHAPE@", "Country", "ISO", "Name", "FeatureFID", "TurbineID",  "Status", "Longitude", "Latitude", "Capacity", "Diameter"]
+    insert_cursor_fields = ["SHAPE@", "Country", "ISO", "Name", "WF_ID", "WT_ID",  "Status", "Longitude", "Latitude", "Capacity", "Diameter"]
     insert_cursor = arcpy.da.InsertCursor(wtc_layer, insert_cursor_fields)
 
     # Calculate the spacing in meters
@@ -85,7 +85,7 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     # considering the specified spacing using NumPy
     search_fields = ["SHAPE@", "OID@", "Country", "Name", "Status"]
     with arcpy.da.SearchCursor(wfa_layer, search_fields) as feature_cursor:
-        for row, (shape, fid, country, name, status) in enumerate(feature_cursor):
+        for row, (shape, wf_id, country, name, status) in enumerate(feature_cursor):
             extent = shape.extent
 
             # Calculate number of points in x and y directions
@@ -121,13 +121,13 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
             rows = []
             for point in projected_points:
                 iso = iso_mp.get(country, "XX")  # Default to "XX" if country code is not found
-                turbine_id = f"{iso}_F{fid}_T{turbine_index}"  # Modified TurbineID generation
+                turbine_id = f"{iso}_F{wf_id}_T{turbine_index}"  # Modified TurbineID generation
                 rows.append((
                     point,
                     country,
                     iso,
                     name,
-                    fid,
+                    wf_id,
                     turbine_id,
                     status,
                     round(point.centroid.X, 6),
