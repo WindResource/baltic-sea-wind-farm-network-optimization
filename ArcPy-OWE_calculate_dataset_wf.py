@@ -98,29 +98,32 @@ import numpy as np
 
 def determine_support_structure(water_depth):
     """
-    Determines the support structure type based on water depth.
+    Determines the support structure type based on water depth. Updated to work with expanded arrays.
+
+    Parameters:
+    - water_depth (float or numpy array): Water depth in meters.
 
     Returns:
     - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
     """
+    # Ensure water_depth is a numpy array
+    water_depth = np.atleast_1d(water_depth)
+
     # Define depth ranges for different support structures
-    if 0 <= water_depth < 25:
-        return "monopile"
-    elif 25 <= water_depth < 55:
-        return "jacket"
-    elif 55 <= water_depth <= 200:
-        return "floating"
-    else:
-        # If water depth is outside specified ranges, assign default support structure
-        arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
-        return "default"
+    support_structure = np.select(
+        [water_depth < 25, (water_depth >= 25) & (water_depth < 55), water_depth >= 55],
+        ["monopile", "jacket", "floating"],
+        default="default"
+    )
+
+    return support_structure
 
 def equip_costs(water_depth, support_structure, turbine_capacity, year):
     """
     Calculates the equipment costs based on water depth values, year, and turbine capacity.
 
     Returns:
-    - float: Calculated equipment costs.
+    - tuple: Tuple containing arrays of calculated equipment costs for support structures and turbines, and total equipment costs.
     """
     # Coefficients for equipment cost calculation based on the support structure and year
     supp_coeff = {
@@ -142,8 +145,22 @@ def equip_costs(water_depth, support_structure, turbine_capacity, year):
         '2050': 1000
     }
 
+    # Ensure water_depth, support_structure, and turbine_capacity are arrays
+    water_depth = np.asarray(water_depth)
+    support_structure = np.asarray(support_structure)
+    turbine_capacity = np.asarray(turbine_capacity)
+
+    # Ensure support_structure is lowercase
+    support_structure = np.char.lower(support_structure)
+
+    # Retrieve coefficients based on support structure and year
+    c1, c2, c3 = np.select(
+        [support_structure == 'monopile', support_structure == 'jacket', support_structure == 'floating'],
+        [supp_coeff[('monopile', year)], supp_coeff[('jacket', year)], supp_coeff[('floating', year)]],
+        default=(0, 0, 0)
+    ).T
+
     # Calculate equipment costs using the provided formula
-    c1, c2, c3 = supp_coeff[(support_structure, year)]
     supp_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
     turbine_costs = turbine_capacity * turbine_coeff[year]
 
@@ -169,7 +186,7 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
         - Tug (Tug Boat)
 
     Returns:
-    - tuple: Calculated hours and costs in Euros.
+    - numpy array: Calculated costs in Euros for each turbine.
     """
     # Installation coefficients for different vehicles
     inst_coeff = {
@@ -188,58 +205,28 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
     # Choose the appropriate coefficients based on the operation type
     coeff = inst_coeff if operation == 'inst' else deco_coeff
 
-    # Determine support structure based on water depth
-    support_structure = determine_support_structure(water_depth).lower()
+    # Ensure support_structure is lowercase
+    support_structure = np.char.lower(support_structure)
 
-    if support_structure == 'monopile' or 'jacket':
-        c1, c2, c3, c4, c5 = coeff['PSIV']
-        # Calculate installation costs for jacket
-        total_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-    elif support_structure == 'floating':
-        total_costs = 0
+    # Initialize an array to store the total costs for each turbine
+    total_costs = np.zeros_like(water_depth)
+
+    # Iterate over unique support structures to calculate costs
+    for structure in np.unique(support_structure):
+        indices = np.where(support_structure == structure)
+        arcpy.AddMessage(structure)
         
-        # Iterate over the coefficients for floating (Tug and AHV)
-        for vessel_type in ['Tug', 'AHV']:
-            c1, c2, c3, c4, c5 = coeff[vessel_type]
-            
-            # Calculate installation costs for the current vessel type
-            vessel_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-            
-            # Add the costs for the current vessel type to the total costs
-            total_costs += vessel_costs
-    else:
-        total_costs = None
-        
+        # Calculate costs for the current support structure
+        if structure == 'monopile' or structure == 'jacket':
+            c1, c2, c3, c4, c5 = coeff['PSIV']
+            total_costs[indices] = ((1 / c1) * ((2 * port_distance[indices]) / c2 + c3) + c4) * (c5 * 1000) / 24
+        elif structure == 'floating':
+            for vessel_type in ['Tug', 'AHV']:
+                c1, c2, c3, c4, c5 = coeff[vessel_type]
+                vessel_costs = ((1 / c1) * ((2 * port_distance[indices]) / c2 + c3) + c4) * (c5 * 1000) / 24
+                total_costs[indices] += vessel_costs
+
     return total_costs
-
-def calc_logi_costs(water_depth, support_structure, port_distance, failure_rate=0.08):
-    """
-    Calculate logistics time and costs for major wind turbine repairs (part of OPEX) based on water depth, port distance, and failure rate for major wind turbine repairs.
-    
-    Coefficients:
-        - Speed (km/h): Speed of the vessel in kilometers per hour.
-        - Repair time (h): Repair time in hours.
-        - Dayrate (keu/d): Dayrate of the vessel in thousands of euros per day.
-        - Roundtrips: Number of roundtrips for the logistics operation.
-    
-    Returns:
-    - tuple: Logistics time in hours per year and logistics costs in Euros.
-    """
-    # Logistics coefficients for different vessels
-    logi_coeff = {
-        'JUV': (18.5, 50, 150, 1),
-        'Tug': (7.5, 50, 2.5, 2)
-    }
-
-    # Determine logistics vessel based on support structure
-    vessel = 'JUV' if support_structure == 'monopile' or 'jacket' else 'Tug'
-
-    c1, c2, c3, c4 = logi_coeff[vessel]
-
-    # Calculate logistics costs
-    logi_costs = failure_rate * ((2 * c4 * port_distance / 1000) / c1 + c2) * (c3 * 1000) / 24
-
-    return logi_costs
 
 def save_structured_array_to_txt(filename, structured_array):
     """
@@ -311,7 +298,7 @@ def gen_dataset(output_folder: str):
 
     # Installation and decomissioning expenses
     inst_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "inst")
-    deco_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "inst")
+    deco_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "deco")
 
     # Calculate capital expenses
     cap_expenses_wt = np.add(equip_costs_wt, inst_costs_wt)
@@ -323,19 +310,9 @@ def gen_dataset(output_folder: str):
     # Calculate total expenses
     total_costs_wt = np.add(cap_expenses_wt, deco_costs_wt, ope_expenses_wt)
 
-    # Find unique values of 'WF_ID' and their corresponding counts
-    unique_wf_ids, counts = np.unique(wfid_array, return_counts=True)
+    ## Some code here
 
-    # Initialize an array to store the sum of 'total_costs_wt' for each unique 'WF_ID'
-    total_costs_sum_per_wf_id = np.zeros_like(unique_wf_ids, dtype=float)
 
-    # Calculate the cumulative sum of 'total_costs_wt' using np.add.at
-    np.add.at(total_costs_sum_per_wf_id, wfid_array, total_costs_wt)
-
-    # Return the total costs per WF_ID
-    total_costs_wf = total_costs_sum_per_wf_id / counts
-    
-    
     # Save the results or update the layer attributes as required by your project needs
     arcpy.AddMessage("Data updated successfully.")
     
