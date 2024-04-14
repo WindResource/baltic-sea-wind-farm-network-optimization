@@ -48,12 +48,15 @@ def generate_windfarm_coordinates(output_folder: str) -> None:
 
     # Add necessary fields to the output feature class
     arcpy.AddFields_management(wfc_layer, [
+        ["Country", "TEXT", "", 10],
         ["ISO", "TEXT", "", "", 50, "Country"],
-        ["WF_ID", "TEXT", "", "", 50, "Wind Farm ID"]
+        ["WF_ID", "TEXT", "", "", 50, "Wind Farm ID"],
+        ["Longitude", "DOUBLE"],
+        ["Latitude", "DOUBLE"],
     ])
 
     # Prepare to insert new connection point features
-    insert_cursor_fields = ["SHAPE@", "ISO", "WF_ID"]
+    insert_cursor_fields = ["SHAPE@", "Country", "ISO", "WF_ID", "Longitude", "Latitude"]
     insert_cursor = arcpy.da.InsertCursor(wfc_layer, insert_cursor_fields)
 
     # Iterate through each feature in the input layer
@@ -66,11 +69,15 @@ def generate_windfarm_coordinates(output_folder: str) -> None:
             # Get the ISO code for the country from the dictionary
             iso_code = iso_mp.get(country, None)
             
-            # Insert the new connection point with its attribute
+            # Extract longitude and latitude from the midpoint
+            longitude, latitude = midpoint.X, midpoint.Y
+            
+            # Insert the new connection point with its attributes
             oid += 1
             farm_id = f"{iso_code}_F{oid}"
-            row_values = (midpoint, iso_code, farm_id)
+            row_values = (midpoint, country, iso_code, farm_id, longitude, latitude)
             insert_cursor.insertRow(row_values)
+
     
     # Add the generated shapefile to the current map
     map.addDataFromPath(wfc_layer)
