@@ -126,16 +126,22 @@ def equip_costs(water_depth, support_structure, turbine_capacity, year):
     - tuple: Tuple containing arrays of calculated equipment costs for support structures and turbines, and total equipment costs.
     """
     # Coefficients for equipment cost calculation based on the support structure and year
-    supp_coeff = {
-        ('monopile', '2020'): (201, 613, 812),
-        ('monopile', '2030'): (181, 552, 370),
-        ('monopile', '2050'): (171, 521, 170),
-        ('jacket', '2020'): (114, -2270, 932),
-        ('jacket', '2030'): (103, -2043, 478),
-        ('jacket', '2050'): (97, -1930, 272),
-        ('floating', '2020'): (0, 774, 1481),
-        ('floating', '2030'): (0, 697, 1223),
-        ('floating', '2050'): (0, 658, 844)
+    support_structure_coeff = {
+        'monopile': {
+            '2020': (201, 613, 812, 0),
+            '2030': (181, 552, 370, 0),
+            '2050': (171, 521, 170, 0),
+        },
+        'jacket': {
+            '2020': (114, -2270, 932, 0),
+            '2030': (103, -2043, 478, 0),
+            '2050': (97, -1930, 272, 0),
+        },
+        'floating': {
+            '2020': (0, 774, 1481, 0),
+            '2030': (0, 697, 1223, 0),
+            '2050': (0, 658, 844, 0),
+        }
     }
 
     # Coefficients for wind turbine rated cost
@@ -153,16 +159,15 @@ def equip_costs(water_depth, support_structure, turbine_capacity, year):
     # Ensure support_structure is lowercase
     support_structure = np.char.lower(support_structure)
 
-    # Retrieve coefficients based on support structure and year
-    c1, c2, c3 = np.select(
-        [support_structure == 'monopile', support_structure == 'jacket', support_structure == 'floating'],
-        [supp_coeff[('monopile', year)], supp_coeff[('jacket', year)], supp_coeff[('floating', year)]],
-        default=(0, 0, 0)
-    ).T
-
-    # Calculate equipment costs using the provided formula
-    supp_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
+    # Initialize arrays to store equipment costs
+    supp_costs = np.zeros_like(water_depth)
     turbine_costs = turbine_capacity * turbine_coeff[year]
+
+    # Vectorized calculations for each support structure type
+    for structure, structure_coeffs in support_structure_coeff.items():
+        mask = support_structure == structure
+        c1, c2, c3, c4 = structure_coeffs[year]
+        supp_costs[mask] = turbine_capacity[mask] * (c1 * (water_depth[mask] ** 2) + c2 * water_depth[mask] + c3) + c4
 
     equip_costs = supp_costs + turbine_costs
     
@@ -188,6 +193,12 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
     Returns:
     - numpy array: Calculated costs in Euros for each turbine.
     """
+    # Ensure water_depth, support_structure, and turbine_capacity are arrays
+    water_depth = np.asarray(water_depth)
+    support_structure = np.asarray(support_structure)
+    port_distance = np.asarray(port_distance)
+    turbine_capacity = np.asarray(turbine_capacity)
+    
     # Installation coefficients for different vehicles
     inst_coeff = {
         'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
@@ -210,15 +221,17 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
 
     # Initialize an array to store the total costs for each turbine
     total_costs = np.zeros_like(water_depth)
+    
+    arcpy.AddMessage(total_costs.shape)
 
     # Iterate over unique support structures to calculate costs
     for structure in np.unique(support_structure):
-        indices = np.where(support_structure == structure)
-        arcpy.AddMessage(structure)
+        indices = np.where(support_structure == structure)[0]
         
         # Calculate costs for the current support structure
         if structure == 'monopile' or structure == 'jacket':
             c1, c2, c3, c4, c5 = coeff['PSIV']
+            c1 = 40 / turbine_capacity[indices]
             total_costs[indices] = ((1 / c1) * ((2 * port_distance[indices]) / c2 + c3) + c4) * (c5 * 1000) / 24
         elif structure == 'floating':
             for vessel_type in ['Tug', 'AHV']:
@@ -294,6 +307,13 @@ def gen_dataset(output_folder: str):
     longitude_array = array_wf['Longitude']
     latitude_array = array_wf['Latitude']
 
+    # Ensure all arrays have the same shape
+    min_length = min(len(water_depth_array), len(capacity_array), len(wfid_array), len(wtid_array))
+    water_depth_array = water_depth_array[:min_length]
+    capacity_array = capacity_array[:min_length]
+    wfid_array = wfid_array[:min_length]
+    wtid_array = wtid_array[:min_length]
+
     # Determine support structure for all water depths
     supp_array = determine_support_structure(water_depth_array)
 
@@ -363,10 +383,12 @@ def gen_dataset(output_folder: str):
     # Save structured array to a .txt file
     save_structured_array_to_txt(os.path.join(output_folder, 'oss_data.txt'), data_array)
     arcpy.AddMessage("Data saved successfully.")
+    
 if __name__ == "__main__":
     # Prompt the user to input the folder path where they want to save the output files
     output_folder = arcpy.GetParameterAsText(0)
     gen_dataset(output_folder)
+
 
 
 
