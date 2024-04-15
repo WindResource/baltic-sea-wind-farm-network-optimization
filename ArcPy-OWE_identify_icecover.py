@@ -13,9 +13,9 @@ def identify_icecover() -> None:
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
 
-    # Get the first layer in the map that starts with 'WTC' (points) and 'Ice' (polygon)
-    wt_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
-    ic_layer = next((layer for layer in map.listLayers() if layer.name.startswith('Ice')), None)
+    # Get the layers starting with each prefix
+    prefixes = ['WTC', 'OSSC', 'Ice']
+    wt_layer, oss_layer, ic_layer = (next((layer for layer in map.listLayers() if layer.name.startswith(prefix)), None) for prefix in prefixes)
 
     if wt_layer is None:
         arcpy.AddError("No layer starting with 'WTC' found in the current map.")
@@ -25,7 +25,7 @@ def identify_icecover() -> None:
         return
 
     # Deselect all currently selected features
-    for layer in [wt_layer, ic_layer]:
+    for layer in [wt_layer, oss_layer, ic_layer]:
         arcpy.SelectLayerByAttribute_management(layer, "CLEAR_SELECTION")
     
     arcpy.AddMessage(f"Processing layer: {wt_layer.name}")
@@ -34,19 +34,21 @@ def identify_icecover() -> None:
     field_names = [field.name for field in arcpy.ListFields(wt_layer)]
     if "IceCover" not in field_names:
         # Add new field to store ice cover information
-        arcpy.AddField_management(wt_layer, "IceCover", "TEXT", field_length = 5)
+        for layer in [wt_layer, oss_layer]:
+            arcpy.AddField_management(layer, "IceCover", "TEXT", field_length = 5)
 
-    # Set "IceCover" field to "No" for all features
-    arcpy.CalculateField_management(wt_layer, "IceCover", "'No'", "PYTHON3")
+    for layer in [wt_layer, oss_layer]:
+        # Set "IceCover" field to "No" for all features
+        arcpy.CalculateField_management(layer, "IceCover", "'No'", "PYTHON3")
 
-    # Select points within the ice polygon
-    arcpy.SelectLayerByLocation_management(wt_layer, "WITHIN", ic_layer)
+        # Select points within the ice polygon
+        arcpy.SelectLayerByLocation_management(layer, "WITHIN", ic_layer)
 
-    # Update the "IceCover" field for selected points
-    arcpy.CalculateField_management(wt_layer, "IceCover", "'Yes'", "PYTHON3")
+        # Update the "IceCover" field for selected points
+        arcpy.CalculateField_management(layer, "IceCover", "'Yes'", "PYTHON3")
 
-    # Clear selection
-    arcpy.SelectLayerByAttribute_management(wt_layer, "CLEAR_SELECTION")
+        # Clear selection
+        arcpy.SelectLayerByAttribute_management(layer, "CLEAR_SELECTION")
 
     arcpy.AddMessage("Process completed successfully.")
 
