@@ -77,7 +77,8 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     # Prepare to insert new turbine point features
     insert_cursor_fields = ["SHAPE@", "Country", "ISO", "Name", "WF_ID", "WT_ID",  "Status", "Longitude", "Latitude", "Capacity", "Diameter"]
     insert_cursor = arcpy.da.InsertCursor(wtc_layer, insert_cursor_fields)
-
+    wt_id = 0
+    
     # Calculate the spacing in meters
     spacing = turbine_spacing * turbine_diameter
         
@@ -113,33 +114,31 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
 
             # Project the contained points to WGS 1984 spatial reference
             projected_points = [arcpy.PointGeometry(arcpy.Point(*point), utm33).projectAs(wgs84) for point in contained_points]
-
-            # Initialize substation index counter
-            turbine_index = 1
-
+            
             # Create rows to insert into feature class
             rows = []
+            wt_id = 0
             for point in projected_points:
                 iso = iso_mp.get(country, "XX")  # Default to "XX" if country code is not found
-                turbine_id = f"{iso}_F{wf_id}_T{turbine_index}"  # Modified TurbineID generation
+                wt_id += 1
                 rows.append((
                     point,
                     country,
                     iso,
                     name,
                     wf_id,
-                    turbine_id,
+                    wt_id,
                     status,
                     round(point.centroid.X, 6),
                     round(point.centroid.Y, 6),
                     turbine_capacity,
                     turbine_diameter
                 ))
-                turbine_index += 1  # Increment the substation index for each point
 
             # Insert rows in batches of 100
             batch_size = 100
             for i in range(0, len(rows), batch_size):
+                
                 batch_rows = rows[i:i + batch_size]
                 for row in batch_rows:
                     insert_cursor.insertRow(row)
