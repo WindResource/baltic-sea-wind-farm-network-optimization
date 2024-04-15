@@ -269,6 +269,10 @@ def gen_dataset(output_folder: str):
         arcpy.AddError("No layer starting with 'WFC' found in the current map.")
         return
 
+    # Deselect all currently selected features
+    for layer in [wtc_layer,wfc_layer]:
+        arcpy.SelectLayerByAttribute_management(layer, "CLEAR_SELECTION")
+
     arcpy.AddMessage(f"Processing layer: {wtc_layer.name}")
 
     # Check if required fields exist in the attribute table
@@ -288,7 +292,7 @@ def gen_dataset(output_folder: str):
 
     array_wf = arcpy.da.FeatureClassToNumPyArray(wfc_layer,'*')
     longitude_array = array_wf['Longitude']
-    latitide_array = array_wf['Latitude']
+    latitude_array = array_wf['Latitude']
 
     # Determine support structure for all water depths
     supp_array = determine_support_structure(water_depth_array)
@@ -310,54 +314,55 @@ def gen_dataset(output_folder: str):
     # Calculate total expenses
     total_costs_wt = np.add(cap_expenses_wt, deco_costs_wt, ope_expenses_wt)
 
-    ## Some code here
+    # Aggregate total costs and capacity for each WF_ID
+    total_costs_wf = {}
+    total_capacity_wf = {}
 
+    # Iterate over each unique WF_ID
+    for wfid in np.unique(wfid_array):
+        # Find indices where WF_ID equals the current WF_ID in the loop
+        indices = np.where(wfid_array == wfid)[0]
+        
+        # Sum total costs and capacity for the current WF_ID
+        total_costs_wf[wfid] = np.sum(total_costs_wt[indices])
+        total_capacity_wf[wfid] = np.sum(capacity_array[indices])
 
-    # Save the results or update the layer attributes as required by your project needs
-    arcpy.AddMessage("Data updated successfully.")
-    
-    ## some code here
-
-    # Define the data type for a structured array with all necessary fields
+    # Define data dictionary structure
     dtype = [
-        ('WT_ID', 'U10'),  # Adjust string length as needed
+        ('WF_ID', 'U10'),  # Adjust string length as needed
         ('Longitude', float),
         ('Latitude', float),
-        ('Capacity', float),
+        ('TotalCapacity', float),
         ('TotalCost', float)
     ]
-
+    
     # Initialize an empty list to store data dictionaries
     data_list = []
-
-    # Iterate over the indices of the unique WF_IDs
-    for i, wf_id in enumerate(unique_wf_ids):
-        # Find the indices where WF_ID equals the current unique WF_ID
-        indices = np.where(wfid_array == wf_id)[0]
-        # Iterate over the indices and create a data dictionary for each record
-        for index in indices:
-            data_dict = {
-                'WT_ID': wtid_array[index],
-                'Longitude': longitude_array[index],
-                'Latitude': latitide_array[index],
-                'Capacity': capacity_array[index],
-                'TotalCost': total_costs_wf[i]  # Use the corresponding total cost for the WF_ID
-            }
-            # Append the data dictionary to the data list
-            data_list.append(data_dict)
+    
+    # Iterate through each WF_ID and create data dictionary
+    for wfid, longitude, latitude in zip(wfid_array, longitude_array, latitude_array):
+        total_cost = total_costs_wf[wfid] if wfid in total_costs_wf else 0.0
+        total_capacity = total_capacity_wf[wfid] if wfid in total_capacity_wf else 0.0
+        
+        data_dict = {
+            'WF_ID': wfid,
+            'Longitude': longitude,
+            'Latitude': latitude,
+            'TotalCapacity': total_capacity,
+            'TotalCost': total_cost
+        }
+        data_list.append(data_dict)
 
     # Convert the list of dictionaries to a structured array
-    data_array = np.array([(d['WT_ID'], d['Longitude'], d['Latitude'], d['Capacity'], d['TotalCost']) for d in data_list], dtype=dtype)
+    data_array = np.array([(d['WF_ID'], d['Longitude'], d['Latitude'], d['TotalCapacity'], d['TotalCost']) for d in data_list], dtype=dtype)
 
     # Save the structured array to a .npy file in the specified folder
     np.save(os.path.join(output_folder, 'oss_data.npy'), data_array)
     arcpy.AddMessage("Data saved successfully.")
 
-    # Assuming the structured array is named 'data_array'
+    # Save structured array to a .txt file
     save_structured_array_to_txt(os.path.join(output_folder, 'oss_data.txt'), data_array)
     arcpy.AddMessage("Data saved successfully.")
-
-
 if __name__ == "__main__":
     # Prompt the user to input the folder path where they want to save the output files
     output_folder = arcpy.GetParameterAsText(0)
