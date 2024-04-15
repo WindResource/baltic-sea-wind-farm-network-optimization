@@ -221,8 +221,6 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
 
     # Initialize an array to store the total costs for each turbine
     total_costs = np.zeros_like(water_depth)
-    
-    arcpy.AddMessage(total_costs.shape)
 
     # Iterate over unique support structures to calculate costs
     for structure in np.unique(support_structure):
@@ -304,15 +302,10 @@ def gen_dataset(output_folder: str):
     wtid_array = array_wtc['WT_ID']
 
     array_wf = arcpy.da.FeatureClassToNumPyArray(wfc_layer,'*')
-    longitude_array = array_wf['Longitude']
-    latitude_array = array_wf['Latitude']
-
-    # Ensure all arrays have the same shape
-    min_length = min(len(water_depth_array), len(capacity_array), len(wfid_array), len(wtid_array))
-    water_depth_array = water_depth_array[:min_length]
-    capacity_array = capacity_array[:min_length]
-    wfid_array = wfid_array[:min_length]
-    wtid_array = wtid_array[:min_length]
+    longitude_array_wf = array_wf['Longitude']
+    latitude_array_wf = array_wf['Latitude']
+    wfid_array_wf = array_wf['WF_ID']
+    iso_array_wf = array_wf['ISO']
 
     # Determine support structure for all water depths
     supp_array = determine_support_structure(water_depth_array)
@@ -334,13 +327,14 @@ def gen_dataset(output_folder: str):
     # Calculate total expenses
     total_costs_wt = np.add(cap_expenses_wt, deco_costs_wt, ope_expenses_wt)
 
-    # Aggregate total costs and capacity for each WF_ID
+    # Aggregate total costs and capacity for each unique WF_ID
     total_costs_wf = {}
     total_capacity_wf = {}
 
     # Iterate over each unique WF_ID
-    for wfid in np.unique(wfid_array):
-        # Find indices where WF_ID equals the current WF_ID in the loop
+    unique_wfids = np.unique(wfid_array)
+    for wfid in unique_wfids:
+        # Find indices where WF_ID matches the current WF_ID
         indices = np.where(wfid_array == wfid)[0]
         
         # Sum total costs and capacity for the current WF_ID
@@ -349,47 +343,59 @@ def gen_dataset(output_folder: str):
 
     # Define data dictionary structure
     dtype = [
-        ('WF_ID', 'U10'),  # Adjust string length as needed
+        ('WF_ID', int),  # Adjust string length as needed
+        ('ISO', 'U10'),
         ('Longitude', float),
         ('Latitude', float),
-        ('TotalCapacity', float),
-        ('TotalCost', float)
+        ('TotalCapacity', int),
+        ('TotalCost', int)
     ]
     
     # Initialize an empty list to store data dictionaries
     data_list = []
     
-    # Iterate through each WF_ID and create data dictionary
-    for wfid, longitude, latitude in zip(wfid_array, longitude_array, latitude_array):
-        total_cost = total_costs_wf[wfid] if wfid in total_costs_wf else 0.0
-        total_capacity = total_capacity_wf[wfid] if wfid in total_capacity_wf else 0.0
+    # Iterate through each unique WF_ID and create data dictionary
+    for wfid in unique_wfids:
+        # Find the first occurrence of WF_ID in the array
+        index = np.where(wfid_array_wf == wfid)[0][0]
         
+        iso = iso_array_wf[index]
+        
+        # Retrieve longitude and latitude from the first occurrence
+        longitude = longitude_array_wf[index]
+        latitude = latitude_array_wf[index]
+        
+        # Retrieve total costs and capacity for the current WF_ID
+        total_costs = total_costs_wf[wfid]
+        total_capacity = total_capacity_wf[wfid]
+        
+        # Create data dictionary
         data_dict = {
             'WF_ID': wfid,
-            'Longitude': longitude,
-            'Latitude': latitude,
-            'TotalCapacity': total_capacity,
-            'TotalCost': total_cost
+            'ISO': iso,
+            'Longitude': np.round(longitude, 6),
+            'Latitude': np.round(latitude, 6),
+            'TotalCapacity': np.int(np.round(total_capacity)),
+            'TotalCost': np.int(np.round(total_costs / 1000))
         }
         data_list.append(data_dict)
 
     # Convert the list of dictionaries to a structured array
-    data_array = np.array([(d['WF_ID'], d['Longitude'], d['Latitude'], d['TotalCapacity'], d['TotalCost']) for d in data_list], dtype=dtype)
+    data_array = np.array([(d['WF_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['TotalCapacity'], d['TotalCost']) for d in data_list], dtype=dtype)
 
-    # Save the structured array to a .npy file in the specified folder
-    np.save(os.path.join(output_folder, 'wf_data.npy'), data_array)
+    # Sort data_array by WF_ID
+    data_array_sorted = np.sort(data_array, order='WF_ID')
+
+    # Save the sorted structured array to a .npy file in the specified folder
+    np.save(os.path.join(output_folder, 'wf_data.npy'), data_array_sorted)
     arcpy.AddMessage("Data saved successfully.")
 
-    # Save structured array to a .txt file
-    save_structured_array_to_txt(os.path.join(output_folder, 'wf_data.txt'), data_array)
+    # Save sorted structured array to a .txt file
+    save_structured_array_to_txt(os.path.join(output_folder, 'wf_data.txt'), data_array_sorted)
     arcpy.AddMessage("Data saved successfully.")
+
     
 if __name__ == "__main__":
     # Prompt the user to input the folder path where they want to save the output files
     output_folder = arcpy.GetParameterAsText(0)
     gen_dataset(output_folder)
-
-
-
-
-
