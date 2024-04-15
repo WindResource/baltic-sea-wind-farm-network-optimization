@@ -62,7 +62,7 @@ def generate_windfarm_coordinates(output_folder: str) -> None:
     # Iterate through each feature in the input layer
     search_fields = ["SHAPE@", "OID@", "country"]  # We only need the geometry and object ID
     with arcpy.da.SearchCursor(wfa_layer, search_fields) as feature_cursor:
-        for shape, oid, country in feature_cursor:
+        for shape, farm_id, country in feature_cursor:
             # Calculate the midpoint of the feature
             midpoint = shape.centroid
             
@@ -73,8 +73,7 @@ def generate_windfarm_coordinates(output_folder: str) -> None:
             longitude, latitude = midpoint.X, midpoint.Y
             
             # Insert the new connection point with its attributes
-            oid += 1
-            farm_id = f"{iso_code}_F{oid}"
+            farm_id += 1
             row_values = (midpoint, country, iso_code, farm_id, longitude, latitude)
             insert_cursor.insertRow(row_values)
 
