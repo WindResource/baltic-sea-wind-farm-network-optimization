@@ -95,6 +95,7 @@ Functions:
 import arcpy
 import os
 import numpy as np
+from scipy.stats import weibull_min
 
 def determine_support_structure(water_depth):
     """
@@ -239,6 +240,68 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
 
     return total_costs
 
+import numpy as np
+from scipy.stats import weibull_min
+from scipy.interpolate import interp1d
+
+import numpy as np
+from scipy.stats import weibull_min
+
+import numpy as np
+from scipy.stats import weibull_min
+
+def calculate_aep_and_capacity_factor(weibullA_array, weibullK_array):
+    """
+    Calculate the Annual Energy Production (AEP) and Capacity Factor of wind turbines.
+
+    Args:
+        weibullA_array (numpy array): Array of Weibull scale parameters (m/s).
+        weibullK_array (numpy array): Array of Weibull shape parameters.
+
+    Returns:
+        tuple: A tuple containing arrays of AEP (in kWh) and Capacity Factor (as a percentage).
+    """
+    # Constants and parameters
+    alpha = 0.11  # Exponent of the power law for scaling wind speed
+    hub_height = 112  # Wind turbine hub height (meters)
+    hours_per_year = 365.25 * 24  # Average number of hours in a year
+    ava_factor = 0.94  # Wind turbine availability factor
+    turbine_rating = 8 * 1e3  # Turbine rating (kW)
+
+    # Power curve of the NREL Reference 8MW wind turbine
+    power_curve_data = {
+        1: 0, 2: 0, 3: 0, 4: 359, 4.5: 561, 5: 812, 5.5: 1118, 6: 1483, 6.5: 1911, 7: 2407,
+        7.5: 2974, 8: 3616, 8.5: 4336, 9: 5135, 9.5: 6015, 10: 6976, 10.5: 7518, 11: 7813,
+        12: 8000, 13: 8000, 14: 8000, 15: 8000, 16: 8000, 17: 8000, 18: 8000, 19: 8000,
+        20: 8000, 21: 8000, 22: 8000, 23: 8000, 24: 8000, 25: 8000
+    }
+
+    # Initialize arrays to store AEP and capacity factor
+    aep_array = np.zeros_like(weibullA_array)
+    capacity_factor_array = np.zeros_like(weibullK_array)
+
+    # Create wind speeds array
+    wind_speeds = np.array(list(power_curve_data.keys()))
+
+    # Iterate over each element of the input arrays
+    for i, (weibullA, weibullK) in enumerate(zip(weibullA_array, weibullK_array)):
+        # Scale the Weibull parameters to hub height using the power law
+        weibullA_hh = weibullA * (hub_height / 100) ** alpha
+
+        # Define the Weibull distribution with the scaled parameters
+        weibull_dist = weibull_min(weibullK, scale=weibullA_hh)
+
+        # Calculate the probability density function (PDF) at each wind speed
+        pdf_array = weibull_dist.cdf(wind_speeds + 0.5) - weibull_dist.cdf(wind_speeds - 0.5)
+
+        # Calculate AEP by integrating the power curve over the Weibull distribution
+        aep_array[i] = np.sum(np.array(list(power_curve_data.values())) * pdf_array) * hours_per_year * ava_factor
+
+        # Calculate capacity factor
+        capacity_factor_array[i] = (aep_array[i] / (turbine_rating * hours_per_year))  # Convert to percentage
+
+    return aep_array, capacity_factor_array
+
 def save_structured_array_to_txt(filename, structured_array):
     """
     Saves a structured numpy array to a text file.
@@ -300,6 +363,8 @@ def gen_dataset(output_folder: str):
     capacity_array = array_wtc['Capacity']
     wfid_array = array_wtc['WF_ID']
     wtid_array = array_wtc['WT_ID']
+    wa_array = array_wtc['WeibullA']
+    wk_array = array_wtc['WeibullK']
 
     array_wf = arcpy.da.FeatureClassToNumPyArray(wfc_layer,'*')
     longitude_array_wf = array_wf['Longitude']
@@ -327,19 +392,27 @@ def gen_dataset(output_folder: str):
     # Calculate total expenses
     total_costs_wt = np.add(cap_expenses_wt, deco_costs_wt, ope_expenses_wt)
 
+    aep_array, cf_array = calculate_aep_and_capacity_factor(wa_array, wk_array)
+    
     # Aggregate total costs and capacity for each unique WF_ID
     total_costs_wf = {}
     total_capacity_wf = {}
+    total_aep_wf = {}
+    avg_cf_wf = {}
 
     # Iterate over each unique WF_ID
     unique_wfids = np.unique(wfid_array)
     for wfid in unique_wfids:
         # Find indices where WF_ID matches the current WF_ID
-        indices = np.where(wfid_array == wfid)[0]
+        wt_index = np.where(wfid_array == wfid)[0]
         
         # Sum total costs and capacity for the current WF_ID
-        total_costs_wf[wfid] = np.sum(total_costs_wt[indices])
-        total_capacity_wf[wfid] = np.sum(capacity_array[indices])
+        total_costs_wf[wfid] = np.sum(total_costs_wt[wt_index])
+        total_capacity_wf[wfid] = np.sum(capacity_array[wt_index])
+        
+        total_aep_wf[wfid] = np.sum(aep_array[wt_index])
+        avg_cf_wf[wfid] = np.mean(cf_array[wt_index])
+
 
     # Define data dictionary structure
     dtype = [
@@ -348,7 +421,9 @@ def gen_dataset(output_folder: str):
         ('Longitude', float),
         ('Latitude', float),
         ('TotalCapacity', int),
-        ('TotalCost', int)
+        ('TotalCost', int),
+        ('TotalAEP', object),
+        ('AvgCf', float)
     ]
     
     # Initialize an empty list to store data dictionaries
@@ -357,17 +432,20 @@ def gen_dataset(output_folder: str):
     # Iterate through each unique WF_ID and create data dictionary
     for wfid in unique_wfids:
         # Find the first occurrence of WF_ID in the array
-        index = np.where(wfid_array_wf == wfid)[0][0]
+        wf_index = np.where(wfid_array_wf == wfid)[0][0]
         
-        iso = iso_array_wf[index]
+        iso = iso_array_wf[wf_index]
         
         # Retrieve longitude and latitude from the first occurrence
-        longitude = longitude_array_wf[index]
-        latitude = latitude_array_wf[index]
+        longitude = longitude_array_wf[wf_index]
+        latitude = latitude_array_wf[wf_index]
         
         # Retrieve total costs and capacity for the current WF_ID
         total_costs = total_costs_wf[wfid]
         total_capacity = total_capacity_wf[wfid]
+        
+        total_aep = total_aep_wf[wfid]
+        avg_cf = avg_cf_wf[wfid]
         
         # Create data dictionary
         data_dict = {
@@ -376,12 +454,14 @@ def gen_dataset(output_folder: str):
             'Longitude': np.round(longitude, 6),
             'Latitude': np.round(latitude, 6),
             'TotalCapacity': np.int(np.round(total_capacity)),
-            'TotalCost': np.int(np.round(total_costs / 1000))
+            'TotalCost': np.int(np.round(total_costs / 1000)),
+            'TotalAEP' : np.int(np.round(total_aep)),
+            'AvgCf': np.round(avg_cf, 4)
         }
         data_list.append(data_dict)
 
     # Convert the list of dictionaries to a structured array
-    data_array = np.array([(d['WF_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['TotalCapacity'], d['TotalCost']) for d in data_list], dtype=dtype)
+    data_array = np.array([(d['WF_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['TotalCapacity'], d['TotalCost'], d['TotalAEP'], d['AvgCf']) for d in data_list], dtype=dtype)
 
     # Sort data_array by WF_ID
     data_array_sorted = np.sort(data_array, order='WF_ID')
