@@ -230,7 +230,7 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
         
         # Calculate costs for the current support structure
         if structure == 'monopile' or structure == 'jacket':
-            c1, c2, c3, c4, c5 = coeff['PSIV']
+            _, c2, c3, c4, c5 = coeff['PSIV']
             c1 = 40 / turbine_capacity[indices]
             total_costs[indices] = ((1 / c1) * ((2 * port_distance[indices]) / c2 + c3) + c4) * (c5 * 1000) / 24
         elif structure == 'floating':
@@ -377,11 +377,11 @@ def gen_dataset(output_folder: str):
     data_array = np.array([(d['WF_ID'], d['Longitude'], d['Latitude'], d['TotalCapacity'], d['TotalCost']) for d in data_list], dtype=dtype)
 
     # Save the structured array to a .npy file in the specified folder
-    np.save(os.path.join(output_folder, 'oss_data.npy'), data_array)
+    np.save(os.path.join(output_folder, 'wf_data.npy'), data_array)
     arcpy.AddMessage("Data saved successfully.")
 
     # Save structured array to a .txt file
-    save_structured_array_to_txt(os.path.join(output_folder, 'oss_data.txt'), data_array)
+    save_structured_array_to_txt(os.path.join(output_folder, 'wf_data.txt'), data_array)
     arcpy.AddMessage("Data saved successfully.")
     
 if __name__ == "__main__":
