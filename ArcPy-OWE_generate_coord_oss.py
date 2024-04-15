@@ -62,12 +62,12 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
 
     # Prepare to insert new substation point features
     insert_cursor_fields = ["SHAPE@", "Territory", "ISO", "OSS_ID", "Longitude", "Latitude"]
-    with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
-        # Initialize substation index counter
-        substation_index = 1
-
+    insert_cursor =  arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
+    oss_id = 0
+    
     # Generate points within the bounding box of the input layer's extent
     # considering the specified spacing using NumPy
+    oss_id = 0  # Initialize oss_id outside the loop
     with arcpy.da.SearchCursor(input_layer, ["SHAPE@", "TERRITORY1", "ISO_TER1"]) as cursor:
         rows = []
         for row in cursor:
@@ -100,11 +100,10 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
             # Project the contained points to WGS 1984 spatial reference
             projected_points = [pt.projectAs(wgs84) for pt in [arcpy.PointGeometry(arcpy.Point(*point), utm33) for point in contained_points]]
 
-            # Initialize substation index counter
-            substation_index = 1
-
             # Create rows to insert into feature class
             for point in projected_points:
+                # Increment oss_id for each feature
+                oss_id += 1
                 # Get the corresponding 2-letter country code from the mapping dictionary
                 iso_territory_2l = iso_territory_dict.get(iso_territory, "XX")
 
@@ -112,20 +111,19 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
                     point,
                     territory,
                     iso_territory_2l,
-                    f"{iso_territory_2l}_{substation_index}",
+                    oss_id,
                     round(point.centroid.X, 6),
                     round(point.centroid.Y, 6)
                 ))
-                substation_index += 1  # Increment the substation index for each point
 
-    # Create insert cursor outside of the loop
-    with arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields) as insert_cursor:
         # Insert rows in batches of 100
         batch_size = 100
         for i in range(0, len(rows), batch_size):
             batch_rows = rows[i:i + batch_size]
             for row in batch_rows:
                 insert_cursor.insertRow(row)
+            # Clear the batch_rows list after insertion
+            del batch_rows[:]
 
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
