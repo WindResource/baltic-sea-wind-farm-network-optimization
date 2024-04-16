@@ -33,7 +33,6 @@ def haversine_distance_np(lon1, lat1, lon2, lat2):
 
     return distances
 
-
 def calculate_distances(output_folder: str):
     """
     Calculate the Haversine distances between OSS and OnSS datasets within 300 km.
@@ -54,38 +53,24 @@ def calculate_distances(output_folder: str):
     onss_data = np.load(onss_file, allow_pickle=True)
 
     # Extract coordinates and convert to floats
-    oss_coords = oss_data[['Latitude', 'Longitude']].astype(float)
-    onss_coords = onss_data[['Latitude', 'Longitude']].astype(float)
+    oss_coords = oss_data[['Latitude', 'Longitude']]
+    onss_coords = onss_data[['Latitude', 'Longitude']]
 
-    # Convert coordinates from degrees to radians
-    oss_coords_rad = np.radians(oss_coords)
-    onss_coords_rad = np.radians(onss_coords)
-
-    # Calculate differences in coordinates
-    diff_coords = np.subtract.outer(oss_coords_rad, onss_coords_rad)
-
-    # Calculate distance in degrees (considering Earth as a sphere)
-    distance_deg = np.linalg.norm(diff_coords, axis=-1)
-
-    # Convert distance in degrees to distance in kilometers
-    # Average Earth radius is about 6371 km
-    distance_km = distance_deg * 6371.0
+    # Calculate Haversine distances for all combinations of OSS and OnSS coordinates
+    haversine_distances = haversine_distance_np(
+        oss_coords['Longitude'],  # oss_lon
+        oss_coords['Latitude'],  # oss_lat
+        onss_coords['Longitude'],  # onss_lon
+        onss_coords['Latitude']   # onss_lat
+    )
 
     # Find indices of potential connections within 300 km
-    oss_indices, onss_indices = np.where(distance_km <= 300)
-
-    # Calculate Haversine distances for potential connections
-    haversine_distances = haversine_distance_np(
-        oss_coords.iloc[oss_indices, 1],  # oss_lon
-        oss_coords.iloc[oss_indices, 0],  # oss_lat
-        onss_coords.iloc[onss_indices, 1],  # onss_lon
-        onss_coords.iloc[onss_indices, 0]   # onss_lat
-    )
+    oss_indices, onss_indices = np.where(haversine_distances <= 300)
 
     # Create array with OSS and OnSS IDs and distances
     oss_ids = oss_data['OSS_ID'][oss_indices]
     onss_ids = onss_data['OnSS_ID'][onss_indices]
-    distances_array = np.column_stack((oss_ids, onss_ids, haversine_distances))
+    distances_array = np.column_stack((oss_ids, onss_ids, haversine_distances[oss_indices, onss_indices]))
 
     # Save distances to numpy and text files
     np.save(os.path.join(output_folder, 'distances.npy'), distances_array)
@@ -94,3 +79,4 @@ def calculate_distances(output_folder: str):
 # Example usage:
 output_folder = r"C:\Users\cflde\Documents\Graduation Project\ArcGIS Pro\BalticSea\Results\datasets"
 calculate_distances(output_folder)
+
