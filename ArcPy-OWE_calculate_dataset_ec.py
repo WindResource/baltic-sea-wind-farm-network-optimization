@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
     """
@@ -224,11 +225,17 @@ def save_structured_array_to_txt(filename, structured_array):
 
 def calculate_distances(output_folder: str):
     """
-    Calculate the Haversine distances between OSS and OnSS datasets within 300 km.
+    Calculate the Haversine distances between OSS and OnSS datasets within 300 km,
+    and calculate export cable costs for each valid combination.
 
     Parameters:
         output_folder (str): The folder path where the OSS and OnSS datasets and the results will be saved.
     """
+
+    # Define capacities for which costs are to be calculated
+    capacities = np.arange(500, 2500 + 100, 100)
+    desired_voltage = 400
+
     # OSS and OnSS file names
     oss_filename = "oss_data.npy"
     onss_filename = "onss_data.npy"
@@ -249,16 +256,10 @@ def calculate_distances(output_folder: str):
     distances_dict = {}
     oss_indices_dict = {}
     onss_indices_dict = {}
-    export_cable_indices_dict = {}
+    export_cable_costs_dict = {}
 
     # Initialize counter for export cable indices
     export_cable_index = 0
-
-    # Initialize lists to store indices and distances
-    oss_indices = []
-    onss_indices = []
-    distances = []
-    export_cable_indices = []
 
     # Iterate over each combination of OSS and OnSS coordinates
     for i in range(len(oss_coords)):
@@ -279,48 +280,54 @@ def calculate_distances(output_folder: str):
                     oss_indices_dict[key] = int(i)  # Convert index to integer
                     onss_indices_dict[key] = int(j)  # Convert index to integer
 
-                    # Store export cable index and increment the counter
-                    export_cable_indices_dict[key] = export_cable_index
-                    export_cable_index += 1
+                    # Calculate export cable costs for each capacity
+                    export_cable_costs = []
+                    for capacity in capacities:
+                        hvac_costs = HVAC_export_cable_costs(haversine_distance, capacity, desired_voltage)
+                        hvdc_costs = HVDC_export_cable_costs(haversine_distance, capacity)
+                        export_cable_costs.append((hvac_costs, hvdc_costs))
 
-                    # Append indices and distances to lists
-                    oss_indices.append(int(i))
-                    onss_indices.append(int(j))
-                    distances.append(int(rounded_distance))
-                    export_cable_indices.append(export_cable_index)
+                    # Store export cable costs
+                    export_cable_costs_dict[key] = export_cable_costs
 
-    # Create structured array with OSS and OnSS IDs, distances, and export cable indices
-    dtype = [('EC_ID', int), ('OSS_ID', int), ('OnSS_ID', int), ('Distance', int)]
-    data_list = [(export_cable_indices[i], oss_data['OSS_ID'][oss_indices[i]], onss_data['OnSS_ID'][onss_indices[i]], distances[i]) for i in range(len(distances))]
-    data_array = np.array(data_list, dtype=dtype)
+    # Prepare data for saving
+    data_list = []
 
-    # Save structured array to .npy file
-    np.save(os.path.join(output_folder, 'ec_data.npy'), data_array)
-    #arcpy.AddMessage("Data saved successfully.")
+    # Iterate over each OSS_ID
+    for i in range(len(oss_data)):
+        # Create a dictionary to store data for the current OSS_ID
+        oss_id = oss_data['OSS_ID'][i]
+        iso = oss_data['ISO'][i]
+        longitude = oss_data['Longitude'][i]
+        latitude = oss_data['Latitude'][i]
+        ac_costs = []
+        dc_costs = []
+        
+        # Iterate over each capacity
+        for capacity_costs in export_cable_costs_dict.get((i, 0), []):
+            ac_costs.append(int(np.round(capacity_costs[0] / 1000)))
+            dc_costs.append(int(np.round(capacity_costs[1] / 1000)))
+        
+        # Append data for the current OSS_ID to the list
+        data_list.append({
+            'OSS_ID': oss_id,
+            'ISO': iso,
+            'Longitude': longitude,
+            'Latitude': latitude,
+            'AC': np.int(np.round(ac_costs / 1000)),
+            'DC': np.int(np.round(dc_costs / 1000))
+        })
 
-    # Save structured array to .txt file
-    save_structured_array_to_txt(os.path.join(output_folder, 'ec_data.txt'), data_array)
-    #arcpy.AddMessage("Data saved successfully.")
+    # Convert the list of dictionaries to a structured array
+    dtype = [('OSS_ID', int), ('ISO', object), ('Longitude', float), ('Latitude', float), ('AC', object), ('DC', object)]
+    data_array = np.array([(d['OSS_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['AC'], d['DC']) for d in data_list], dtype=dtype)
+
+    # Save the structured array to a .npy file in the specified folder
+    np.save(os.path.join(output_folder, 'oss_data.npy'), data_array)
+
+    # Save the structured array to a .txt file
+    save_structured_array_to_txt(os.path.join(output_folder, 'oss_data.txt'), data_array)
 
 # Example usage:
 output_folder = r"C:\Users\cflde\Documents\Graduation Project\ArcGIS Pro\BalticSea\Results\datasets"
 calculate_distances(output_folder)
-
-
-
-distance = haversine_distance(lon1, lat1, lon2, lat2)
-
-desired_capacity = 800
-desired_voltage = 220
-water_depth = 100
-
-total_costs_HVAC_export = HVAC_export_cable_costs(distance, desired_capacity, desired_voltage)
-total_costs_HVDC_export = HVDC_export_cable_costs(distance, desired_capacity)
-total_costs_HVAC_ia = HVAC_interarray_cable_costs(distance, desired_capacity, desired_voltage, water_depth)
-
-
-
-print(round(total_costs_HVAC_export, 3))
-print(round(total_costs_HVDC_export, 3))
-print(round(total_costs_HVAC_ia, 3))
-
