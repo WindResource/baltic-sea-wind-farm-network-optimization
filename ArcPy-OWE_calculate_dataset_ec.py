@@ -121,10 +121,10 @@ def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
                 # Ensure AC voltage is represented in RMS for comparability
                 v_rms_ac = voltage / np.sqrt(3)  # Correct for line-to-line voltage to RMS.
                 resistive_losses = ampacity ** 2 * resistance * length / n_cables
-                apparent_power = voltage * ampacity * n_cables - resistive_losses
-                reactive_power = v_rms_ac**2 * 2 * np.pi * frequency * capacitance * length
+                apparent_power = voltage * ampacity * n_cables
+                reactive_power = v_rms_ac**2 * 2 * np.pi * frequency * capacitance * length * n_cables
                 
-                active_power = max(0, np.sqrt(max(0, (apparent_power ** 2 - reactive_power ** 2))))
+                active_power = max(0, np.sqrt(max(0, (apparent_power ** 2 - reactive_power ** 2))) - resistive_losses)
                 
                 power_losses = (resistive_losses + reactive_power) / apparent_power
             else:  # polarity == "DC"
@@ -304,7 +304,7 @@ def calculate_distances(output_folder: str):
         ('Total_costs_HVAC', int),
         ('Total_costs_HVDC', int),
         
-        ('PowerLosses_HVAC', float), 
+        ('PowerLosses_HVAC', float),
         ('Powerlosses_HVDC', float)
         ]
     
