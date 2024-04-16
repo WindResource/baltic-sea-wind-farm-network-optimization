@@ -98,7 +98,6 @@ def identify_countries(point_features):
     # Copy features to in-memory
     arcpy.management.CopyFeatures("in_memory\\point_features", point_features)
 
-
     return point_features
 
 def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> None:
