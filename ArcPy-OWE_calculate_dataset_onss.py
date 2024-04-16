@@ -43,7 +43,7 @@ def gen_dataset(output_folder: str):
     arcpy.AddMessage(f"Processing layer: {onss_layer.name}")
 
     # Check if required fields exist in the attribute table
-    required_fields = ['ISO','OnSS_ID', 'Longitude', 'Latitude', 'TotalCapacity']
+    required_fields = ['ISO','OnSS_ID', 'Longitude', 'Latitude']
     for field in required_fields:
         if field not in [f.name for f in arcpy.ListFields(onss_layer)]:
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
@@ -71,7 +71,7 @@ def gen_dataset(output_folder: str):
             'ISO': row['ISO'],
             'Longitude': np.round(row['Longitude'], 6),
             'Latitude': np.round(row['Latitude'], 6),
-            'TotalCapacity': np.int(np.round(700)),
+            'TotalCapacity': np.int(np.round(700))
         }
         data_list.append(data_dict)
 
