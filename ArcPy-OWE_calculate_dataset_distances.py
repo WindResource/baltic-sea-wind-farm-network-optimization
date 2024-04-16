@@ -1,5 +1,6 @@
 import numpy as np
 import os
+#import arcpy
 
 def haversine_distance_np(lon1, lat1, lon2, lat2):
     """
@@ -33,6 +34,25 @@ def haversine_distance_np(lon1, lat1, lon2, lat2):
 
     return distances
 
+def save_structured_array_to_txt(filename, structured_array):
+    """
+    Saves a structured numpy array to a text file.
+
+    Parameters:
+    - filename (str): The path to the file where the array should be saved.
+    - structured_array (numpy structured array): The array to save.
+    """
+    # Open the file in write mode
+    with open(filename, 'w') as file:
+        # Write header
+        header = ', '.join(structured_array.dtype.names)
+        file.write(header + '\n')
+
+        # Write data rows
+        for row in structured_array:
+            row_str = ', '.join(str(value) for value in row)
+            file.write(row_str + '\n')
+
 def calculate_distances(output_folder: str):
     """
     Calculate the Haversine distances between OSS and OnSS datasets within 300 km.
@@ -56,10 +76,20 @@ def calculate_distances(output_folder: str):
     oss_coords = oss_data[['Latitude', 'Longitude']]
     onss_coords = onss_data[['Latitude', 'Longitude']]
 
-    # Initialize dictionaries to store distances and corresponding indices
+    # Initialize dictionaries to store distances, corresponding indices, and export cable indices
     distances_dict = {}
     oss_indices_dict = {}
     onss_indices_dict = {}
+    export_cable_indices_dict = {}
+
+    # Initialize counter for export cable indices
+    export_cable_index = 0
+
+    # Initialize lists to store indices and distances
+    oss_indices = []
+    onss_indices = []
+    distances = []
+    export_cable_indices = []
 
     # Iterate over each combination of OSS and OnSS coordinates
     for i in range(len(oss_coords)):
@@ -71,27 +101,37 @@ def calculate_distances(output_folder: str):
                 onss_coords[j][1],  # onss_lon
                 onss_coords[j][0]   # onss_lat
             )
-            # Round the distance to 3 decimals
-            rounded_distance = np.round(haversine_distance, decimals=3)
-            # If distance is within 300 km and not already stored, add it to the dictionaries
-            if rounded_distance <= 300:
+            # If distance is within 300 km, add it to the lists and dictionaries
+            if haversine_distance <= 300:
                 key = (int(i), int(j))  # Convert indices to integers
                 if key not in distances_dict:
-                    distances_dict[key] = rounded_distance
+                    rounded_distance = np.round(haversine_distance * 1e3)
+                    distances_dict[key] = int(rounded_distance)
                     oss_indices_dict[key] = int(i)  # Convert index to integer
                     onss_indices_dict[key] = int(j)  # Convert index to integer
 
-    # Create arrays with OSS and OnSS IDs and distances
-    oss_indices = list(oss_indices_dict.values())
-    onss_indices = list(onss_indices_dict.values())
-    distances = list(distances_dict.values())
-    oss_ids = oss_data['OSS_ID'][oss_indices]
-    onss_ids = onss_data['OnSS_ID'][onss_indices]
-    distances_array = np.column_stack((oss_ids, onss_ids, distances))
+                    # Store export cable index and increment the counter
+                    export_cable_indices_dict[key] = export_cable_index
+                    export_cable_index += 1
 
-    # Save distances to numpy and text files
-    np.save(os.path.join(output_folder, 'distances.npy'), distances_array)
-    np.savetxt(os.path.join(output_folder, 'distances.txt'), distances_array, fmt='%s', delimiter=',')
+                    # Append indices and distances to lists
+                    oss_indices.append(int(i))
+                    onss_indices.append(int(j))
+                    distances.append(int(rounded_distance))
+                    export_cable_indices.append(export_cable_index)
+
+    # Create structured array with OSS and OnSS IDs, distances, and export cable indices
+    dtype = [('EC_ID', int), ('OSS_ID', int), ('OnSS_ID', int), ('Distance', int)]
+    data_list = [(export_cable_indices[i], oss_data['OSS_ID'][oss_indices[i]], onss_data['OnSS_ID'][onss_indices[i]], distances[i]) for i in range(len(distances))]
+    data_array = np.array(data_list, dtype=dtype)
+
+    # Save structured array to .npy file
+    np.save(os.path.join(output_folder, 'ec_data.npy'), data_array)
+    #arcpy.AddMessage("Data saved successfully.")
+
+    # Save structured array to .txt file
+    save_structured_array_to_txt(os.path.join(output_folder, 'ec_data.txt'), data_array)
+    #arcpy.AddMessage("Data saved successfully.")
 
 # Example usage:
 output_folder = r"C:\Users\cflde\Documents\Graduation Project\ArcGIS Pro\BalticSea\Results\datasets"
