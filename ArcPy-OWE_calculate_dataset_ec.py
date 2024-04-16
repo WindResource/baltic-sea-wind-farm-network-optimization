@@ -52,7 +52,7 @@ def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
 
 def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
     """
-    Calculate the costs associated with selecting HVAC cables for a given length, desired capacity,
+    Calculate the costs associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
 
     Parameters:
@@ -120,15 +120,20 @@ def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
             if polarity == "AC":
                 # Ensure AC voltage is represented in RMS for comparability
                 v_rms_ac = voltage / np.sqrt(3)  # Correct for line-to-line voltage to RMS.
-                apparent_power = np.sqrt(3) * v_rms_ac * ampacity * n_cables
-                reactive_power = v_rms_ac**2 * 2 * np.pi * frequency * capacitance * length
                 resistive_losses = ampacity ** 2 * resistance * length / n_cables
-                calculated_capacity = max(0, np.sqrt(max(0, (apparent_power ** 2 - reactive_power ** 2))) - resistive_losses)
+                apparent_power = voltage * ampacity * n_cables - resistive_losses
+                reactive_power = v_rms_ac**2 * 2 * np.pi * frequency * capacitance * length
+                
+                active_power = max(0, np.sqrt(max(0, (apparent_power ** 2 - reactive_power ** 2))))
+                
+                power_losses = (resistive_losses + reactive_power) / apparent_power
             else:  # polarity == "DC"
                 # DC voltage is already in the same measure, no adjustment needed
-                calculated_capacity = max(0, n_cables * voltage * ampacity - (ampacity ** 2 * resistance * length))
+                resistive_losses = ampacity ** 2 * resistance * length / n_cables
+                active_power = n_cables * voltage * ampacity  - resistive_losses
                 
-            if calculated_capacity >= desired_capacity:
+                power_losses = resistive_losses / active_power
+            if active_power >= desired_capacity:
                 # Add the current row index and number of cables to valid_combinations
                 cable_count.append((cable, n_cables))
                 break  # Exit the loop since desired capacity is reached
@@ -155,7 +160,7 @@ def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
     # Calculate present value
     total_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
 
-    return total_costs
+    return total_costs, power_losses
 
 def haversine_distance_np(lon1, lat1, lon2, lat2):
     """
@@ -250,6 +255,8 @@ def calculate_distances(output_folder: str):
     dist_l = []
     total_cost_HVAC_l = []
     total_cost_HVDC_l = []
+    power_losses_HVAC_l = []
+    power_losses_HVDC_l = []
 
     # Iterate over each combination of OSS and OnSS coordinates
     for i in range(len(oss_coords)):
@@ -275,8 +282,8 @@ def calculate_distances(output_folder: str):
                     export_cable_index += 1
                     
                     # Calculate HVAC and HVDC costs
-                    total_costs_HVAC = export_cable_costs(rounded_distance, capacity, voltage, "AC")
-                    total_costs_HVDC = export_cable_costs(rounded_distance, capacity, voltage, "DC")
+                    total_costs_HVAC, power_losses_HVAC = export_cable_costs(rounded_distance, capacity, voltage, "AC")
+                    total_costs_HVDC, power_losses_HVDC = export_cable_costs(rounded_distance, capacity, voltage, "DC")
 
                     # Append indices and distances to lists
                     export_cable_l.append(export_cable_index)
@@ -285,11 +292,13 @@ def calculate_distances(output_folder: str):
                     dist_l.append(int(rounded_distance))
                     total_cost_HVAC_l.append(int(np.round(total_costs_HVAC / 1e3)))
                     total_cost_HVDC_l.append(int(np.round(total_costs_HVDC / 1e3)))
+                    power_losses_HVAC_l.append(np.round(power_losses_HVAC, 4))
+                    power_losses_HVDC_l.append(np.round(power_losses_HVDC, 4))
                     
 
     # Create structured array with OSS and OnSS IDs, distances, and export cable indices
-    dtype = [('EC_ID', int), ('OSS_ID', int), ('OnSS_ID', int), ('Distance', int), ('Total_costs_HVAC', int), ('Total_costs_HVDC', int)]
-    data_list = [(export_cable_l[i], oss_data['OSS_ID'][oss_l[i]], onss_data['OnSS_ID'][onss_l[i]], dist_l[i], total_cost_HVAC_l[i], total_cost_HVDC_l[i]) for i in range(len(dist_l))]
+    dtype = [('EC_ID', int), ('OSS_ID', int), ('OnSS_ID', int), ('Distance', int), ('Total_costs_HVAC', int), ('PowerLosses_HVAC', float), ('Total_costs_HVDC', int), ('Powerlosses_HVDC', float)]
+    data_list = [(export_cable_l[i], oss_data['OSS_ID'][oss_l[i]], onss_data['OnSS_ID'][onss_l[i]], dist_l[i], total_cost_HVAC_l[i], power_losses_HVAC_l[i],  total_cost_HVDC_l[i], power_losses_HVDC_l[i]) for i in range(len(dist_l))]
     data_array = np.array(data_list, dtype=dtype)
 
     # Save structured array to .npy file
