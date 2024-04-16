@@ -49,7 +49,7 @@ def identify_countries(point_features):
     arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", wgs84)
 
     # Create a buffer around the EEZ layer boundary
-    arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "200 Kilometers")
+    arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "150 Kilometers")
 
     # Select point features within the buffer
     arcpy.analysis.PairwiseClip(point_features, "in_memory\\eez_buffer", "in_memory\\point_features")
@@ -87,21 +87,17 @@ def identify_countries(point_features):
                 elif type not in ['Station', 'Substation', 'Sub_station']:
                     update_cursor.deleteRow()
                     
-    # Generate OnSS_ID for substations within each country
-    substation_counter = {}
-    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO", "OnSS_ID"]) as update_cursor:
+    # Generate OnSS_ID for substations
+    onss_id = 0
+    with arcpy.da.UpdateCursor("in_memory\\point_features", ["OnSS_ID"]) as update_cursor:
         for update_row in update_cursor:
-            country, iso, onss_id = update_row
-            if iso in substation_counter:
-                substation_counter[iso] += 1
-            else:
-                substation_counter[iso] = 1
-            onss_id = f"{iso}_{substation_counter[iso]}"
-            update_row[2] = onss_id
+            onss_id += 1
+            update_row[0] = onss_id
             update_cursor.updateRow(update_row)
-
+            
     # Copy features to in-memory
     arcpy.management.CopyFeatures("in_memory\\point_features", point_features)
+
 
     return point_features
 
