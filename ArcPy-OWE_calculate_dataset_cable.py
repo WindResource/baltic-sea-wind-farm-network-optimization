@@ -49,6 +49,31 @@ def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
 
     return total_costs, equip_costs, inst_costs, ope_costs, deco_costs
 
+def haversine_distance(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great-circle distance between two points on the Earth's surface.
+
+    Parameters:
+        lon1 (float): Longitude of the first point (in degrees).
+        lat1 (float): Latitude of the first point (in degrees).
+        lon2 (float): Longitude of the second point (in degrees).
+        lat2 (float): Latitude of the second point (in degrees).
+
+    Returns:
+        float: The distance between the two points in kilometers.
+    """
+    # Convert latitude and longitude from degrees to radians
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+
+    # Haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    c = 2 * np.arcsin(np.sqrt(a))
+    r = 6371  # Radius of the Earth in kilometers
+    distance = r * c
+
+    return distance
 
 def HVAC_interarray_cable_costs(distance, desired_capacity, desired_voltage, water_depth):
     """
@@ -63,7 +88,7 @@ def HVAC_interarray_cable_costs(distance, desired_capacity, desired_voltage, wat
     Returns:
         tuple: A tuple containing the equipment costs, installation costs, yearly operational costs, and decommissioning costs associated with the selected HVAC interarray cables.
     """
-    length = 1.05 * distance
+    length = 1.1 * distance
     
     cable_data = [
         (66, 95, 0.25, 24, 180, 113, 113),
@@ -141,7 +166,7 @@ def HVAC_interarray_cable_costs(distance, desired_capacity, desired_voltage, wat
     # Calculate present value
     total_costs, equip_costs, inst_costs, ope_costs, deco_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
     
-    return total_costs, equip_costs, inst_costs, ope_costs, deco_costs
+    return total_costs
 
 
 def HVDC_export_cable_costs(distance, desired_capacity):
@@ -155,7 +180,7 @@ def HVDC_export_cable_costs(distance, desired_capacity):
     Returns:
         tuple: A tuple containing the equipment costs, installation costs, yearly operational costs, and decommissioning costs associated with the selected HVDC cables.
     """
-    length = 1.3 * distance
+    length = 1.2 * distance
     
     rated_cost = 1.35 * 1e3   # (eu/(W*m))
     
@@ -167,7 +192,7 @@ def HVDC_export_cable_costs(distance, desired_capacity):
     # Calculate present value
     total_costs, equip_costs, inst_costs, ope_costs, deco_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
     
-    return total_costs, equip_costs, inst_costs, ope_costs, deco_costs
+    return total_costs
 
 def HVAC_export_cable_costs(distance, desired_capacity, desired_voltage):
     """
@@ -260,16 +285,28 @@ def HVAC_export_cable_costs(distance, desired_capacity, desired_voltage):
     inst_costs = inst_costs_array[min_cost_index]
     ope_costs_yearly = 0.2 * 1e-2 * equip_costs
     deco_costs = 0.5 * inst_costs
+    
+    # Calculate present value
+    total_costs, equip_costs, inst_costs, ope_costs, deco_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
 
-    return equip_costs, inst_costs, ope_costs_yearly, deco_costs
+    return total_costs
 
+
+
+
+distance = haversine_distance(lon1, lat1, lon2, lat2)
 
 desired_capacity = 800
-desired_voltage = 220  # Specify your desired voltage here
-length = 5000 # Required length
-equip_costs, inst_costs, total_costs = HVAC_export_cable_costs(length, desired_capacity, desired_voltage)
+desired_voltage = 220
+water_depth = 100
 
-print(round(equip_costs, 3))
-print(round(inst_costs, 3))
-print(round(total_costs, 3))
+total_costs_HVAC_export = HVAC_export_cable_costs(distance, desired_capacity, desired_voltage)
+total_costs_HVDC_export = HVDC_export_cable_costs(distance, desired_capacity)
+total_costs_HVAC_ia = HVAC_interarray_cable_costs(distance, desired_capacity, desired_voltage, water_depth)
+
+
+
+print(round(total_costs_HVAC_export, 3))
+print(round(total_costs_HVDC_export, 3))
+print(round(total_costs_HVAC_ia, 3))
 
