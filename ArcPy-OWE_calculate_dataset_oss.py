@@ -189,7 +189,6 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
 
     return total_costs
 
-
 def save_structured_array_to_txt(filename, structured_array):
     """
     Saves a structured numpy array to a text file.
@@ -284,7 +283,8 @@ def gen_dataset(output_folder: str):
     
     # Define the data type for a structured array with all necessary fields
     dtype = [
-        ('OSS_ID', 'U10'),  # Adjust string length as needed
+        ('OSS_ID', int),  # Adjust string length as needed
+        ('ISO', 'U10'),
         ('Longitude', float),
         ('Latitude', float),
         ('AC', object),  # Store all capacities and corresponding costs as a single array or list
@@ -302,6 +302,7 @@ def gen_dataset(output_folder: str):
         # Create a dictionary to store data for the current OSS_ID
         oss_data = {
             'OSS_ID': array['OSS_ID'][i],
+            'ISO' : array['ISO'][i],
             'Longitude': array['Longitude'][i],
             'Latitude': array['Latitude'][i],
             'AC': [],  # Initialize empty list to store costs for AC
@@ -322,7 +323,7 @@ def gen_dataset(output_folder: str):
         data_list.append(oss_data)
 
     # Convert the list of dictionaries to a structured array
-    data_array = np.array([(d['OSS_ID'], d['Longitude'], d['Latitude'], d['AC'], d['DC']) for d in data_list], dtype=dtype)
+    data_array = np.array([(d['OSS_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['AC'], d['DC']) for d in data_list], dtype=dtype)
 
     # Save the structured array to a .npy file in the specified folder
     np.save(os.path.join(output_folder, 'oss_data.npy'), data_array)
