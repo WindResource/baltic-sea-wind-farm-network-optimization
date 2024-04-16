@@ -56,21 +56,38 @@ def calculate_distances(output_folder: str):
     oss_coords = oss_data[['Latitude', 'Longitude']]
     onss_coords = onss_data[['Latitude', 'Longitude']]
 
-    # Calculate Haversine distances for all combinations of OSS and OnSS coordinates
-    haversine_distances = haversine_distance_np(
-        oss_coords['Longitude'],  # oss_lon
-        oss_coords['Latitude'],  # oss_lat
-        onss_coords['Longitude'],  # onss_lon
-        onss_coords['Latitude']   # onss_lat
-    )
+    # Initialize dictionaries to store distances and corresponding indices
+    distances_dict = {}
+    oss_indices_dict = {}
+    onss_indices_dict = {}
 
-    # Find indices of potential connections within 300 km
-    oss_indices, onss_indices = np.where(haversine_distances <= 300)
+    # Iterate over each combination of OSS and OnSS coordinates
+    for i in range(len(oss_coords)):
+        for j in range(len(onss_coords)):
+            # Calculate Haversine distance for current combination
+            haversine_distance = haversine_distance_np(
+                oss_coords[i][1],  # oss_lon
+                oss_coords[i][0],  # oss_lat
+                onss_coords[j][1],  # onss_lon
+                onss_coords[j][0]   # onss_lat
+            )
+            # Round the distance to 3 decimals
+            rounded_distance = np.round(haversine_distance, decimals=3)
+            # If distance is within 300 km and not already stored, add it to the dictionaries
+            if rounded_distance <= 300:
+                key = (int(i), int(j))  # Convert indices to integers
+                if key not in distances_dict:
+                    distances_dict[key] = rounded_distance
+                    oss_indices_dict[key] = int(i)  # Convert index to integer
+                    onss_indices_dict[key] = int(j)  # Convert index to integer
 
-    # Create array with OSS and OnSS IDs and distances
+    # Create arrays with OSS and OnSS IDs and distances
+    oss_indices = list(oss_indices_dict.values())
+    onss_indices = list(onss_indices_dict.values())
+    distances = list(distances_dict.values())
     oss_ids = oss_data['OSS_ID'][oss_indices]
     onss_ids = onss_data['OnSS_ID'][onss_indices]
-    distances_array = np.column_stack((oss_ids, onss_ids, haversine_distances[oss_indices, onss_indices]))
+    distances_array = np.column_stack((oss_ids, onss_ids, distances))
 
     # Save distances to numpy and text files
     np.save(os.path.join(output_folder, 'distances.npy'), distances_array)
@@ -79,4 +96,5 @@ def calculate_distances(output_folder: str):
 # Example usage:
 output_folder = r"C:\Users\cflde\Documents\Graduation Project\ArcGIS Pro\BalticSea\Results\datasets"
 calculate_distances(output_folder)
+
 
