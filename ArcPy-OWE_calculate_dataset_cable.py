@@ -148,7 +148,7 @@ def HVAC_interarray_cable_costs(distance, desired_capacity, desired_voltage, wat
     equip_costs = cable[4] if water_depth < 150 else cable[5]
 
     # Calculate the total costs for each cable combination
-    equip_costs_array = [(equip_costs * length * n_cables) for cable, n_cables in cable_count]
+    equip_costs_array = [(equip_costs * length * n_cables) for n_cables in cable_count]
     inst_costs_array = [(cable[6] * length * n_cables) for cable, n_cables in cable_count]
     
     # Calculate total costs
