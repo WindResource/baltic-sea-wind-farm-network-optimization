@@ -295,10 +295,33 @@ def calculate_distances(output_folder: str):
                     power_losses_HVAC_l.append(np.round(power_losses_HVAC, 4))
                     power_losses_HVDC_l.append(np.round(power_losses_HVDC, 4))
                     
-
     # Create structured array with OSS and OnSS IDs, distances, and export cable indices
-    dtype = [('EC_ID', int), ('OSS_ID', int), ('OnSS_ID', int), ('Distance', int), ('Total_costs_HVAC', int), ('PowerLosses_HVAC', float), ('Total_costs_HVDC', int), ('Powerlosses_HVDC', float)]
-    data_list = [(export_cable_l[i], oss_data['OSS_ID'][oss_l[i]], onss_data['OnSS_ID'][onss_l[i]], dist_l[i], total_cost_HVAC_l[i], power_losses_HVAC_l[i],  total_cost_HVDC_l[i], power_losses_HVDC_l[i]) for i in range(len(dist_l))]
+    dtype = [
+        ('EC_ID', int), 
+        ('OSS_ID', int), 
+        ('OnSS_ID', int), 
+        ('Distance', int), 
+        ('Total_costs_HVAC', int),
+        ('Total_costs_HVDC', int),
+        
+        ('PowerLosses_HVAC', float), 
+        ('Powerlosses_HVDC', float)
+        ]
+    
+    data_list = [
+        (export_cable_l[i], 
+        oss_data['OSS_ID'][oss_l[i]], 
+        onss_data['OnSS_ID'][onss_l[i]], 
+        dist_l[i],  
+        total_cost_HVAC_l[i],
+        total_cost_HVDC_l[i],
+        
+        power_losses_HVAC_l[i], 
+        power_losses_HVDC_l[i]
+        ) 
+                
+        for i in range(len(dist_l))]
+    
     data_array = np.array(data_list, dtype=dtype)
 
     # Save structured array to .npy file
