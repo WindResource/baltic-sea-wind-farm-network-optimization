@@ -50,7 +50,7 @@ def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
 
     return total_costs
 
-def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
+def export_cable_costs(distance, required_active_power, required_voltage, polarity):
     """
     Calculate the costs associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -64,6 +64,7 @@ def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
         tuple: A tuple containing the equipment costs, installation costs, and total costs
                 associated with the selected HVAC cables.
     """
+    target_power_factor = 0.95
     frequency = 50  # Assuming constant frequency
     
     length = 1.2 * distance
@@ -91,7 +92,7 @@ def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
     data_array = np.array(cable_data)
     
     # Filter data based on desired voltage
-    data_array = data_array[data_array[:, 0] >= desired_voltage]
+    data_array = data_array[data_array[:, 0] >= required_voltage]
 
     # Define the scaling factors for each column: 
     """
@@ -108,39 +109,30 @@ def export_cable_costs(distance, desired_capacity, desired_voltage, polarity):
     # Apply scaling to each column in data_array
     data_array *= scaling_factors
 
-    # List to store cable rows and counts
-    cable_count = []
+    cable_count = []  # To store the number of cables and corresponding cable data
 
-    # Iterate over each row (cable)
+    # Calculate the required total apparent power based on the target power factor
+    required_apparent_power = required_active_power / target_power_factor
+
     for cable in data_array:
-        n_cables = 1  # Initialize number of cables for this row
-        # Calculate total capacity for this row with increasing number of cables until desired capacity is reached
         voltage, resistance, capacitance, ampacity = cable[0], cable[2], cable[3], cable[4]
         if polarity == "AC":
-            # Ensure AC voltage is represented in RMS for comparability
-            v_rms_ac = voltage / np.sqrt(3)  # Correct for line-to-line voltage to RMS.
+            v_rms_ac = voltage / np.sqrt(3)  # Adjust AC voltage to RMS for comparability
+            # Calculate per cable active power
+            active_power_per_cable = np.sqrt(3) * v_rms_ac * ampacity
+            # Calculate per cable reactive power
+            reactive_power_per_cable = (v_rms_ac ** 2) * 2 * np.pi * frequency * capacitance * length
+            # Derive apparent power per cable
+            apparent_power_per_cable = np.sqrt(active_power_per_cable ** 2 + reactive_power_per_cable ** 2)
+            # Determine number of cables needed based on required total apparent power
+            n_cables = np.ceil(required_apparent_power / apparent_power_per_cable)
             
-            active_power = np.sqrt(3) * v_rms_ac * ampacity
+        else:  # Assuming polarity == "DC", where reactive power is zero, and apparent power equals active power
+            active_power_per_cable = voltage * ampacity
+            # Since for DC, apparent power = active power, we use the active power calculation directly
+            n_cables = np.ceil(required_active_power / active_power_per_cable)
             
-            reactive_power = v_rms_ac**2 * 2 * np.pi * frequency * capacitance * length
-            apparent_power = np.sqrt(active_power ** 2 + reactive_power ** 2)
-            apparent_current = apparent_power / (np.sqrt(3) * v_rms_ac)
-            
-            n_cables = np.ceil(apparent_current / ampacity)
-            
-            resistive_losses = n_cables * (ampacity ** 2) * resistance * length
-            power_eff = (resistive_losses / active_power) * 1e4 # Per ten thousand
-
-        else:  # polarity == "DC"
-            # DC voltage is already in the same measure, no adjustment needed
-            active_power = voltage * ampacity
-            active_current = (active_power / voltage)
-            
-            n_cables = np.ceil(active_current / ampacity)
-            
-            resistive_losses = n_cables * (ampacity ** 2) * resistance * length
-            power_eff = (resistive_losses / active_power) * 1e4 # Per ten thousand
-            
+        # Add the calculated data to the list
         cable_count.append((cable, n_cables))
 
     # Calculate the total costs for each cable combination
@@ -198,13 +190,12 @@ def haversine_distance_np(lon1, lat1, lon2, lat2):
 
 def save_structured_array_to_txt(filename, structured_array):
     """
-    Saves a structured numpy array to a text file.
+    Saves a structured numpy array to a text file, properly handling fields that contain lists.
 
     Parameters:
     - filename (str): The path to the file where the array should be saved.
-    - structured_array (numpy structured array): The array to save.
+    - structured_array (numpy structured array): The array to save, which may contain fields with lists.
     """
-    # Open the file in write mode
     with open(filename, 'w') as file:
         # Write header
         header = ', '.join(structured_array.dtype.names)
@@ -212,17 +203,27 @@ def save_structured_array_to_txt(filename, structured_array):
 
         # Write data rows
         for row in structured_array:
-            row_str = ', '.join(str(value) for value in row)
+            row_data = []
+            for value in row:
+                if isinstance(value, np.ndarray) or isinstance(value, list):
+                    # Convert list or ndarray to a string representation
+                    list_str = '[' + ', '.join(str(v) for v in value) + ']'
+                    row_data.append(list_str)
+                else:
+                    row_data.append(str(value))
+            row_str = ', '.join(row_data)
             file.write(row_str + '\n')
 
 def calculate_distances(output_folder: str):
     """
-    Calculate the Haversine distances between OSS and OnSS datasets within 300 km.
+    Calculate the Haversine distances between OSS and OnSS datasets within 300 km, including calculating
+    and storing the total costs and power efficiencies for various capacities in HVAC and HVDC systems.
 
     Parameters:
         output_folder (str): The folder path where the OSS and OnSS datasets and the results will be saved.
     """
-    capacity = 500 # MW
+    # Define capacities for which costs are to be calculated
+    capacities = np.arange(500, 2500 + 100, 100)  # From 500 MW to 2500 MW, step size 100 MW
     voltage = 400 # kV
 
     # OSS and OnSS file names
@@ -237,103 +238,79 @@ def calculate_distances(output_folder: str):
     oss_data = np.load(oss_file, allow_pickle=True)
     onss_data = np.load(onss_file, allow_pickle=True)
 
-    # Extract coordinates and convert to floats
+    # Extract coordinates
     oss_coords = oss_data[['Latitude', 'Longitude']]
     onss_coords = onss_data[['Latitude', 'Longitude']]
 
-    # Initialize dictionaries to store distances, corresponding indices, and export cable indices
-    distances_dict = {}
-    oss_indices_dict = {}
-    onss_indices_dict = {}
-    export_cable_indices_dict = {}
+    # Initialize lists to store results
+    results_list = []
 
     # Initialize counter for export cable indices
     export_cable_index = 0
 
-    # Initialize lists to store indices and distances
-    export_cable_l= []
-    oss_l = []
-    onss_l = []
-    dist_l = []
-    total_cost_HVAC_l = []
-    total_cost_HVDC_l = []
-    power_losses_HVAC_l = []
-    power_losses_HVDC_l = []
-
-    # Iterate over each combination of OSS and OnSS coordinates
+    # Calculate distances and costs
     for i in range(len(oss_coords)):
         for j in range(len(onss_coords)):
-            # Calculate Haversine distance for current combination
+            # Calculate Haversine distance
             haversine_distance = haversine_distance_np(
                 oss_coords[i][1],  # oss_lon
                 oss_coords[i][0],  # oss_lat
                 onss_coords[j][1],  # onss_lon
                 onss_coords[j][0]   # onss_lat
             )
-            # If distance is within 300 km, add it to the lists and dictionaries
-            if haversine_distance <= 300 * 1e3:
-                key = (int(i), int(j))  # Convert indices to integers
-                if key not in distances_dict:
-                    rounded_distance = np.round(haversine_distance)
-                    distances_dict[key] = int(rounded_distance)
-                    oss_indices_dict[key] = int(i)  # Convert index to integer
-                    onss_indices_dict[key] = int(j)  # Convert index to integer
 
-                    # Store export cable index and increment the counter
-                    export_cable_indices_dict[key] = export_cable_index
-                    export_cable_index += 1
-                    
-                    # Calculate HVAC and HVDC costs
+            # Check if distance is within 300 km
+            if haversine_distance <= 300 * 1e3:
+                rounded_distance = np.round(haversine_distance)
+                # For each pair, calculate and store costs and efficiencies for all capacities
+                total_costs_HVAC_list = []
+                total_costs_HVDC_list = []
+                power_losses_HVAC_list = []
+                power_losses_HVDC_list = []
+
+                for capacity in capacities:
                     total_costs_HVAC, power_losses_HVAC = export_cable_costs(rounded_distance, capacity, voltage, "AC")
                     total_costs_HVDC, power_losses_HVDC = export_cable_costs(rounded_distance, capacity, voltage, "DC")
 
-                    # Append indices and distances to lists
-                    export_cable_l.append(export_cable_index)
-                    oss_l.append(int(i))
-                    onss_l.append(int(j))
-                    dist_l.append(int(rounded_distance))
-                    total_cost_HVAC_l.append(int(np.round(total_costs_HVAC / 1e3)))
-                    total_cost_HVDC_l.append(int(np.round(total_costs_HVDC / 1e3)))
-                    power_losses_HVAC_l.append(np.round(power_losses_HVAC, 2))
-                    power_losses_HVDC_l.append(np.round(power_losses_HVDC, 2))
-                    
-    # Create structured array with OSS and OnSS IDs, distances, and export cable indices
-    dtp = np.int32
+                    total_costs_HVAC_list.append(int(np.round(total_costs_HVAC / 1e3)))
+                    total_costs_HVDC_list.append(int(np.round(total_costs_HVDC / 1e3)))
+                    # power_losses_HVAC_list.append(int(np.round(power_losses_HVAC)))
+                    # power_losses_HVDC_list.append(int(np.round(power_losses_HVDC)))
+
+                # Add results to the results list
+                results_list.append((
+                    export_cable_index,
+                    oss_data['OSS_ID'][i],
+                    onss_data['OnSS_ID'][j],
+                    haversine_distance,
+                    total_costs_HVAC_list,
+                    total_costs_HVDC_list,
+                    # power_losses_HVAC_list,
+                    # power_losses_HVDC_list
+                ))
+
+                # Increment the export cable index
+                export_cable_index += 1
+
+    # Define the dtype for the structured array, allowing for object types in costs and efficiencies
     dtype = [
-        ('EC_ID', dtp), 
-        ('OSS_ID', dtp), 
-        ('OnSS_ID', dtp), 
-        ('Distance', dtp), 
-        ('TotalCosts_HVAC', dtp),
-        ('TotalCosts_HVDC', dtp),
-        
-        ('PowerEff_HVAC', dtp),
-        ('PowerEff_HVDC', dtp)
-        ]
-    
-    data_list = [
-        (export_cable_l[i], 
-        oss_data['OSS_ID'][oss_l[i]], 
-        onss_data['OnSS_ID'][onss_l[i]], 
-        dist_l[i],  
-        total_cost_HVAC_l[i],
-        total_cost_HVDC_l[i],
-        
-        power_losses_HVAC_l[i], 
-        power_losses_HVDC_l[i]
-        ) 
-                
-        for i in range(len(dist_l))]
-    
-    data_array = np.array(data_list, dtype=dtype)
+        ('EC_ID', np.int32), 
+        ('OSS_ID', np.int32), 
+        ('OnSS_ID', np.int32), 
+        ('Distance', np.int32), 
+        ('TotalCosts_HVAC', object),
+        ('TotalCosts_HVDC', object),
+        # ('PowerEff_HVAC', object),
+        # ('PowerEff_HVDC', object)
+    ]
 
-    # Save structured array to .npy file
+    # Create structured array
+    data_array = np.array(results_list, dtype=dtype)
+
+    # Save structured array to .npy and .txt files
     np.save(os.path.join(output_folder, 'ec_data.npy'), data_array)
-    #arcpy.AddMessage("Data saved successfully.")
-
-    # Save structured array to .txt file
+    
     save_structured_array_to_txt(os.path.join(output_folder, 'ec_data.txt'), data_array)
-    #arcpy.AddMessage("Data saved successfully.")
 
 # Example usage:
 output_folder = r"C:\Users\cflde\Documents\Graduation Project\ArcGIS Pro\BalticSea\Results\datasets"
