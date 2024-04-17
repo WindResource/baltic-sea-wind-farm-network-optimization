@@ -169,10 +169,8 @@ def equip_costs(water_depth, support_structure, turbine_capacity, year):
         mask = support_structure == structure
         c1, c2, c3, c4 = structure_coeffs[year]
         supp_costs[mask] = turbine_capacity[mask] * (c1 * (water_depth[mask] ** 2) + c2 * water_depth[mask] + c3) + c4
-
-    equip_costs = supp_costs + turbine_costs
     
-    return supp_costs, turbine_costs, equip_costs
+    return supp_costs, turbine_costs
 
 def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, operation):
     """
@@ -239,16 +237,6 @@ def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, 
                 total_costs[indices] += vessel_costs
 
     return total_costs
-
-import numpy as np
-from scipy.stats import weibull_min
-from scipy.interpolate import interp1d
-
-import numpy as np
-from scipy.stats import weibull_min
-
-import numpy as np
-from scipy.stats import weibull_min
 
 def calculate_aep_and_capacity_factor(weibullA_array, weibullK_array):
     """
@@ -365,6 +353,7 @@ def gen_dataset(output_folder: str):
     wtid_array = array_wtc['WT_ID']
     wa_array = array_wtc['WeibullA']
     wk_array = array_wtc['WeibullK']
+    ic_array = array_wtc['IceCover']
 
     array_wf = arcpy.da.FeatureClassToNumPyArray(wfc_layer,'*')
     longitude_array_wf = array_wf['Longitude']
@@ -376,14 +365,17 @@ def gen_dataset(output_folder: str):
     supp_array = determine_support_structure(water_depth_array)
 
     # Calculate equipment costs for expanded arrays
-    supp_costs, turbine_costs, equip_costs_wt = equip_costs(water_depth_array, supp_array, capacity_array, year = "2020")
+    supp_costs, turbine_costs = equip_costs(water_depth_array, supp_array, capacity_array, year = "2020")
+
+    # Multiply support structure costs if they have to adapt to ice cover
+    supp_costs *= np.where(ic_array == "Yes", 1.10, 1)
 
     # Installation and decomissioning expenses
     inst_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "inst")
     deco_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "deco")
 
     # Calculate capital expenses
-    cap_expenses_wt = np.add(equip_costs_wt, inst_costs_wt)
+    cap_expenses_wt = np.add(supp_costs, turbine_costs, inst_costs_wt)
 
     # Operating expenses calculation with conditional logic for support structures
     # Using numpy.where to apply condition across the array
