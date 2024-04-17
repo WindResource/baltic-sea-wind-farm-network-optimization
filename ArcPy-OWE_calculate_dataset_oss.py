@@ -81,15 +81,15 @@ def determine_support_structure(water_depth):
 
     return support_structure
 
-def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type):
+def calc_equip_costs(water_depth, support_structure, capacity, polarity):
     """
     Calculates the offshore substation equipment costs for expanded arrays of inputs.
     
     Parameters:
     - water_depth (numpy array): Expanded array of water depths in meters.
     - support_structure (numpy array): Expanded array of support structure types.
-    - oss_capacity (numpy array): Expanded array of offshore substation capacities in MW.
-    - HVC_type (numpy array): Expanded array of High Voltage Cable types ('AC' or 'DC').
+    - capacity (float): Offshore substation capacity in MW.
+    - polarity (str): High Voltage Cable type ('AC' or 'DC').
 
     Returns:
     - tuple of numpy arrays: Equipment costs for support structure, power converter, and total.
@@ -103,7 +103,7 @@ def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type):
     equip_coeff = {'AC': (22.87, 7.06), 'DC': (102.93, 31.75)}
 
     # Determine equivalent capacity based on HVC type
-    equiv_capacity = np.where(HVC_type == "AC", 0.5 * oss_capacity, oss_capacity)
+    equiv_capacity = 0.5 * capacity if polarity == "AC" else capacity
 
     # Vectorized calculations for each support structure type
     for structure, (c1, c2, c3, c4) in support_structure_coeff.items():
@@ -111,7 +111,7 @@ def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type):
 
         if structure == 'sandisland':
             # Specific calculation for 'sandisland'
-            area_island = equiv_capacity[structure_mask] * 5
+            area_island = equiv_capacity * 5
             slope = 0.75
             r_hub = np.sqrt(area_island / np.pi)
             r_seabed = r_hub + (water_depth[structure_mask] + 3) / slope
@@ -119,20 +119,16 @@ def calc_equip_costs(water_depth, support_structure, oss_capacity, HVC_type):
             supp_costs[structure_mask] = c1 * volume_island + c2 * area_island
         else:
             # Calculations for 'jacket' or 'floating'
-            supp_costs[structure_mask] = (c1 * water_depth[structure_mask] + c2 * 1000) * equiv_capacity[structure_mask] + (c3 * water_depth[structure_mask] + c4 * 1000)
+            supp_costs[structure_mask] = (c1 * water_depth[structure_mask] + c2 * 1000) * equiv_capacity + (c3 * water_depth[structure_mask] + c4 * 1000)
 
     # Vectorized power converter costs based on HVC type
     for hvc_type, (c5, c6) in equip_coeff.items():
-        hvc_mask = HVC_type == hvc_type
-        conv_costs[hvc_mask] = c5 * oss_capacity[hvc_mask] * 1e3 + c6 * 1e6
+        hvc_mask = polarity == hvc_type
+        conv_costs[hvc_mask] = c5 * capacity * 1e3 + c6 * 1e6
 
-    # Calculate total equipment costs
-    equip_costs = supp_costs + conv_costs
+    return supp_costs, conv_costs
 
-    return supp_costs, conv_costs, equip_costs
-
-
-def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_type="AC", operation="inst"):
+def calc_costs(water_depth, support_structure, port_distance, capacity, polarity="AC", operation="inst"):
     """
     Calculate installation or decommissioning costs of offshore substations based on arrays of inputs.
 
@@ -140,21 +136,21 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
     - water_depth (numpy array): Water depth in meters.
     - support_structure (numpy array): Type of support structure ('sandisland', 'jacket', 'floating').
     - port_distance (numpy array): Distance to port in kilometers.
-    - oss_capacity (numpy array): Offshore substation capacity in MW.
-    - HVC_type (str, optional): High Voltage Cable type ('AC' or 'DC'). Defaults to 'AC'.
+    - capacity (float): Offshore substation capacity in MW.
+    - polarity (str, optional): High Voltage Cable type ('AC' or 'DC'). Defaults to 'AC'.
     - operation (str, optional): Type of operation ('inst' for installation or 'deco' for decommissioning). Defaults to 'inst'.
 
     Returns:
     - numpy array: Calculated installation or decommissioning costs.
     """
-    # Installation coefficients for different vehicles and structures
+    # Installation coefficients for different structures
     inst_coeff = {
         'sandisland': (20000, 25, 2000, 6000, 15),
         'jacket': (1, 18.5, 24, 96, 200),
         'floating': (1, 22.5, 10, 0, 40)
     }
 
-    # Decommissioning coefficients for different vehicles and structures
+    # Decommissioning coefficients for different structures
     deco_coeff = {
         'sandisland': (20000, 25, 2000, 6000, 15),
         'jacket': (1, 18.5, 24, 96, 200),
@@ -164,6 +160,9 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
     # Choose the appropriate coefficients based on the operation type
     coeff_dict = inst_coeff if operation == 'inst' else deco_coeff
 
+    # Determine equivalent capacity based on HVC type
+    equiv_capacity = 0.5 * capacity if polarity == "AC" else capacity
+    
     # Initialize an empty array for total_costs with the same shape as the input arrays
     total_costs = np.zeros_like(water_depth, dtype=float)
 
@@ -178,13 +177,10 @@ def calc_costs(water_depth, support_structure, port_distance, oss_capacity, HVC_
         # Calculate costs based on the structure type
         if structure == 'sandisland':
             # Specific calculations for sandisland
-            volume_island = (oss_capacity[idx] * 5)  # Assuming a simple volume calculation based on capacity
+            volume_island = (equiv_capacity * 5)  # Assuming a simple volume calculation based on capacity
             total_costs[idx] = ((volume_island / c1) * ((2 * port_distance[idx]) / c2) + (volume_island / c3) + (volume_island / c4)) * (c5 * 1000) / 24
-        elif structure == 'jacket':
-            # Specific calculations for jacket
-            total_costs[idx] = ((1 / c1) * ((2 * port_distance[idx]) / c2 + c3) + c4) * (c5 * 1000) / 24
-        elif structure == 'floating':
-            # Specific calculations for floating
+        elif structure == 'jacket' or structure == 'floating':
+            # Specific calculations for jacket or floating
             total_costs[idx] = ((1 / c1) * ((2 * port_distance[idx]) / c2 + c3) + c4) * (c5 * 1000) / 24
 
     return total_costs
@@ -244,39 +240,37 @@ def gen_dataset(output_folder: str):
     array = arcpy.da.FeatureClassToNumPyArray(oss_layer,'*')
     water_depth_array = array['WaterDepth']
     distance_array = array['Distance']
+    ic_array = array['IceCover']
 
     # Determine support structure for all water depths
-    support_structure = determine_support_structure(water_depth_array)
+    support_structure_array = determine_support_structure(water_depth_array)
 
     # Define capacities for which costs are to be calculated
     capacities = np.arange(500, 2500 + 100, 100)
 
-    # Expand water_depth_array and support_structure to match each capacity, alternating between AC and DC for HVC type
-    expanded_water_depth = np.repeat(water_depth_array[:, np.newaxis], len(capacities) * 2, axis=1).flatten()
-    expanded_distance = np.repeat(distance_array[:, np.newaxis], len(capacities) * 2, axis=1).flatten()
-    
-    expanded_support_structure = np.repeat(support_structure[:, np.newaxis], len(capacities) * 2, axis=1).flatten()
-    expanded_capacities = np.tile(np.repeat(capacities, 2), len(water_depth_array))
-    HVC_types = np.tile(np.array(['AC', 'DC']), len(capacities) * len(water_depth_array))
+    for capacity in capacities:
+        for polarity in ["AC", "DC"]:
+            # Calculate equipment costs for expanded arrays
+            supp_costs, conv_costs = calc_equip_costs(water_depth_array, support_structure_array, capacity, polarity)
 
-    # Calculate equipment costs for expanded arrays
-    supp_costs, conv_costs, equip_costs = calc_equip_costs(expanded_water_depth, expanded_support_structure, expanded_capacities, HVC_types)
+            # Multiply support structure costs if they have to adapt to ice cover
+            supp_costs *= np.where(ic_array == "Yes", -99, 1)
+            
+            # Installation and decomissioning expenses
+            inst_costs = calc_costs(water_depth_array, support_structure_array, distance_array, capacity, polarity, operation='inst')
+            deco_costs = calc_costs(water_depth_array, support_structure_array, distance_array, capacity, polarity, operation='deco')
 
-    # Installation and decomissioning expenses
-    inst_costs = calc_costs(expanded_water_depth, expanded_support_structure, expanded_distance, expanded_capacities, HVC_types, operation='inst')
-    deco_costs = calc_costs(expanded_water_depth, expanded_support_structure, expanded_distance, expanded_capacities, HVC_types, operation='deco')
+            # Calculate capital expenses
+            cap_expenses = np.add(supp_costs, conv_costs, inst_costs)
 
-    # Calculate capital expenses
-    cap_expenses = equip_costs + inst_costs
+            # Operating expenses calculation with conditional logic for support structures
+            # Using numpy.where to apply condition across the array
+            ope_expenses = np.where(support_structure_array == 'sandisland',
+                                    0.03 * conv_costs + 0.015 * supp_costs,
+                                    0.03 * conv_costs)
 
-    # Operating expenses calculation with conditional logic for support structures
-    # Using numpy.where to apply condition across the array
-    ope_expenses = np.where(expanded_support_structure == 'sandisland',
-                            0.03 * conv_costs + 0.015 * supp_costs,
-                            0.03 * conv_costs)
-
-    # Calculate total expenses
-    total_costs = cap_expenses + deco_costs + ope_expenses  # Note: Operating expenses included in total costs
+            # Calculate total expenses
+            total_costs = cap_expenses + deco_costs + ope_expenses  # Note: Operating expenses included in total costs
 
     # Save the results or update the layer attributes as required by your project needs
     arcpy.AddMessage("Data updated successfully.")
@@ -287,8 +281,8 @@ def gen_dataset(output_folder: str):
         ('ISO', 'U10'),
         ('Longitude', float),
         ('Latitude', float),
-        ('AC', object),  # Store all capacities and corresponding costs as a single array or list
-        ('DC', object),  # Store all capacities and corresponding costs as a single array or list
+        ('AC', object),  # Store all costs as a single array or list
+        ('DC', object),  # Store all costs as a single array or list
     ]
 
     # Calculate reshaped_total_costs
@@ -310,7 +304,7 @@ def gen_dataset(output_folder: str):
         }
         
         # Iterate over each capacity
-        for capacity_index, capacity in enumerate(capacities):
+        for capacity_index in enumerate(capacities):
             # Calculate total costs for AC and DC
             total_costs_ac = reshaped_total_costs[i, capacity_index * 2]
             total_costs_dc = reshaped_total_costs[i, capacity_index * 2 + 1]
