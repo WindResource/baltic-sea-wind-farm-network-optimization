@@ -287,6 +287,8 @@ def calculate_aep_and_capacity_factor(weibullA_array, weibullK_array):
 
         # Calculate capacity factor
         capacity_factor_array[i] = (aep_array[i] / (turbine_rating * hours_per_year))  # Convert to percentage
+        
+        aep_array[i] *= 1e-6  #[kWh > GWh]
 
     return aep_array, capacity_factor_array
 
