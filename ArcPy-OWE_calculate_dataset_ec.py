@@ -64,12 +64,10 @@ def export_cable_costs(distance, required_active_power, required_voltage, polari
         tuple: A tuple containing the equipment costs, installation costs, and total costs
                 associated with the selected HVAC cables.
     """
-    target_power_factor = 0.95
-    frequency = 50  # Assuming constant frequency
-    
+
     length = 1.2 * distance
     
-    desired_capacity *= 1e6 # (MW > W)
+    required_active_power *= 1e6 # (MW > W)
     
     # Define data_tuples where each column represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
     cable_data = [
@@ -109,29 +107,28 @@ def export_cable_costs(distance, required_active_power, required_voltage, polari
     # Apply scaling to each column in data_array
     data_array *= scaling_factors
 
+    power_factor = 0.90
     cable_count = []  # To store the number of cables and corresponding cable data
-
-    # Calculate the required total apparent power based on the target power factor
-    required_apparent_power = required_active_power / target_power_factor
 
     for cable in data_array:
         voltage, resistance, capacitance, ampacity = cable[0], cable[2], cable[3], cable[4]
-        if polarity == "AC":
-            v_rms_ac = voltage / np.sqrt(3)  # Adjust AC voltage to RMS for comparability
-            # Calculate per cable active power
-            active_power_per_cable = np.sqrt(3) * v_rms_ac * ampacity
-            # Calculate per cable reactive power
-            reactive_power_per_cable = (v_rms_ac ** 2) * 2 * np.pi * frequency * capacitance * length
-            # Derive apparent power per cable
-            apparent_power_per_cable = np.sqrt(active_power_per_cable ** 2 + reactive_power_per_cable ** 2)
+        nominal_power_per_cable = voltage * ampacity
+        if polarity == "AC": # Three phase AC
+            ac_apparent_power = required_active_power / power_factor
             # Determine number of cables needed based on required total apparent power
-            n_cables = np.ceil(required_apparent_power / apparent_power_per_cable)
+            n_cables = np.ceil(ac_apparent_power / nominal_power_per_cable)
             
-        else:  # Assuming polarity == "DC", where reactive power is zero, and apparent power equals active power
-            active_power_per_cable = voltage * ampacity
-            # Since for DC, apparent power = active power, we use the active power calculation directly
-            n_cables = np.ceil(required_active_power / active_power_per_cable)
+            current = ac_apparent_power / voltage
             
+        else:  # Assuming polarity == "DC"
+            # Determine number of cables needed based on required power
+            n_cables = np.ceil(required_active_power / nominal_power_per_cable)
+            
+            current = required_active_power / voltage
+        
+        resistive_losses = current ** 2 * resistance * length / n_cables
+        power_eff = (resistive_losses / required_active_power)
+        
         # Add the calculated data to the list
         cable_count.append((cable, n_cables))
 
@@ -269,13 +266,13 @@ def calculate_distances(output_folder: str):
                 power_losses_HVDC_list = []
 
                 for capacity in capacities:
-                    total_costs_HVAC, power_losses_HVAC = export_cable_costs(rounded_distance, capacity, voltage, "AC")
-                    total_costs_HVDC, power_losses_HVDC = export_cable_costs(rounded_distance, capacity, voltage, "DC")
+                    total_costs_HVAC, power_eff_HVAC = export_cable_costs(rounded_distance, capacity, voltage, "AC")
+                    total_costs_HVDC, power_eff_HVDC = export_cable_costs(rounded_distance, capacity, voltage, "DC")
 
                     total_costs_HVAC_list.append(int(np.round(total_costs_HVAC / 1e3)))
                     total_costs_HVDC_list.append(int(np.round(total_costs_HVDC / 1e3)))
-                    # power_losses_HVAC_list.append(int(np.round(power_losses_HVAC)))
-                    # power_losses_HVDC_list.append(int(np.round(power_losses_HVDC)))
+                    power_losses_HVAC_list.append(int(np.round(power_eff_HVAC * 1e4)))
+                    power_losses_HVDC_list.append(int(np.round(power_eff_HVDC * 1e4)))
 
                 # Add results to the results list
                 results_list.append((
@@ -285,8 +282,8 @@ def calculate_distances(output_folder: str):
                     haversine_distance,
                     total_costs_HVAC_list,
                     total_costs_HVDC_list,
-                    # power_losses_HVAC_list,
-                    # power_losses_HVDC_list
+                    power_losses_HVAC_list,
+                    power_losses_HVDC_list
                 ))
 
                 # Increment the export cable index
@@ -300,8 +297,8 @@ def calculate_distances(output_folder: str):
         ('Distance', np.int32), 
         ('TotalCosts_HVAC', object),
         ('TotalCosts_HVDC', object),
-        # ('PowerEff_HVAC', object),
-        # ('PowerEff_HVDC', object)
+        ('PowerEff_HVAC', object),
+        ('PowerEff_HVDC', object)
     ]
 
     # Create structured array
