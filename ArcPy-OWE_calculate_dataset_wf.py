@@ -165,7 +165,7 @@ def determine_support_structure(water_depth):
 
     return support_structure
 
-def equip_costs(water_depth, support_structure, ice_cover, turbine_capacity, year):
+def calc_equip_costs(water_depth, support_structure, ice_cover, turbine_capacity, year):
     """
     Calculates the equipment costs based on water depth values, year, and turbine capacity.
 
@@ -400,7 +400,7 @@ def gen_dataset(output_folder: str):
             return
 
     # Extract relevant fields to minimize memory usage and improve performance.
-    fields_wtc = ['WaterDepth', 'Distance', 'Capacity', 'WF_ID', 'WeibullA', 'WeibullK', 'IceCover']
+    fields_wtc = ['WaterDepth', 'IceCover', 'Distance', 'Capacity', 'WF_ID', 'WeibullA', 'WeibullK']
     fields_wf = ['Longitude', 'Latitude', 'WF_ID', 'ISO']
 
     # Convert attribute tables to NumPy arrays with only the necessary fields.
@@ -412,7 +412,7 @@ def gen_dataset(output_folder: str):
     supp_array = determine_support_structure(array_wtc['WaterDepth'])
 
     # Calculate equipment costs.
-    supp_costs, turbine_costs, cap_expenses_wt = equip_costs(array_wtc['WaterDepth'], supp_array, array_wtc['Capacity'], year="2020")
+    supp_costs, turbine_costs, equip_costs_wt = calc_equip_costs(array_wtc['WaterDepth'], array_wtc['IceCover'], supp_array, array_wtc['Capacity'], year="2020")
 
 
     # Calculate installation and decommissioning costs.
@@ -423,7 +423,7 @@ def gen_dataset(output_folder: str):
     ope_costs_yr_wt = 0.025 * turbine_costs  # Assuming a fixed percentage for operating expenses.
 
     # Calculate total costs.
-    total_costs_wt = present_value(equip_costs, inst_costs_wt, ope_costs_yr_wt, deco_costs_wt):
+    total_costs_wt = present_value(equip_costs_wt, inst_costs_wt, ope_costs_yr_wt, deco_costs_wt)
 
     # Calculate Annual Energy Production (AEP) and Capacity Factor (CF) for each turbine.
     aep_array, cf_array = calculate_aep_and_capacity_factor(array_wtc['WeibullA'], array_wtc['WeibullK'])
