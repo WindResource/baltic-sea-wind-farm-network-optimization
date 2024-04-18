@@ -352,7 +352,6 @@ def gen_dataset(output_folder: str):
     distance_array = array_wtc['Distance']
     capacity_array = array_wtc['Capacity']
     wfid_array = array_wtc['WF_ID']
-    wtid_array = array_wtc['WT_ID']
     wa_array = array_wtc['WeibullA']
     wk_array = array_wtc['WeibullK']
     ic_array = array_wtc['IceCover']
@@ -389,6 +388,7 @@ def gen_dataset(output_folder: str):
     aep_array, cf_array = calculate_aep_and_capacity_factor(wa_array, wk_array)
     
     # Aggregate total costs and capacity for each unique WF_ID
+    max_waterdepth_wf = {}
     total_costs_wf = {}
     total_capacity_wf = {}
     total_aep_wf = {}
@@ -399,6 +399,8 @@ def gen_dataset(output_folder: str):
     for wfid in unique_wfids:
         # Find indices where WF_ID matches the current WF_ID
         wt_index = np.where(wfid_array == wfid)[0]
+        
+        max_waterdepth_wf[wfid] = np.max(water_depth_array[wt_index])
         
         # Sum total costs and capacity for the current WF_ID
         total_costs_wf[wfid] = np.sum(total_costs_wt[wt_index])
@@ -414,6 +416,7 @@ def gen_dataset(output_folder: str):
         ('ISO', 'U10'),
         ('Longitude', float),
         ('Latitude', float),
+        ('MaxWaterdepth', int),
         ('TotalCapacity', int),
         ('TotalCost', int),
         ('TotalAEP', object),
@@ -434,6 +437,8 @@ def gen_dataset(output_folder: str):
         longitude = longitude_array_wf[wf_index]
         latitude = latitude_array_wf[wf_index]
         
+        max_waterdepth = max_waterdepth_wf[wfid]
+        
         # Retrieve total costs and capacity for the current WF_ID
         total_costs = total_costs_wf[wfid]
         total_capacity = total_capacity_wf[wfid]
@@ -447,6 +452,7 @@ def gen_dataset(output_folder: str):
             'ISO': iso,
             'Longitude': np.round(longitude, 6),
             'Latitude': np.round(latitude, 6),
+            'MaxWaterdepth' : np.int(max_waterdepth),
             'TotalCapacity': np.int(np.round(total_capacity)),
             'TotalCost': np.int(np.round(total_costs / 1000)),
             'TotalAEP' : np.int(np.round(total_aep)),
@@ -455,7 +461,7 @@ def gen_dataset(output_folder: str):
         data_list.append(data_dict)
 
     # Convert the list of dictionaries to a structured array
-    data_array = np.array([(d['WF_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['TotalCapacity'], d['TotalCost'], d['TotalAEP'], d['AvgCf']) for d in data_list], dtype=dtype)
+    data_array = np.array([(d['WF_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['MaxWaterdepth'], d['TotalCapacity'], d['TotalCost'], d['TotalAEP'], d['AvgCf']) for d in data_list], dtype=dtype)
 
     # Sort data_array by WF_ID
     data_array_sorted = np.sort(data_array, order='WF_ID')
