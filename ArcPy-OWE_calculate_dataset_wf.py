@@ -97,6 +97,52 @@ import os
 import numpy as np
 from scipy.stats import weibull_min
 
+def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
+    """
+    Calculate the total present value of cable costs using NumPy for vectorized operations,
+    spreading installation and decommissioning costs over their respective periods and
+    applying the discount rate correctly over each year.
+
+    Parameters:
+        equip_costs (float or np.ndarray): Equipment costs.
+        inst_costs (float or np.ndarray): Installation costs spread over installation years.
+        ope_costs_yearly (float or np.ndarray): Yearly operational costs.
+        deco_costs (float or np.ndarray): Decommissioning costs spread over decommissioning years.
+
+    Returns:
+        float or np.ndarray: Total present value of costs.
+    """
+    # Define years for installation, operational, and decommissioning
+    inst_year, ope_year, dec_year, end_year = 0, 5, 30, 32
+    inst_period = ope_year - inst_year  # Installation period
+    dec_period = end_year - dec_year + 1  # Decommissioning period
+
+    # Discount rate
+    discount_rate = 0.05
+
+    # Equipment costs are incurred immediately and discounted at installation year
+    equip_discounted = equip_costs * np.power(1 + discount_rate, -inst_year)
+
+    # Installation costs are spread out and discounted over the installation period
+    inst_years = np.arange(inst_year, ope_year)
+    inst_discount_factors = np.power(1 + discount_rate, -inst_years)
+    inst_discounted = np.sum(inst_costs / inst_period * inst_discount_factors)
+
+    # Operational costs are accumulated annually from ope_year to dec_year - 1
+    ope_years = np.arange(ope_year, dec_year)
+    ope_discount_factors = np.power(1 + discount_rate, -ope_years)
+    ope_discounted = np.sum(ope_costs_yearly * ope_discount_factors)
+
+    # Decommissioning costs are spread out and discounted over the decommissioning period
+    dec_years = np.arange(dec_year, end_year + 1)
+    dec_discount_factors = np.power(1 + discount_rate, -dec_years)
+    deco_discounted = np.sum(deco_costs / dec_period * dec_discount_factors)
+
+    # Calculate total present value of costs
+    total_costs = equip_discounted + inst_discounted + ope_discounted + deco_discounted
+
+    return total_costs
+
 def determine_support_structure(water_depth):
     """
     Determines the support structure type based on water depth. Updated to work with expanded arrays.
@@ -119,7 +165,7 @@ def determine_support_structure(water_depth):
 
     return support_structure
 
-def equip_costs(water_depth, support_structure, turbine_capacity, year):
+def equip_costs(water_depth, support_structure, ice_cover, turbine_capacity, year):
     """
     Calculates the equipment costs based on water depth values, year, and turbine capacity.
 
@@ -156,6 +202,7 @@ def equip_costs(water_depth, support_structure, turbine_capacity, year):
     water_depth = np.asarray(water_depth)
     support_structure = np.asarray(support_structure)
     turbine_capacity = np.asarray(turbine_capacity)
+    ice_cover = np.array(ice_cover)
 
     # Ensure support_structure is lowercase
     support_structure = np.char.lower(support_structure)
@@ -170,7 +217,13 @@ def equip_costs(water_depth, support_structure, turbine_capacity, year):
         c1, c2, c3, c4 = structure_coeffs[year]
         supp_costs[mask] = turbine_capacity[mask] * (c1 * (water_depth[mask] ** 2) + c2 * water_depth[mask] + c3) + c4
     
-    return supp_costs, turbine_costs
+    # Adjust support structure costs based on ice cover presence.
+    supp_costs *= np.where(ice_cover == "Yes", 1.10, 1)
+    
+    # Calculate equipment costs
+    equip_costs = np.add(supp_costs, turbine_costs)
+    
+    return supp_costs, turbine_costs, equip_costs
 
 def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, operation):
     """
@@ -346,133 +399,97 @@ def gen_dataset(output_folder: str):
             arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
             return
 
-    # Convert attribute table to NumPy array
-    array_wtc = arcpy.da.FeatureClassToNumPyArray(wtc_layer,'*')
-    water_depth_array = array_wtc['WaterDepth']
-    distance_array = array_wtc['Distance']
-    capacity_array = array_wtc['Capacity']
-    wfid_array = array_wtc['WF_ID']
-    wa_array = array_wtc['WeibullA']
-    wk_array = array_wtc['WeibullK']
-    ic_array = array_wtc['IceCover']
+    # Extract relevant fields to minimize memory usage and improve performance.
+    fields_wtc = ['WaterDepth', 'Distance', 'Capacity', 'WF_ID', 'WeibullA', 'WeibullK', 'IceCover']
+    fields_wf = ['Longitude', 'Latitude', 'WF_ID', 'ISO']
 
-    array_wf = arcpy.da.FeatureClassToNumPyArray(wfc_layer,'*')
-    longitude_array_wf = array_wf['Longitude']
-    latitude_array_wf = array_wf['Latitude']
-    wfid_array_wf = array_wf['WF_ID']
-    iso_array_wf = array_wf['ISO']
+    # Convert attribute tables to NumPy arrays with only the necessary fields.
+    array_wtc = arcpy.da.FeatureClassToNumPyArray(wtc_layer, fields_wtc)
+    array_wf = arcpy.da.FeatureClassToNumPyArray(wfc_layer, fields_wf)
 
-    # Determine support structure for all water depths
-    supp_array = determine_support_structure(water_depth_array)
+    # Preprocess and calculate needed variables.
+    # Determine support structure based on water depth.
+    supp_array = determine_support_structure(array_wtc['WaterDepth'])
 
-    # Calculate equipment costs for expanded arrays
-    supp_costs, turbine_costs = equip_costs(water_depth_array, supp_array, capacity_array, year = "2020")
+    # Calculate equipment costs.
+    supp_costs, turbine_costs, cap_expenses_wt = equip_costs(array_wtc['WaterDepth'], supp_array, array_wtc['Capacity'], year="2020")
 
-    # Multiply support structure costs if they have to adapt to ice cover
-    supp_costs *= np.where(ic_array == "Yes", 1.10, 1)
 
-    # Installation and decomissioning expenses
-    inst_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "inst")
-    deco_costs_wt = calc_costs(water_depth_array, supp_array, distance_array, capacity_array, operation = "deco")
+    # Calculate installation and decommissioning costs.
+    inst_costs_wt = calc_costs(array_wtc['WaterDepth'], supp_array, array_wtc['Distance'], array_wtc['Capacity'], operation="inst")
+    deco_costs_wt = calc_costs(array_wtc['WaterDepth'], supp_array, array_wtc['Distance'], array_wtc['Capacity'], operation="deco")
 
-    # Calculate capital expenses
-    cap_expenses_wt = np.add(supp_costs, turbine_costs, inst_costs_wt)
+    # Calculate capital and operating expenses.
+    ope_costs_yr_wt = 0.025 * turbine_costs  # Assuming a fixed percentage for operating expenses.
 
-    # Operating expenses calculation with conditional logic for support structures
-    # Using numpy.where to apply condition across the array
-    ope_expenses_wt = 0.025 * turbine_costs
+    # Calculate total costs.
+    total_costs_wt = present_value(equip_costs, inst_costs_wt, ope_costs_yr_wt, deco_costs_wt):
 
-    # Calculate total expenses
-    total_costs_wt = np.add(cap_expenses_wt, deco_costs_wt, ope_expenses_wt)
+    # Calculate Annual Energy Production (AEP) and Capacity Factor (CF) for each turbine.
+    aep_array, cf_array = calculate_aep_and_capacity_factor(array_wtc['WeibullA'], array_wtc['WeibullK'])
 
-    aep_array, cf_array = calculate_aep_and_capacity_factor(wa_array, wk_array)
-    
-    # Aggregate total costs and capacity for each unique WF_ID
-    max_waterdepth_wf = {}
-    total_costs_wf = {}
-    total_capacity_wf = {}
-    total_aep_wf = {}
-    avg_cf_wf = {}
+    # Initialize dictionaries to hold aggregated results.
+    agg_results = {
+        'MaxWaterDepth': {},
+        'TotalCosts': {},
+        'TotalCapacity': {},
+        'TotalAEP': {},
+        'AverageCF': {}
+    }
 
-    # Iterate over each unique WF_ID
-    unique_wfids = np.unique(wfid_array)
+    # Aggregate results by WF_ID.
+    unique_wfids = np.unique(array_wtc['WF_ID'])
     for wfid in unique_wfids:
-        # Find indices where WF_ID matches the current WF_ID
-        wt_index = np.where(wfid_array == wfid)[0]
+        indices = np.where(array_wtc['WF_ID'] == wfid)
         
-        max_waterdepth_wf[wfid] = np.max(water_depth_array[wt_index])
-        
-        # Sum total costs and capacity for the current WF_ID
-        total_costs_wf[wfid] = np.sum(total_costs_wt[wt_index])
-        total_capacity_wf[wfid] = np.sum(capacity_array[wt_index])
-        
-        total_aep_wf[wfid] = np.sum(aep_array[wt_index])
-        avg_cf_wf[wfid] = np.mean(cf_array[wt_index])
+        # Aggregate and calculate metrics for each unique WF_ID.
+        agg_results['MaxWaterDepth'][wfid] = np.max(array_wtc['WaterDepth'][indices])
+        agg_results['TotalCosts'][wfid] = np.sum(total_costs_wt[indices])
+        agg_results['TotalCapacity'][wfid] = np.sum(array_wtc['Capacity'][indices])
+        agg_results['TotalAEP'][wfid] = np.sum(aep_array[indices])
+        agg_results['AverageCF'][wfid] = np.mean(cf_array[indices])
 
+    # Prepare data for saving.
+    data_to_save = []
+    for wfid in unique_wfids:
+        wf_index = np.where(array_wf['WF_ID'] == wfid)[0][0]
+        
+        # Construct the data structure for each WF_ID, rounding and converting data types as needed.
+        data_entry = (
+            wfid,
+            array_wf['ISO'][wf_index],
+            round(array_wf['Longitude'][wf_index], 6),
+            round(array_wf['Latitude'][wf_index], 6),
+            int(agg_results['MaxWaterDepth'][wfid]),
+            int(round(agg_results['TotalCapacity'][wfid])),
+            int(round(agg_results['TotalCosts'][wfid] / 1000)),  # Assuming cost is rounded and divided by 1000.
+            int(round(agg_results['TotalAEP'][wfid])),
+            round(agg_results['AverageCF'][wfid], 4)
+        )
+        data_to_save.append(data_entry)
 
-    # Define data dictionary structure
+    # Define the data type for the structured array to ensure correct data handling.
     dtype = [
-        ('WF_ID', int),  # Adjust string length as needed
+        ('WF_ID', int),
         ('ISO', 'U10'),
         ('Longitude', float),
         ('Latitude', float),
-        ('MaxWaterdepth', int),
+        ('MaxWaterDepth', int),
         ('TotalCapacity', int),
         ('TotalCost', int),
-        ('TotalAEP', object),
-        ('AvgCf', float)
+        ('TotalAEP', int),  # Assuming TotalAEP should be stored as an integer.
+        ('AverageCF', float)
     ]
-    
-    # Initialize an empty list to store data dictionaries
-    data_list = []
-    
-    # Iterate through each unique WF_ID and create data dictionary
-    for wfid in unique_wfids:
-        # Find the first occurrence of WF_ID in the array
-        wf_index = np.where(wfid_array_wf == wfid)[0][0]
-        
-        iso = iso_array_wf[wf_index]
-        
-        # Retrieve longitude and latitude from the first occurrence
-        longitude = longitude_array_wf[wf_index]
-        latitude = latitude_array_wf[wf_index]
-        
-        max_waterdepth = max_waterdepth_wf[wfid]
-        
-        # Retrieve total costs and capacity for the current WF_ID
-        total_costs = total_costs_wf[wfid]
-        total_capacity = total_capacity_wf[wfid]
-        
-        total_aep = total_aep_wf[wfid]
-        avg_cf = avg_cf_wf[wfid]
-        
-        # Create data dictionary
-        data_dict = {
-            'WF_ID': wfid,
-            'ISO': iso,
-            'Longitude': np.round(longitude, 6),
-            'Latitude': np.round(latitude, 6),
-            'MaxWaterdepth' : np.int(max_waterdepth),
-            'TotalCapacity': np.int(np.round(total_capacity)),
-            'TotalCost': np.int(np.round(total_costs / 1000)),
-            'TotalAEP' : np.int(np.round(total_aep)),
-            'AvgCf': np.round(avg_cf, 4)
-        }
-        data_list.append(data_dict)
 
-    # Convert the list of dictionaries to a structured array
-    data_array = np.array([(d['WF_ID'], d['ISO'], d['Longitude'], d['Latitude'], d['MaxWaterdepth'], d['TotalCapacity'], d['TotalCost'], d['TotalAEP'], d['AvgCf']) for d in data_list], dtype=dtype)
-
-    # Sort data_array by WF_ID
+    # Create and sort the structured array.
+    data_array = np.array(data_to_save, dtype=dtype)
     data_array_sorted = np.sort(data_array, order='WF_ID')
 
-    # Save the sorted structured array to a .npy file in the specified folder
+    # Save the sorted structured array to files.
     np.save(os.path.join(output_folder, 'wf_data.npy'), data_array_sorted)
-    arcpy.AddMessage("Data saved successfully.")
-
-    # Save sorted structured array to a .txt file
+    arcpy.AddMessage("Data saved successfully to .npy file.")
     save_structured_array_to_txt(os.path.join(output_folder, 'wf_data.txt'), data_array_sorted)
-    arcpy.AddMessage("Data saved successfully.")
+    arcpy.AddMessage("Data saved successfully to .txt file.")
 
     
 if __name__ == "__main__":
