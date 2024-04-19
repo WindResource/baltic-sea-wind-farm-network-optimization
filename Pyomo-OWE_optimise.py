@@ -224,7 +224,7 @@ def export_cable_costs(distance, required_active_power, polarity = "AC"):
     # Calculate present value
     total_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
 
-    return total_costs, power_eff
+    return total_costs
 
 def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacity, polarity = "AC"):
     """
@@ -358,10 +358,8 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
             # Iterate over the coefficients for floating (HLCV and AHV)
             for vessel_type in [('floating', 'HLCV'), ('floating', 'AHV')]:
                 c1, c2, c3, c4, c5 = coeff[vessel_type]
-                
                 # Calculate installation costs for the current vessel type
                 vessel_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-                
                 # Add the costs for the current vessel type to the total costs
                 total_costs += vessel_costs
         else:
@@ -394,69 +392,53 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
     return oss_costs
 
 
-
-
-
-
-# Define entities with costs, coordinates, and capacities
-wind_farms = {
-    'WF1': {'cost': 1000, 'coordinates': (10, 20), 'capacity': 150},
-    'WF2': {'cost': 1500, 'coordinates': (15, 25), 'capacity': 200},
-    'WF3': {'cost': 1100, 'coordinates': (10, 30), 'capacity': 100},
-}
-
-offshore_ss = {
-    'OSS1': {'cost': 500, 'coordinates': (12, 22)},
-    'OSS2': {'cost': 700, 'coordinates': (14, 26)},
-}
-
-onshore_ss = {
-    'SS1': {'coordinates': (20, 40)},
-    'SS2': {'coordinates': (25, 45)},
-}
-
-# Functions
-def generate_connections_and_costs(wind_farms, offshore_ss, onshore_ss, cost_per_km_per_MW=0.5):
-    """
-    Generates all possible connections between wind farms, offshore substations, and onshore substations,
-    along with their associated costs based on distance and capacity.
-    """
-    # Helper function to calculate Euclidean distance
-    def calculate_distance(coord1, coord2):
-        return math.sqrt((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)
-
-    # Helper function to calculate connection cost
-    def calculate_connection_cost(distance, capacity):
-        return distance * capacity * cost_per_km_per_MW
-
-    connections_costs = {}
-    distances = {}
-    total_capacity_per_oss = {oss: 0 for oss in offshore_ss}  # Track total capacity connected to each OSS
-
-    # Calculate Wind Farm to Offshore Substation Connections
-    for wf, wf_info in wind_farms.items():
-        for oss, oss_info in offshore_ss.items():
-            distance = calculate_distance(wf_info['coordinates'], oss_info['coordinates'])
-            cost = calculate_connection_cost(distance, wf_info['capacity'])
-            distances[(wf, oss)] = distance
-            connections_costs[(wf, oss)] = cost
-            total_capacity_per_oss[oss] += wf_info['capacity']  # Sum capacities for later calculation
-
-    # Calculate Offshore Substation to Onshore Substation Connections
-    for oss, oss_info in offshore_ss.items():
-        for ss, ss_info in onshore_ss.items():
-            distance = calculate_distance(oss_info['coordinates'], ss_info['coordinates'])
-            capacity = total_capacity_per_oss[oss]  # Use total connected capacity for this connection
-            cost = calculate_connection_cost(distance, capacity)
-            distances[(oss,ss)] = distance
-            connections_costs[(oss, ss)] = cost
-
-    return distances, connections_costs
-
-
-import os
-import numpy as np
 from pyomo.environ import *
+import numpy as np
+import os
+from math import radians, cos, sin, asin, sqrt
+from itertools import product
+
+def haversine(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great-circle distance between two points
+    on the Earth (specified in decimal degrees) using NumPy for calculations.
+    """
+    # Convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+
+    # Haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
+    c = 2 * np.arcsin(np.sqrt(a))
+    r = 6371  # Radius of Earth in kilometers
+    return c * r
+
+def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat):
+    """
+    Find all pairs of offshore and onshore substations within 300km using NumPy.
+    
+    Parameters are dictionaries keyed by substation IDs with longitude and latitude values.
+    """
+    connections = []
+    for wf_key, oss_key in product(wf_lon.keys(), oss_lon.keys()):
+        distance = haversine(wf_lon[wf_key], wf_lat[wf_key], oss_lon[oss_key], oss_lat[oss_key])
+        if distance <= 150:
+            connections.append((wf_key, oss_key))
+    return connections
+
+def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat):
+    """
+    Find all pairs of offshore and onshore substations within 300km.
+    
+    Parameters are dictionaries keyed by substation IDs with longitude and latitude values.
+    """
+    connections = []
+    for oss_key, onss_key in product(oss_lon.keys(), onss_lon.keys()):
+        distance = haversine(oss_lon[oss_key], oss_lat[oss_key], onss_lon[onss_key], onss_lat[onss_key])
+        if distance <= 300:
+            connections.append((oss_key, onss_key))
+    return connections
 
 def opt_model(workspace_folder):
     """
@@ -471,62 +453,144 @@ def opt_model(workspace_folder):
     # Initialize the model
     model = ConcreteModel()
 
+    """
+    Process data
+    """
     # Load datasets
     wf_dataset_file = os.path.join(workspace_folder, 'wf_dataset.npy')
     oss_dataset_file = os.path.join(workspace_folder, 'oss_dataset.npy')
-
+    onss_dataset_file = os.path.join(workspace_folder, 'onss_dataset.npy')
+    
     wf_dataset = np.load(wf_dataset_file, allow_pickle=True)
     oss_dataset = np.load(oss_dataset_file, allow_pickle=True)
+    onss_dataset = np.load(onss_dataset_file, allow_pickle=True)
 
-    # Extract keys and relevant data
+    # Keys data
     wf_keys = [data[0] for data in wf_dataset]
     oss_keys = [data[0] for data in oss_dataset]
+    onss_keys = [data[0] for data in onss_dataset]
 
-    wf_cap = {data[0]: data[5] for data in wf_dataset}  # Total maximum capacity
-    wf_costs = {data[0]: data[6] for data in wf_dataset}  # Total costs
+    # Wind farm data
+    wf_iso, wf_lon, wf_lat, wf_cap, wf_costs = {}, {}, {}, {}, {}
 
-    oss_wdepth = {data[0]: data[4] for data in oss_dataset}  # Water depth
-    oss_icec = {data[0]: data[5] for data in oss_dataset}  # Ice cover
-    oss_pdist = {data[0]: data[6] for data in oss_dataset}  # Port distance
+    for data in wf_dataset:
+        key = data[0]
+        wf_iso[key] = data[1]
+        wf_lon[key] = data[2]
+        wf_lat[key] = data[3]
+        wf_cap[key] = data[5]
+        wf_costs[key] = data[6]
 
-    # Define model parameters
-    model.wf_cap = Param(wf_keys, initialize=wf_cap, within=NonNegativeReals)
-    model.oss_wdepth = Param(oss_keys, initialize=oss_wdepth, within=NonNegativeReals)
-    model.oss_icec = Param(oss_keys, initialize=oss_icec, within=Binary)
-    model.oss_pdist = Param(oss_keys, initialize=oss_pdist, within=NonNegativeReals)
+    # Offshore substation data
+    oss_iso, oss_lon, oss_lat, oss_wdepth, oss_icover, oss_pdist = {}, {}, {}, {}, {}, {}
 
-    # Decision variables
+    for data in oss_dataset:
+        key = data[0]
+        oss_iso[key] = data[1]
+        oss_lon[key] = data[2]
+        oss_lat[key] = data[3]
+        oss_wdepth[key] = data[4]
+        oss_icover[key] = data[5]
+        oss_pdist[key] = data[6]
+    
+    # Onshore substation data
+    onss_iso, onss_lon, onss_lat = {}, {}, {}
+
+    for data in onss_dataset:
+        key = data[0]
+        onss_iso[key] = data[1]
+        onss_lon[key] = data[2]
+        onss_lat[key] = data[3]
+
+    
+    """
+    Define model parameters
+    """
+    # Wind farm parameters
+    model.wf_lon = Param(wf_keys, initialize= wf_lon, within= NonNegativeReals)
+    model.wf_lat = Param(wf_keys, initialize= wf_lat, within= NonNegativeReals)
+    model.wf_cap = Param(wf_keys, initialize= wf_cap, within= NonNegativeReals)
+    
+    # Offshore substation parameters
+    model.oss_lon = Param(oss_keys, initialize= oss_lon, within= NonNegativeReals)
+    model.oss_lat = Param(oss_keys, initialize= oss_lat, within= NonNegativeReals)
+    model.oss_wdepth = Param(oss_keys, initialize= oss_wdepth, within= NonNegativeReals)
+    model.oss_icec = Param(oss_keys, initialize= oss_icover, within= Binary)
+    model.oss_pdist = Param(oss_keys, initialize= oss_pdist, within= NonNegativeReals)
+
+    # Onshore substation parameters
+    model.onss_lon = Param(onss_keys, initialize= onss_lon, within= NonNegativeReals)
+    model.onss_lat = Param(onss_keys, initialize= onss_lat, within= NonNegativeReals)
+
+    """
+    Define decision variables
+    """
+    # Calculate viable connections
+    viable_iac = find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat)
+    viable_ec = find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat)
+
+    # You can then integrate these connections into your model as needed
+    # For example, as a Pyomo Set
+    model.viable_iac = Set(initialize= viable_iac, dimen=2)
+    model.viable_ec = Set(initialize= viable_ec, dimen=2)
+    
     model.select_wf = Var(wf_keys, within=Binary)
     model.select_oss = Var(oss_keys, within=Binary)
+    model.select_iac = Var(model.viable_iac, within=Binary)
+    model.select_ec = Var(model.viable_ec, within=Binary)
 
+
+    """
+    Define Expressions
+    """
+    
+    # Distance expressions
+    def iac_dist_rule(model, wf, oss):
+        return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss])
+    model.iac_dist = Expression(wf_keys, oss_keys, rule=iac_dist_rule)
+    
+    def ec_dist_rule(model, oss, onss):
+        return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss])
+    model.ec_dist = Expression(oss_keys, onss_keys, rule=ec_dist_rule)
+    
+    # Capacity expressions
     def oss_capacity_rule(model, oss):
         return sum(model.wf_capacity[wf] * model.wf_oss_connection[wf, oss] for wf in wf_keys)
-
     model.oss_capacity = Expression(oss_keys, rule=oss_capacity_rule)
 
-    # Costs expressions
+    def ec_capacity_rule(model, ec):
+        return sum(model.oss_capacity[oss] * model.oss_onss_connection[wf, ec] for wf in wf_keys)
+    model.ec_capacity = Expression(model.viable_ec, rule=ec_capacity_rule)
+    
+    # Cost expressions
     def oss_cost_rule(model, oss):
         return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icec[oss], model.oss_pdist[oss], model.oss_capacity[oss], "AC")
-    
     model.oss_costs = Expression(oss_keys, rule=oss_cost_rule)
-
-    # Objective: Minimize total cost
-    model.total_cost = Objective(
-        expr=sum(wf_costs[wf] * model.select_wf[wf] for wf in wf_keys) +
-            sum(model.oss_costs[oss] for oss in oss_keys),
-        sense=minimize)
-
-    return model
-
+    
+    def ec_cost_rule(model, oss, onss):
+        return export_cable_costs(model.ec_dist[oss, onss], model.ec_capacity[oss, onss], polarity="AC")
+    model.ec_costs = Expression(model.viable_ec, rule=ec_cost_rule)
     
     
-    
-    
-    
-    
-def add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_costs, distances, min_total_capacity, max_wf_oss_dist, max_oss_ss_dist, universal_offshore_ss_max_capacity):
     """
-    Adds constraints to the model, including constraints for maximum distances.
+    Define Objective function
+    """
+    def total_cost_rule(model):
+        # Summing wind farm costs
+        wf_total_cost = sum(wf_costs[wf] * model.select_wf[wf] for wf in wf_keys)
+        # Summing offshore substation costs
+        oss_total_cost = sum(model.oss_costs[oss] for oss in oss_keys)
+        # Summing export cable costs for viable connections
+        ec_total_cost = sum(model.ec_costs[oss, onss] for (oss, onss) in model.viable_ec)
+        # The objective is to minimize the total cost
+        return wf_total_cost + oss_total_cost + ec_total_cost
+
+    # Set the objective in the model
+    model.total_cost = Objective(rule=total_cost_rule, sense=minimize)
+    
+    
+    """
+    Define Constraints
     """
     
     # Constraint 1: If a wind farm is selected, it must connect to at least one offshore substation
@@ -587,6 +651,21 @@ def add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_cost
     def oss_max_capacity_rule(model, oss):
         return sum(wind_farms[wf]['capacity'] * model.select_conn[(wf, oss)] for wf in wind_farms if (wf, oss) in connections_costs) <= universal_offshore_ss_max_capacity
     model.oss_max_capacity_constraint = Constraint(offshore_ss.keys(), rule=oss_max_capacity_rule)
+    
+
+    return model
+
+    
+    
+    
+    
+    
+    
+def add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_costs, distances, min_total_capacity, max_wf_oss_dist, max_oss_ss_dist, universal_offshore_ss_max_capacity):
+    """
+    Adds constraints to the model, including constraints for maximum distances.
+    """
+    
 
 
 universal_offshore_ss_max_capacity = 400  # Maximum capacity in MW for any offshore substation
