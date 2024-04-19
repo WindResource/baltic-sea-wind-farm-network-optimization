@@ -59,7 +59,7 @@ def save_structured_array_to_txt(filename, structured_array):
             row_str = ', '.join(row_data)
             file.write(row_str + '\n')
 
-def calculate_distances(output_folder: str):
+def gen_dataset(output_folder: str):
     """
     Calculate the Haversine distances between OSS and OnSS datasets within 300 km, including calculating
     and storing the total costs and power efficiencies for various capacities in HVAC and HVDC systems.
@@ -136,5 +136,5 @@ def calculate_distances(output_folder: str):
 
 # Example usage:
 output_folder = r"C:\Users\cflde\Documents\Graduation Project\ArcGIS Pro\BalticSea\Results\datasets"
-calculate_distances(output_folder)
+gen_dataset(output_folder)
 
