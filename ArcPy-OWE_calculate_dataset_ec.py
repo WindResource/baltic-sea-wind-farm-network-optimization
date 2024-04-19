@@ -67,10 +67,6 @@ def gen_dataset(output_folder: str):
     Parameters:
         output_folder (str): The folder path where the OSS and OnSS datasets and the results will be saved.
     """
-    # Define capacities for which costs are to be calculated
-    capacities = np.arange(500, 2500 + 100, 100)  # From 500 MW to 2500 MW, step size 100 MW
-    voltage = 400 # kV
-
     # OSS and OnSS file names
     oss_filename = "oss_data.npy"
     onss_filename = "onss_data.npy"
@@ -105,7 +101,9 @@ def gen_dataset(output_folder: str):
             )
 
             # Check if distance is within 300 km
-            if haversine_distance <= 300 * 1e3:
+            if haversine_distance <= 200 * 1e3:
+                # Increment the export cable index
+                export_cable_index += 1    
                 
                 # Add results to the results list
                 results_list.append((
@@ -114,9 +112,6 @@ def gen_dataset(output_folder: str):
                     onss_data['OnSS_ID'][j],
                     np.round(haversine_distance)
                 ))
-
-                # Increment the export cable index
-                export_cable_index += 1
 
     # Define the dtype for the structured array, allowing for object types in costs and efficiencies
     dtype = [
