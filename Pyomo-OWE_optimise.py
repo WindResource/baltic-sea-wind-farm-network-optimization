@@ -453,24 +453,76 @@ def generate_connections_and_costs(wind_farms, offshore_ss, onshore_ss, cost_per
 
     return distances, connections_costs
 
-def create_decision_variables(model, wind_farms, offshore_ss, connections_costs):
+
+import os
+import numpy as np
+from pyomo.environ import *
+
+def opt_model(workspace_folder):
     """
-    Creates decision variables for the model.
+    Create an optimization model for offshore wind farm layout optimization.
+
+    Parameters:
+    - workspace_folder (str): The path to the workspace folder containing datasets.
+
+    Returns:
+    - model: Pyomo ConcreteModel object representing the optimization model.
     """
-    model.select_wf = Var(wind_farms.keys(), within=Binary, initialize=0)  # Selection of Wind Farms
-    model.select_oss = Var(offshore_ss.keys(), within=Binary, initialize=0)  # Selection of Offshore Substations
-    model.select_conn = Var(connections_costs.keys(), within=Binary, initialize=0)  # Selection of Connections
+    # Initialize the model
+    model = ConcreteModel()
+
+    # Load datasets
+    wf_dataset_file = os.path.join(workspace_folder, 'wf_dataset.npy')
+    oss_dataset_file = os.path.join(workspace_folder, 'oss_dataset.npy')
+
+    wf_dataset = np.load(wf_dataset_file, allow_pickle=True)
+    oss_dataset = np.load(oss_dataset_file, allow_pickle=True)
+
+    # Extract keys and relevant data
+    wf_keys = [data[0] for data in wf_dataset]
+    oss_keys = [data[0] for data in oss_dataset]
+
+    wf_cap = {data[0]: data[5] for data in wf_dataset}  # Total maximum capacity
+    wf_costs = {data[0]: data[6] for data in wf_dataset}  # Total costs
+
+    oss_wdepth = {data[0]: data[4] for data in oss_dataset}  # Water depth
+    oss_icec = {data[0]: data[5] for data in oss_dataset}  # Ice cover
+    oss_pdist = {data[0]: data[6] for data in oss_dataset}  # Port distance
+
+    # Define model parameters
+    model.wf_cap = Param(wf_keys, initialize=wf_cap, within=NonNegativeReals)
+    model.oss_wdepth = Param(oss_keys, initialize=oss_wdepth, within=NonNegativeReals)
+    model.oss_icec = Param(oss_keys, initialize=oss_icec, within=Binary)
+    model.oss_pdist = Param(oss_keys, initialize=oss_pdist, within=NonNegativeReals)
+
+    # Decision variables
+    model.select_wf = Var(wf_keys, within=Binary)
+    model.select_oss = Var(oss_keys, within=Binary)
+
+    def oss_capacity_rule(model, oss):
+        return sum(model.wf_capacity[wf] * model.wf_oss_connection[wf, oss] for wf in wf_keys)
+
+    model.oss_capacity = Expression(oss_keys, rule=oss_capacity_rule)
+
+    # Costs expressions
+    def oss_cost_rule(model, oss):
+        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icec[oss], model.oss_pdist[oss], model.oss_capacity, "AC")
     
-def create_objective_function(model, wind_farms, offshore_ss, connections_costs):
-    """
-    Creates the objective function for the model.
-    """
+    model.oss_costs = Expression(oss_keys, rule=oss_cost_rule)
+
+    # Objective: Minimize total cost
     model.total_cost = Objective(
-        expr=sum(wind_farms[wf]['cost'] * model.select_wf[wf] for wf in wind_farms) +
-        sum(offshore_ss[oss]['cost'] * model.select_oss[oss] for oss in offshore_ss) +
-        sum(connections_costs[conn] * model.select_conn[conn] for conn in connections_costs),
-        sense=minimize
-    )
+        expr=sum(wf_costs[wf] * model.select_wf[wf] for wf in wf_keys) +
+            sum(model.oss_costs[oss] for oss in oss_keys),
+        sense=minimize)
+
+    return model
+
+    
+    
+    
+    
+    
     
 def add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_costs, distances, min_total_capacity, max_wf_oss_dist, max_oss_ss_dist, universal_offshore_ss_max_capacity):
     """
@@ -549,8 +601,7 @@ min_total_capacity = 300  # Example: minimum total capacity in MW
 max_wf_oss_dist = 10  # Example: maximum distance from wind farms to offshore substations in km
 max_oss_ss_dist = 20  # Example: maximum distance from offshore substations to onshore substations in km
 
-# Initialize the model
-model = ConcreteModel()
+
 
 # Create decision variables
 create_decision_variables(model, wind_farms, offshore_ss, connections_costs)
