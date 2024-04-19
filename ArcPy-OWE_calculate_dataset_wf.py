@@ -488,6 +488,7 @@ def gen_dataset(output_folder: str):
     # Save the sorted structured array to files.
     np.save(os.path.join(output_folder, 'wf_data.npy'), data_array_sorted)
     arcpy.AddMessage("Data saved successfully to .npy file.")
+    
     save_structured_array_to_txt(os.path.join(output_folder, 'wf_data.txt'), data_array_sorted)
     arcpy.AddMessage("Data saved successfully to .txt file.")
 
