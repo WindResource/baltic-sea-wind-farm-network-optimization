@@ -506,7 +506,7 @@ def opt_model(workspace_folder):
 
     # Costs expressions
     def oss_cost_rule(model, oss):
-        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icec[oss], model.oss_pdist[oss], model.oss_capacity, "AC")
+        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icec[oss], model.oss_pdist[oss], model.oss_capacity[oss], "AC")
     
     model.oss_costs = Expression(oss_keys, rule=oss_cost_rule)
 
