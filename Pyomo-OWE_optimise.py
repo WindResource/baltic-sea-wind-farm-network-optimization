@@ -624,22 +624,6 @@ def opt_model(workspace_folder):
         return sum(wind_farms[wf]['capacity'] * model.select_wf[wf] for wf in wind_farms) >= min_total_capacity
     model.min_capacity_constraint = Constraint(rule=min_capacity_rule)
 
-    # Constraint 6: Maximum distance from wind farms to offshore substations
-    def max_wf_oss_distance_rule(model, wf, oss):
-        if (wf, oss) in connections_costs:
-            return distances[(wf, oss)] <= max_wf_oss_dist * model.select_conn[(wf, oss)]
-        else:
-            return Constraint.Skip
-    model.max_wf_oss_distance_constraint = Constraint(wind_farms.keys(), offshore_ss.keys(), rule=max_wf_oss_distance_rule)
-
-    # Constraint 7: Maximum distance from offshore substations to onshore substations
-    def max_oss_ss_distance_rule(model, oss, ss):
-        if (oss, ss) in connections_costs:
-            return distances[(oss, ss)] <= max_oss_ss_dist * model.select_conn[(oss, ss)]
-        else:
-            return Constraint.Skip
-    model.max_oss_ss_distance_constraint = Constraint(offshore_ss.keys(), onshore_ss.keys(), rule=max_oss_ss_distance_rule)
-
     # Constraint 8: If an offshore substation is connected to an onshore substation, it must be connected to at least one wind farm
     def oss_must_connect_to_wf_rule(model, oss):
         connected_to_ss = sum(model.select_conn[(oss, ss)] for ss in onshore_ss if (oss, ss) in connections_costs)
