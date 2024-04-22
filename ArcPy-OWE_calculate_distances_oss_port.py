@@ -11,7 +11,8 @@ def haversine(lat1, lon1, lat2, lon2):
     dlon = lon2 - lon1
     a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
-    distance = 6371 * c  # Radius of Earth in kilometers
+    r = 6371 * 1e3 # Radius of Earth in meters
+    distance = r * c  
 
     return distance
 
@@ -88,7 +89,7 @@ def calculate_distances_oss_port():
 
                 # Update fields in substation layer with closest port information
                 substation_row[1] = closest_port_name.lower().capitalize()
-                substation_row[2] = round(closest_port_distance, 3)
+                substation_row[2] = round(closest_port_distance)
                 substation_cursor.updateRow(substation_row)
 
 if __name__ == "__main__":
