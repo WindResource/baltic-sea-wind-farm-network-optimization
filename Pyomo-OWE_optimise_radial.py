@@ -37,9 +37,10 @@ The optimization model is solved using Pyomo with GLPK as the solver. The soluti
 wind farms, offshore substations, and connections between them, adhering to defined constraints.
 """
 
-import os
 from pyomo.environ import *
 import numpy as np
+import os
+from itertools import product
 
 def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
     """
@@ -122,7 +123,9 @@ def haversine_distance_scalar(lon1, lat1, lon2, lat2):
 
     return distance
 
-def export_cable_costs(distance, required_active_power, polarity = "AC"):
+from pyomo.environ import Ceiling, minimize
+
+def export_cable_costs(distance, required_active_power, polarity="AC"):
     """
     Calculate the costs associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -138,10 +141,10 @@ def export_cable_costs(distance, required_active_power, polarity = "AC"):
     """
 
     length = 1.2 * distance
-    
-    required_active_power *= 1e6 # (MW > W)
+
+    required_active_power *= 1e6  # (MW > W)
     required_voltage = 400
-    
+
     # Define data_tuples where each column represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
     cable_data = [
         (132, 630, 39.5, 209, 818, 406, 335),
@@ -159,13 +162,10 @@ def export_cable_costs(distance, required_active_power, polarity = "AC"):
         (400, 2000, 13.2, 200, 1078, 1535, 615)
     ]
 
-    # Convert data_tuples to a NumPy array
-    data_array = np.array(cable_data)
-    
     # Filter data based on desired voltage
-    data_array = data_array[data_array[:, 0] >= required_voltage]
+    cable_data = [cable for cable in cable_data if cable[0] >= required_voltage]
 
-    # Define the scaling factors for each column: 
+    # Define the scaling factors for each column:
     """
     Voltage (kV) > (V)
     Section (mm^2) > (m^2)
@@ -175,52 +175,55 @@ def export_cable_costs(distance, required_active_power, polarity = "AC"):
     Equipment cost (eu/m)
     Installation cost (eu/m)
     """
-    scaling_factors = np.array([1e3, 1e-6, 1e-6, 1e-12, 1, 1, 1])
+    scaling_factors = [1e3, 1e-6, 1e-6, 1e-12, 1, 1, 1]
 
-    # Apply scaling to each column in data_array
-    data_array *= scaling_factors
+    # Apply scaling to each column in cable_data
+    scaled_cable_data = []
+    for cable in cable_data:
+        scaled_cable = [cable[i] * scaling_factors[i] for i in range(len(cable))]
+        scaled_cable_data.append(scaled_cable)
 
     power_factor = 0.90
     cable_count = []  # To store the number of cables and corresponding cable data
 
-    for cable in data_array:
+    for cable in scaled_cable_data:
         voltage, resistance, capacitance, ampacity = cable[0], cable[2], cable[3], cable[4]
         nominal_power_per_cable = voltage * ampacity
-        if polarity == "AC": # Three phase AC
+        if polarity == "AC":  # Three phase AC
             ac_apparent_power = required_active_power / power_factor
             # Determine number of cables needed based on required total apparent power
-            n_cables = np.ceil(ac_apparent_power / nominal_power_per_cable)
-            
+            n_cables = c]Ceiling(ac_apparent_power / nominal_power_per_cable)
+
             current = ac_apparent_power / voltage
-            
+
         else:  # Assuming polarity == "DC"
             # Determine number of cables needed based on required power
-            n_cables = np.ceil(required_active_power / nominal_power_per_cable)
-            
+            n_cables = Ceiling(required_active_power / nominal_power_per_cable)
+
             current = required_active_power / voltage
-        
+
         resistive_losses = current ** 2 * resistance * length / n_cables
         power_eff = (resistive_losses / required_active_power)
-        
+
         # Add the calculated data to the list
         cable_count.append((cable, n_cables))
 
     # Calculate the total costs for each cable combination
-    equip_costs_array = [(cable[5] * length * n_cables) for cable, n_cables in cable_count]
-    inst_costs_array = [(cable[6] * length * n_cables) for cable, n_cables in cable_count]
-    
+    equip_costs_array = [cable[5] * length * n_cables for cable, n_cables in cable_count]
+    inst_costs_array = [cable[6] * length * n_cables for cable, n_cables in cable_count]
+
     # Calculate total costs
-    total_costs_array = np.add(equip_costs_array, inst_costs_array)
-    
+    total_costs_array = [equip + inst for equip, inst in zip(equip_costs_array, inst_costs_array)]
+
     # Find the cable combination with the minimum total cost
-    min_cost_index = np.argmin(total_costs_array)
+    min_cost_index = total_costs_array.index(min(total_costs_array))
 
     # Initialize costs
     equip_costs = equip_costs_array[min_cost_index]
     inst_costs = inst_costs_array[min_cost_index]
     ope_costs_yearly = 0.2 * 1e-2 * equip_costs
     deco_costs = 0.5 * inst_costs
-    
+
     # Calculate present value
     total_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
 
@@ -287,7 +290,7 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
             # Calculate foundation costs for sand island
             area_island = (equiv_capacity * 5)
             slope = 0.75
-            r_hub = np.sqrt(area_island/np.pi)
+            r_hub = sqrt(area_island/np.pi)
             r_seabed = r_hub + (water_depth + 3) / slope
             volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
             
@@ -342,7 +345,7 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
             water_depth = max(0, water_depth)
             area_island = (equiv_capacity * 5)
             slope = 0.75
-            r_hub = np.sqrt(area_island/np.pi)
+            r_hub = sqrt(area_island/np.pi)
             r_seabed = r_hub + (water_depth + 3) / slope
             volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
             
@@ -365,7 +368,7 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
         else:
             total_costs = None
             
-        return inst_deco_costs
+        return total_costs
 
     def oper_costs(support_structure, supp_costs, conv_costs):
         
@@ -390,13 +393,6 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
     oss_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
     
     return oss_costs
-
-
-from pyomo.environ import *
-import numpy as np
-import os
-from math import radians, cos, sin, asin, sqrt
-from itertools import product
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -450,6 +446,12 @@ def opt_model(workspace_folder):
     Returns:
     - model: Pyomo ConcreteModel object representing the optimization model.
     """
+    
+    """
+    Initialise model
+    """
+    print("Initialising model...")
+    
     # Set the SCIP binary directory
     scip_dir = "C:\\Program Files\\SCIPOptSuite 9.0.0"
     os.environ["SCIPOPTDIR"] = scip_dir
@@ -460,6 +462,8 @@ def opt_model(workspace_folder):
     """
     Process data
     """
+    print("Processing data...")
+    
     # Load datasets
     wf_dataset_file = os.path.join(workspace_folder, 'wf_data.npy')
     oss_dataset_file = os.path.join(workspace_folder, 'oss_data.npy')
@@ -510,6 +514,8 @@ def opt_model(workspace_folder):
     """
     Define model parameters
     """
+    print("Defining model parameters...")
+    
     # Wind farm parameters
     model.wf_iso = Param(wf_keys, initialize=wf_iso, within=Any)
     model.wf_lon = Param(wf_keys, initialize=wf_lon, within=NonNegativeReals)
@@ -532,6 +538,8 @@ def opt_model(workspace_folder):
     """
     Define decision variables
     """
+    print("Defining decision parameters...")
+    
     # Calculate viable connections
     viable_iac = find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat)
     viable_ec = find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat)
@@ -550,6 +558,8 @@ def opt_model(workspace_folder):
     """
     Define Expressions
     """
+    print("Defining expressions...")
+    
     
     # Distance expressions
     def iac_dist_rule(model, wf, oss):
@@ -582,6 +592,8 @@ def opt_model(workspace_folder):
     """
     Define Objective function
     """
+    print("Defining objective function")
+    
     def total_cost_rule(model):
         # Summing wind farm costs
         wf_total_cost = sum(wf_costs[wf] * model.select_wf[wf] for wf in wf_keys)
@@ -599,7 +611,8 @@ def opt_model(workspace_folder):
     """
     Define Constraints
     """
-    
+    print("Defining constraints")
+
     # Minimum total capacity constraint
     # Constraint 1:
     def min_total_wf_capacity_rule(model):
@@ -669,6 +682,7 @@ def opt_model(workspace_folder):
     """
     Solve the model
     """
+    print("Solving model...")
     
     # Create a solver object and specify PySCIPOpt as the solver
     solver = SolverFactory('pyscipopt')
@@ -679,6 +693,7 @@ def opt_model(workspace_folder):
     """
     Print the solution
     """
+    print("Succes! Displaying the solution...")
     
     # Check solver status and retrieve solution
     if results.solver.termination_condition == TerminationCondition.optimal:
