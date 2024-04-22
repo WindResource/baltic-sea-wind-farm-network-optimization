@@ -63,8 +63,6 @@ def calculate_raster() -> None:
             # Get the centroid of the point
             point = point_geom.centroid
             
-            water_depth_assigned = False
-            
             # Iterate over each raster
             for raster_array, extent, cell_width, cell_height in zip(raster_arrays, extents, cell_widths, cell_heights):
                 # Calculate the column index of the cell containing the point
@@ -79,9 +77,9 @@ def calculate_raster() -> None:
                     water_depth = raster_array[cell_row, cell_column]
                     
                     # Update the 'WaterDepth' field in the attribute table
-                    row[1] = float(-water_depth) if not np.isnan(water_depth) else row[1] or 0
+                    row[1] = float(max(0, - water_depth)) if not np.isnan(water_depth) else row[1] or 0
                     
-                    if not np.isnan(water_depth): cursor.updateRow(row) 
+                    if not np.isnan(water_depth): cursor.updateRow(row)
 
     arcpy.AddMessage("Water depth calculation and attribute update completed.")
 
