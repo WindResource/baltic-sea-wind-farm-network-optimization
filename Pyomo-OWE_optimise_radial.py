@@ -511,20 +511,23 @@ def opt_model(workspace_folder):
     Define model parameters
     """
     # Wind farm parameters
-    model.wf_lon = Param(wf_keys, initialize= wf_lon, within= NonNegativeReals)
-    model.wf_lat = Param(wf_keys, initialize= wf_lat, within= NonNegativeReals)
-    model.wf_cap = Param(wf_keys, initialize= wf_cap, within= NonNegativeReals)
-    
+    model.wf_iso = Param(wf_keys, initialize=wf_iso, within=Any)
+    model.wf_lon = Param(wf_keys, initialize=wf_lon, within=NonNegativeReals)
+    model.wf_lat = Param(wf_keys, initialize=wf_lat, within=NonNegativeReals)
+    model.wf_cap = Param(wf_keys, initialize=wf_cap, within=NonNegativeIntegers)
+
     # Offshore substation parameters
-    model.oss_lon = Param(oss_keys, initialize= oss_lon, within= NonNegativeReals)
-    model.oss_lat = Param(oss_keys, initialize= oss_lat, within= NonNegativeReals)
-    model.oss_wdepth = Param(oss_keys, initialize= oss_wdepth, within= NonNegativeReals)
-    model.oss_icec = Param(oss_keys, initialize= oss_icover, within= Binary)
-    model.oss_pdist = Param(oss_keys, initialize= oss_pdist, within= NonNegativeReals)
+    model.oss_iso = Param(oss_keys, initialize=oss_iso, within=Any)
+    model.oss_lon = Param(oss_keys, initialize=oss_lon, within=NonNegativeReals)
+    model.oss_lat = Param(oss_keys, initialize=oss_lat, within=NonNegativeReals)
+    model.oss_wdepth = Param(oss_keys, initialize=oss_wdepth, within=NonNegativeIntegers)
+    model.oss_icover = Param(oss_keys, initialize=oss_icover, within=Binary)
+    model.oss_pdist = Param(oss_keys, initialize=oss_pdist, within=NonNegativeIntegers)
 
     # Onshore substation parameters
-    model.onss_lon = Param(onss_keys, initialize= onss_lon, within= NonNegativeReals)
-    model.onss_lat = Param(onss_keys, initialize= onss_lat, within= NonNegativeReals)
+    model.onss_iso = Param(onss_keys, initialize=onss_iso, within=Any)
+    model.onss_lon = Param(onss_keys, initialize=onss_lon, within=NonNegativeReals)
+    model.onss_lat = Param(onss_keys, initialize=onss_lat, within=NonNegativeReals)
 
     """
     Define decision variables
@@ -597,46 +600,71 @@ def opt_model(workspace_folder):
     Define Constraints
     """
     
+    # Minimum total capacity constraint
+    # Constraint 1:
+    def min_total_wf_capacity_rule(model):
+        min_required_capacity = 0.5 * sum(wf_cap.values())
+        return sum(model.wf_cap[wf] * model.select_wf[wf] for wf in wf_keys) >= min_required_capacity
+    model.min_total_wf_capacity = Constraint(rule=min_total_wf_capacity_rule)
+
     # Radial connection constraints
-    # Constraint 1: Each wind farm connects to a single inter-array cable
+    # Constraint 1.1: Each wind farm connects to a single inter-array cable
     def wind_farm_to_iac_rule(model, wf):
         return sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac) == model.select_wf[wf]
     model.wind_farm_to_iac = Constraint(wf_keys, rule=wind_farm_to_iac_rule)
 
-    # Constraint 2: Each inter-array cable connects to a single offshore substation
+    # Constraint 1.2: Each inter-array cable connects to a single offshore substation
     def iac_to_oss_rule(model, oss):
         return sum(model.select_iac[wf, oss] for wf in wf_keys if (wf, oss) in model.viable_iac) <= model.select_oss[oss]
     model.iac_to_oss = Constraint(oss_keys, rule=iac_to_oss_rule)
 
-    # Constraint 3: Each offshore substation connects to a single export cable
+    # Constraint 1.3: Each offshore substation connects to a single export cable
     def oss_to_ec_rule(model, oss):
         return sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec) <= model.select_oss[oss]
     model.oss_to_ec = Constraint(oss_keys, rule=oss_to_ec_rule)
 
-    # Constraint 4: Each export cable connects to a single onshore substation
+    # Constraint 1.4: Each export cable connects to a single onshore substation
     def ec_to_onss_rule(model, onss):
         return sum(model.select_ec[oss, onss] for oss in oss_keys if (oss, onss) in model.viable_ec) <= model.select_onss[onss]
     model.ec_to_onss = Constraint(onss_keys, rule=ec_to_onss_rule)
     
     
-    # Additional Constraints for Capacity Matching
-
-    # Constraint 5: Capacity of inter-array cable equals the capacity of wind farm
+    # Capacity constraints
+    # Constraint 2.1: Capacity of inter-array cable equals the capacity of wind farm
     def iac_capacity_rule(model, wf, oss):
         return model.select_iac[wf, oss] * model.wf_cap[wf] == model.select_wf[wf] * model.wf_cap[wf]
     model.iac_capacity = Constraint(wf_keys, oss_keys, rule=iac_capacity_rule)
 
-    # Constraint 6: Capacity of offshore substation equals the capacity of inter-array cable
+    # Constraint 2.2: Capacity of offshore substation equals the capacity of inter-array cable
     def oss_capacity_rule(model, oss):
         return sum(model.select_iac[wf, oss] * model.wf_cap[wf] for wf in wf_keys if (wf, oss) in model.viable_iac) \
             == model.select_oss[oss] * model.oss_cap[oss]
     model.oss_capacity = Constraint(oss_keys, rule=oss_capacity_rule)
 
-    # Constraint 7: Capacity of export cable equals the capacity of offshore substation
+    # Constraint 2.3: Capacity of export cable equals the capacity of offshore substation
     def ec_capacity_rule(model, oss, onss):
         return sum(model.select_ec[oss, onss] * model.oss_cap[oss] for (oss, onss) in model.viable_ec if oss == oss) \
             == model.select_oss[oss] * model.oss_cap[oss]
     model.ec_capacity = Constraint(oss_keys, rule=ec_capacity_rule)
+
+
+    # Country code constraints
+    # Constraint 3.1: ISO of the wind farm equals the ISO of the connected offshore substation
+    def wf_oss_iso_matching_rule(model, wf, oss):
+        if (wf, oss) in model.viable_iac:
+            return model.select_iac[wf, oss] * (model.wf_iso[wf] == model.oss_iso[oss]) == model.select_iac[wf, oss]
+        else:
+            return Constraint.Skip
+    model.wf_oss_iso_matching = Constraint(wf_keys, oss_keys, rule=wf_oss_iso_matching_rule)
+
+    # Constraint 3.2: ISO of the offshore substation equals the ISO of the connected onshore substation
+    def oss_onss_iso_matching_rule(model, oss, onss):
+        if (oss, onss) in model.viable_ec:
+            return model.select_ec[oss, onss] * (model.oss_iso[oss] == model.onss_iso[onss]) == model.select_ec[oss, onss]
+        else:
+            return Constraint.Skip
+    model.oss_onss_iso_matching = Constraint(oss_keys, onss_keys, rule=oss_onss_iso_matching_rule)
+
 
     """
     Solve the model
