@@ -37,7 +37,7 @@ The optimization model is solved using Pyomo with GLPK as the solver. The soluti
 wind farms, offshore substations, and connections between them, adhering to defined constraints.
 """
 
-import math
+import os
 from pyomo.environ import *
 import numpy as np
 
@@ -461,9 +461,9 @@ def opt_model(workspace_folder):
     Process data
     """
     # Load datasets
-    wf_dataset_file = os.path.join(workspace_folder, 'wf_dataset.npy')
-    oss_dataset_file = os.path.join(workspace_folder, 'oss_dataset.npy')
-    onss_dataset_file = os.path.join(workspace_folder, 'onss_dataset.npy')
+    wf_dataset_file = os.path.join(workspace_folder, 'wf_data.npy')
+    oss_dataset_file = os.path.join(workspace_folder, 'oss_data.npy')
+    onss_dataset_file = os.path.join(workspace_folder, 'onss_data.npy')
     
     wf_dataset = np.load(wf_dataset_file, allow_pickle=True)
     oss_dataset = np.load(oss_dataset_file, allow_pickle=True)
@@ -559,20 +559,20 @@ def opt_model(workspace_folder):
     
     # Capacity expressions
     def oss_capacity_rule(model, oss):
-        return sum(model.wf_capacity[wf] * model.wf_oss_connection[wf, oss] for wf in wf_keys)
-    model.oss_capacity = Expression(oss_keys, rule=oss_capacity_rule)
+        return sum(model.wf_cap[wf] * model.select_iac[wf, oss] for wf, oss_key in model.viable_iac if oss_key == oss)
+    model.oss_cap = Expression(oss_keys, rule=oss_capacity_rule)
 
-    def ec_capacity_rule(model, ec):
-        return sum(model.oss_capacity[oss] * model.oss_onss_connection[wf, ec] for wf in wf_keys)
-    model.ec_capacity = Expression(model.viable_ec, rule=ec_capacity_rule)
-    
+    def ec_capacity_rule(model, oss, onss):
+        return sum(model.oss_cap[oss] * model.select_ec[oss_key, onss] for oss_key, onss_key in model.viable_ec if oss_key == oss and onss_key == onss)
+    model.ec_cap = Expression(model.viable_ec, rule=ec_capacity_rule)
+
     # Cost expressions
     def oss_cost_rule(model, oss):
-        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icec[oss], model.oss_pdist[oss], model.oss_capacity[oss], "AC")
+        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap[oss], "AC")
     model.oss_costs = Expression(oss_keys, rule=oss_cost_rule)
-    
+
     def ec_cost_rule(model, oss, onss):
-        return export_cable_costs(model.ec_dist[oss, onss], model.ec_capacity[oss, onss], polarity="AC")
+        return export_cable_costs(model.ec_dist[oss, onss], model.ec_cap[oss, onss], polarity="AC")
     model.ec_costs = Expression(model.viable_ec, rule=ec_cost_rule)
     
     
@@ -664,5 +664,16 @@ def opt_model(workspace_folder):
         print("Solver terminated with status:", results.solver.termination_condition)
 
     return model
+
+# Define the main block
+if __name__ == "__main__":
+    # Specify the workspace folder
+    workspace_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets"
+
+    # Call the optimization model function
+    opt_model(workspace_folder)
+
+
+
 
 
