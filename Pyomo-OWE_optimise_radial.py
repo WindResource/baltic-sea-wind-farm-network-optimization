@@ -416,7 +416,7 @@ def haversine(lon1, lat1, lon2, lat2):
 
 def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat):
     """
-    Find all pairs of offshore and onshore substations within 300km using NumPy.
+    Find all pairs of offshore wind farms and offshore substations within 150km.
     
     Parameters are dictionaries keyed by substation IDs with longitude and latitude values.
     """
@@ -450,7 +450,11 @@ def opt_model(workspace_folder):
     Returns:
     - model: Pyomo ConcreteModel object representing the optimization model.
     """
-    # Initialize the model
+    # Set the SCIP binary directory
+    scip_dir = "C:\\Program Files\\SCIPOptSuite 9.0.0"
+    os.environ["SCIPOPTDIR"] = scip_dir
+
+    # Create a Pyomo model
     model = ConcreteModel()
 
     """
@@ -593,94 +597,72 @@ def opt_model(workspace_folder):
     Define Constraints
     """
     
-    # Connection constraints
-    # Constraint 1: If a wind farm is selected, it must be connected to at least one offshore substation
-    def wf_must_connect_to_oss_rule(model, wf):
-        return sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac) >= model.select_wf[wf]
-    model.wf_must_connect_to_oss = Constraint(wf_keys, rule=wf_must_connect_to_oss_rule)
+    # Radial connection constraints
+    # Constraint 1: Each wind farm connects to a single inter-array cable
+    def wind_farm_to_iac_rule(model, wf):
+        return sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac) == model.select_wf[wf]
+    model.wind_farm_to_iac = Constraint(wf_keys, rule=wind_farm_to_iac_rule)
 
-    # Constraint 2: If an offshore substation is selected, it must connect to at least one onshore substation
-    def oss_connection_rule(model, oss):
-        return sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec) >= model.select_oss[oss]
-    model.oss_connection = Constraint(oss_keys, rule=oss_connection_rule)
+    # Constraint 2: Each inter-array cable connects to a single offshore substation
+    def iac_to_oss_rule(model, oss):
+        return sum(model.select_iac[wf, oss] for wf in wf_keys if (wf, oss) in model.viable_iac) <= model.select_oss[oss]
+    model.iac_to_oss = Constraint(oss_keys, rule=iac_to_oss_rule)
 
-    # Constraint 3: Wind Farm Selection Implies Inter-Array Cable Selection
-    def wf_select_implies_iac_select_rule(model, wf, oss):
-        return model.select_wf[wf] <= sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac)
-    model.wf_select_implies_iac_select = Constraint(wf_keys, oss_keys, rule=wf_select_implies_iac_select_rule)
+    # Constraint 3: Each offshore substation connects to a single export cable
+    def oss_to_ec_rule(model, oss):
+        return sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec) <= model.select_oss[oss]
+    model.oss_to_ec = Constraint(oss_keys, rule=oss_to_ec_rule)
 
-    # Constraint 4: Inter-Array Cable Selection Implies Offshore Substation Selection
-    def iac_select_implies_oss_select_rule(model, wf, oss):
-        return model.select_iac[wf, oss] <= model.select_oss[oss]
-    model.iac_select_implies_oss_select = Constraint(model.viable_iac, rule=iac_select_implies_oss_select_rule)
-
-    # Constraint 5: Offshore Substation Selection Implies Export Cable Selection
-    def oss_select_implies_ec_select_rule(model, oss, onss):
-        return model.select_oss[oss] <= sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec)
-    model.oss_select_implies_ec_select = Constraint(oss_keys, onss_keys, rule=oss_select_implies_ec_select_rule)
-
-    # Constraint 6: Export Cable Selection Implies Onshore Substation Selection
-    # This constraint assumes the introduction of a decision variable for selecting onshore substations, model.select_onss[onss].
-    def ec_select_implies_onss_select_rule(model, oss, onss):
-        return model.select_ec[oss, onss] <= model.select_onss[onss]
-    model.ec_select_implies_onss_select = Constraint(model.viable_ec, rule=ec_select_implies_onss_select_rule)
+    # Constraint 4: Each export cable connects to a single onshore substation
+    def ec_to_onss_rule(model, onss):
+        return sum(model.select_ec[oss, onss] for oss in oss_keys if (oss, onss) in model.viable_ec) <= model.select_onss[onss]
+    model.ec_to_onss = Constraint(onss_keys, rule=ec_to_onss_rule)
     
     
     # Additional Constraints for Capacity Matching
 
-    # Constraint 7: Minimum Total Wind Farm Capacity
-    def min_capacity_rule(model):
-        # The total capacity of selected wind farms must meet or exceed a minimum requirement
-        min_total_capacity = 1000  # Example minimum total capacity in MW
-        return sum(model.wf_cap[wf] * model.select_wf[wf] for wf in wf_keys) >= min_total_capacity
-    model.min_capacity = Constraint(rule=min_capacity_rule)
+    # Constraint 5: Capacity of inter-array cable equals the capacity of wind farm
+    def iac_capacity_rule(model, wf, oss):
+        return model.select_iac[wf, oss] * model.wf_cap[wf] == model.select_wf[wf] * model.wf_cap[wf]
+    model.iac_capacity = Constraint(wf_keys, oss_keys, rule=iac_capacity_rule)
 
-    # Constraint 8: Matching Wind Farm Capacity and Inter-Array Cable Capacity
-    def iac_capacity_matching_rule(model, wf, oss):
-        # The capacity of the inter-array cables connecting a wind farm to an offshore substation
-        # should match the wind farm's capacity if the connection is selected.
-        return model.wf_cap[wf] * model.select_iac[wf, oss] <= model.wf_cap[wf]
-    model.iac_capacity_matching = Constraint(model.viable_iac, rule=iac_capacity_matching_rule)
-
-    # Constraint 9: Matching Inter-Array Cable Capacity and Offshore Substation Capacity
+    # Constraint 6: Capacity of offshore substation equals the capacity of inter-array cable
     def oss_capacity_rule(model, oss):
-        # The capacity of an offshore substation should equal the sum of capacities of all wind farms
-        # connected to it through selected inter-array cables.
-        connected_wf_capacity = sum(model.wf_cap[wf] * model.select_iac[wf, oss] for wf in wf_keys if (wf, oss) in model.viable_iac)
-        return connected_wf_capacity <= sum(model.wf_cap[wf] for wf in wf_keys if model.select_oss[oss] == 1)
-    model.oss_capacity_constraint = Constraint(oss_keys, rule=oss_capacity_rule)
+        return sum(model.select_iac[wf, oss] * model.wf_cap[wf] for wf in wf_keys if (wf, oss) in model.viable_iac) \
+            == model.select_oss[oss] * model.oss_cap[oss]
+    model.oss_capacity = Constraint(oss_keys, rule=oss_capacity_rule)
 
-    # Constraint 10: Matching OSS Capacity and Export Cable Combined Capacity
-    def ec_combined_capacity_matching_rule(model, oss):
-        # The combined capacity of the export cables connected to an offshore substation should at least match
-        # the capacity of the offshore substation. This uses model.oss_capacity, which reflects the total capacity
-        # being routed through the offshore substation from connected wind farms.
-        oss_capacity = model.oss_capacity[oss]  # Assuming model.oss_capacity[oss] has been defined as the OSS's capacity
-        oss_connected_ec_capacity = sum(model.wf_cap[wf] * model.select_ec[oss, onss] for onss in onss_keys for wf in wf_keys if (oss, onss) in model.viable_ec)
-        return oss_connected_ec_capacity >= oss_capacity
-    model.ec_combined_capacity_matching = Constraint(oss_keys, rule=ec_combined_capacity_matching_rule)
+    # Constraint 7: Capacity of export cable equals the capacity of offshore substation
+    def ec_capacity_rule(model, oss, onss):
+        return sum(model.select_ec[oss, onss] * model.oss_cap[oss] for (oss, onss) in model.viable_ec if oss == oss) \
+            == model.select_oss[oss] * model.oss_cap[oss]
+    model.ec_capacity = Constraint(oss_keys, rule=ec_capacity_rule)
 
+    """
+    Solve the model
+    """
+    
+    # Create a solver object and specify PySCIPOpt as the solver
+    solver = SolverFactory('pyscipopt')
+
+    # Solve the model
+    results = solver.solve(model)
+    
+    """
+    Print the solution
+    """
+    
+    # Check solver status and retrieve solution
+    if results.solver.termination_condition == TerminationCondition.optimal:
+        # Model was solved to optimality
+        model.display()
+    elif results.solver.termination_condition == TerminationCondition.infeasible:
+        # Model is infeasible
+        print("Model is infeasible.")
+    else:
+        # Other termination conditions (e.g., solver error)
+        print("Solver terminated with status:", results.solver.termination_condition)
 
     return model
 
-model = opt_model(workspace_folder)
 
-# Solve the model
-solver = SolverFactory('glpk')
-solver.solve(model)
-
-# Output the solution
-print("Selected Wind Farms:")
-for wf in wind_farms:
-    if model.select_wf[wf].value == 1:
-        print(f"  {wf}")
-
-print("\nSelected Offshore Substations:")
-for oss in offshore_ss:
-    if model.select_oss[oss].value == 1:
-        print(f"  {oss}")
-
-print("\nSelected Connections:")
-for conn in connections_costs:
-    if model.select_conn[conn].value == 1:
-        print(f"  {conn} with cost {connections_costs[conn]:.2f}")
