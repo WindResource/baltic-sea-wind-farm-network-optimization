@@ -593,87 +593,77 @@ def opt_model(workspace_folder):
     Define Constraints
     """
     
-    # Constraint 1: If a wind farm is selected, it must connect to at least one offshore substation
+    # Connection constraints
+    # Constraint 1: If a wind farm is selected, it must be connected to at least one offshore substation
     def wf_must_connect_to_oss_rule(model, wf):
-        return sum(model.select_conn[(wf, oss)] for oss in offshore_ss if (wf, oss) in connections_costs) >= 1 * model.select_wf[wf]
-    model.wf_must_connect_to_oss_constraint = Constraint(wind_farms.keys(), rule=wf_must_connect_to_oss_rule)
+        return sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac) >= model.select_wf[wf]
+    model.wf_must_connect_to_oss = Constraint(wf_keys, rule=wf_must_connect_to_oss_rule)
 
     # Constraint 2: If an offshore substation is selected, it must connect to at least one onshore substation
     def oss_connection_rule(model, oss):
-        return sum(model.select_conn[(oss, ss)] for ss in onshore_ss if (oss, ss) in connections_costs) >= model.select_oss[oss]
-    model.oss_connection_constraint = Constraint(offshore_ss.keys(), rule=oss_connection_rule)
+        return sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec) >= model.select_oss[oss]
+    model.oss_connection = Constraint(oss_keys, rule=oss_connection_rule)
 
-    # Constraint 3: Connectivity between a wind farm and an offshore substation implies selection of both
-    def wf_oss_selection_rule(model, wf, oss):
-        if (wf, oss) in connections_costs:
-            return model.select_conn[(wf, oss)] <= model.select_wf[wf]
-        else:
-            return Constraint.Skip
-    model.wf_oss_selection_constraint = Constraint(wind_farms.keys(), offshore_ss.keys(), rule=wf_oss_selection_rule)
+    # Constraint 3: Wind Farm Selection Implies Inter-Array Cable Selection
+    def wf_select_implies_iac_select_rule(model, wf, oss):
+        return model.select_wf[wf] <= sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac)
+    model.wf_select_implies_iac_select = Constraint(wf_keys, oss_keys, rule=wf_select_implies_iac_select_rule)
 
-    # Constraint 4: Connectivity between an offshore substation and an onshore substation implies selection of the offshore substation
-    def oss_ss_selection_rule(model, oss, ss):
-        if (oss, ss) in connections_costs:
-            return model.select_conn[(oss, ss)] <= model.select_oss[oss]
-        else:
-            return Constraint.Skip
-    model.oss_ss_selection_constraint = Constraint(offshore_ss.keys(), onshore_ss.keys(), rule=oss_ss_selection_rule)
+    # Constraint 4: Inter-Array Cable Selection Implies Offshore Substation Selection
+    def iac_select_implies_oss_select_rule(model, wf, oss):
+        return model.select_iac[wf, oss] <= model.select_oss[oss]
+    model.iac_select_implies_oss_select = Constraint(model.viable_iac, rule=iac_select_implies_oss_select_rule)
 
-    # Constraint 5: Minimum total wind farm capacity
-    def min_capacity_rule(model):
-        return sum(wind_farms[wf]['capacity'] * model.select_wf[wf] for wf in wind_farms) >= min_total_capacity
-    model.min_capacity_constraint = Constraint(rule=min_capacity_rule)
+    # Constraint 5: Offshore Substation Selection Implies Export Cable Selection
+    def oss_select_implies_ec_select_rule(model, oss, onss):
+        return model.select_oss[oss] <= sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec)
+    model.oss_select_implies_ec_select = Constraint(oss_keys, onss_keys, rule=oss_select_implies_ec_select_rule)
 
-    # Constraint 8: If an offshore substation is connected to an onshore substation, it must be connected to at least one wind farm
-    def oss_must_connect_to_wf_rule(model, oss):
-        connected_to_ss = sum(model.select_conn[(oss, ss)] for ss in onshore_ss if (oss, ss) in connections_costs)
-        connected_to_wf = sum(model.select_conn[(wf, oss)] for wf in wind_farms if (wf, oss) in connections_costs)
-        return connected_to_wf >= connected_to_ss
-    model.oss_must_connect_to_wf_constraint = Constraint(offshore_ss.keys(), rule=oss_must_connect_to_wf_rule)
-
-    # Constraint 9: for Universal Maximum Capacity of an Offshore Substation
-    def oss_max_capacity_rule(model, oss):
-        return sum(wind_farms[wf]['capacity'] * model.select_conn[(wf, oss)] for wf in wind_farms if (wf, oss) in connections_costs) <= universal_offshore_ss_max_capacity
-    model.oss_max_capacity_constraint = Constraint(offshore_ss.keys(), rule=oss_max_capacity_rule)
+    # Constraint 6: Export Cable Selection Implies Onshore Substation Selection
+    # This constraint assumes the introduction of a decision variable for selecting onshore substations, model.select_onss[onss].
+    def ec_select_implies_onss_select_rule(model, oss, onss):
+        return model.select_ec[oss, onss] <= model.select_onss[onss]
+    model.ec_select_implies_onss_select = Constraint(model.viable_ec, rule=ec_select_implies_onss_select_rule)
     
+    
+    # Additional Constraints for Capacity Matching
+
+    # Constraint 7: Minimum Total Wind Farm Capacity
+    def min_capacity_rule(model):
+        # The total capacity of selected wind farms must meet or exceed a minimum requirement
+        min_total_capacity = 1000  # Example minimum total capacity in MW
+        return sum(model.wf_cap[wf] * model.select_wf[wf] for wf in wf_keys) >= min_total_capacity
+    model.min_capacity = Constraint(rule=min_capacity_rule)
+
+    # Constraint 8: Matching Wind Farm Capacity and Inter-Array Cable Capacity
+    def iac_capacity_matching_rule(model, wf, oss):
+        # The capacity of the inter-array cables connecting a wind farm to an offshore substation
+        # should match the wind farm's capacity if the connection is selected.
+        return model.wf_cap[wf] * model.select_iac[wf, oss] <= model.wf_cap[wf]
+    model.iac_capacity_matching = Constraint(model.viable_iac, rule=iac_capacity_matching_rule)
+
+    # Constraint 9: Matching Inter-Array Cable Capacity and Offshore Substation Capacity
+    def oss_capacity_rule(model, oss):
+        # The capacity of an offshore substation should equal the sum of capacities of all wind farms
+        # connected to it through selected inter-array cables.
+        connected_wf_capacity = sum(model.wf_cap[wf] * model.select_iac[wf, oss] for wf in wf_keys if (wf, oss) in model.viable_iac)
+        return connected_wf_capacity <= sum(model.wf_cap[wf] for wf in wf_keys if model.select_oss[oss] == 1)
+    model.oss_capacity_constraint = Constraint(oss_keys, rule=oss_capacity_rule)
+
+    # Constraint 10: Matching OSS Capacity and Export Cable Combined Capacity
+    def ec_combined_capacity_matching_rule(model, oss):
+        # The combined capacity of the export cables connected to an offshore substation should at least match
+        # the capacity of the offshore substation. This uses model.oss_capacity, which reflects the total capacity
+        # being routed through the offshore substation from connected wind farms.
+        oss_capacity = model.oss_capacity[oss]  # Assuming model.oss_capacity[oss] has been defined as the OSS's capacity
+        oss_connected_ec_capacity = sum(model.wf_cap[wf] * model.select_ec[oss, onss] for onss in onss_keys for wf in wf_keys if (oss, onss) in model.viable_ec)
+        return oss_connected_ec_capacity >= oss_capacity
+    model.ec_combined_capacity_matching = Constraint(oss_keys, rule=ec_combined_capacity_matching_rule)
+
 
     return model
 
-    
-    
-    
-    
-    
-    
-def add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_costs, distances, min_total_capacity, max_wf_oss_dist, max_oss_ss_dist, universal_offshore_ss_max_capacity):
-    """
-    Adds constraints to the model, including constraints for maximum distances.
-    """
-    
-
-
-universal_offshore_ss_max_capacity = 400  # Maximum capacity in MW for any offshore substation
-
-# Define cost per kilometer per MW for connection cost calculation
-cost_per_km_per_MW = 0.5  # Example value, adjust based on actual cost factors
-
-# Generate connections and their costs using the function
-distances, connections_costs = generate_connections_and_costs(wind_farms, offshore_ss, onshore_ss, cost_per_km_per_MW)
-
-min_total_capacity = 300  # Example: minimum total capacity in MW
-max_wf_oss_dist = 10  # Example: maximum distance from wind farms to offshore substations in km
-max_oss_ss_dist = 20  # Example: maximum distance from offshore substations to onshore substations in km
-
-
-
-# Create decision variables
-create_decision_variables(model, wind_farms, offshore_ss, connections_costs)
-
-# Create the objective function
-create_objective_function(model, wind_farms, offshore_ss, connections_costs)
-
-# Add constraints, including the new universal maximum capacity constraint
-add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_costs, distances, min_total_capacity, max_wf_oss_dist, max_oss_ss_dist, universal_offshore_ss_max_capacity)
+model = opt_model(workspace_folder)
 
 # Solve the model
 solver = SolverFactory('glpk')
