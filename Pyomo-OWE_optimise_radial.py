@@ -192,7 +192,7 @@ def export_cable_costs(distance, required_active_power, polarity="AC"):
         if polarity == "AC":  # Three phase AC
             ac_apparent_power = required_active_power / power_factor
             # Determine number of cables needed based on required total apparent power
-            n_cables = c]Ceiling(ac_apparent_power / nominal_power_per_cable)
+            n_cables = Ceiling(ac_apparent_power / nominal_power_per_cable)
 
             current = ac_apparent_power / voltage
 
@@ -593,16 +593,18 @@ def opt_model(workspace_folder):
     Define Objective function
     """
     print("Defining objective function")
-    
+
     def total_cost_rule(model):
         # Summing wind farm costs
         wf_total_cost = sum(wf_costs[wf] * model.select_wf[wf] for wf in wf_keys)
         # Summing offshore substation costs
-        oss_total_cost = sum(model.oss_costs[oss] for oss in oss_keys)
+        oss_total_cost = sum(model.oss_costs[oss] * model.select_oss[oss] for oss in oss_keys)
+        # Summing inter array cable costs for viable connections
+        iac_total_cost = sum(model.ec_costs[wf, oss] * model.select_iac[wf, oss] for (wf, oss) in model.viable_ec)
         # Summing export cable costs for viable connections
-        ec_total_cost = sum(model.ec_costs[oss, onss] for (oss, onss) in model.viable_ec)
+        ec_total_cost = sum(model.ec_costs[oss, onss] * model.select_ec[oss, onss] for (oss, onss) in model.viable_ec)
         # The objective is to minimize the total cost
-        return wf_total_cost + oss_total_cost + ec_total_cost
+        return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost
 
     # Set the objective in the model
     model.total_cost = Objective(rule=total_cost_rule, sense=minimize)
@@ -620,26 +622,36 @@ def opt_model(workspace_folder):
         return sum(model.wf_cap[wf] * model.select_wf[wf] for wf in wf_keys) >= min_required_capacity
     model.min_total_wf_capacity = Constraint(rule=min_total_wf_capacity_rule)
 
-    # Radial connection constraints
-    # Constraint 1.1: Each wind farm connects to a single inter-array cable
-    def wind_farm_to_iac_rule(model, wf):
+    """
+    Fully Updated Define Constraints for Radial Connection System
+    """
+    print("Fully updating constraints for radial system...")
+
+    # Constraint: Every selected wind farm is connected to exactly one offshore substation via exactly one inter-array cable
+    def wind_farm_to_oss_rule(model, wf):
         return sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac) == model.select_wf[wf]
-    model.wind_farm_to_iac = Constraint(wf_keys, rule=wind_farm_to_iac_rule)
+    model.wind_farm_to_oss_con = Constraint(wf_keys, rule=wind_farm_to_oss_rule)
 
-    # Constraint 1.2: Each inter-array cable connects to a single offshore substation
-    def iac_to_oss_rule(model, oss):
-        return sum(model.select_iac[wf, oss] for wf in wf_keys if (wf, oss) in model.viable_iac) <= model.select_oss[oss]
-    model.iac_to_oss = Constraint(oss_keys, rule=iac_to_oss_rule)
+    # Constraint: Inter-array cables can only connect selected wind farms to selected offshore substations
+    def iac_wf_oss_connection_rule(model, wf, oss):
+        return model.select_iac[wf, oss] <= model.select_wf[wf] and model.select_iac[wf, oss] <= model.select_oss[oss]
+    model.iac_wf_oss_connection_con = Constraint(model.viable_iac, rule=iac_wf_oss_connection_rule)
 
-    # Constraint 1.3: Each offshore substation connects to a single export cable
-    def oss_to_ec_rule(model, oss):
-        return sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec) <= model.select_oss[oss]
-    model.oss_to_ec = Constraint(oss_keys, rule=oss_to_ec_rule)
+    # Constraint: Every selected offshore substation is connected to exactly one onshore substation via exactly one export cable
+    def oss_to_onss_rule(model, oss):
+        return sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec) == model.select_oss[oss]
+    model.oss_to_onss_con = Constraint(oss_keys, rule=oss_to_onss_rule)
 
-    # Constraint 1.4: Each export cable connects to a single onshore substation
-    def ec_to_onss_rule(model, onss):
-        return sum(model.select_ec[oss, onss] for oss in oss_keys if (oss, onss) in model.viable_ec) <= model.select_onss[onss]
-    model.ec_to_onss = Constraint(onss_keys, rule=ec_to_onss_rule)
+    # Constraint: Export cables can only connect selected offshore substations to selected onshore substations
+    def ec_oss_onss_connection_rule(model, oss, onss):
+        return model.select_ec[oss, onss] <= model.select_oss[oss] and model.select_ec[oss, onss] <= model.onss_iso[onss]
+    model.ec_oss_onss_connection_con = Constraint(model.viable_ec, rule=ec_oss_onss_connection_rule)
+
+    # New Constraint: Every selected onshore substation must connect to exactly one offshore substation via exactly one export cable
+    def onss_to_oss_rule(model, onss):
+        return sum(model.select_ec[oss, onss] for oss in oss_keys if (oss, onss) in model.viable_ec) == model.onss_iso[onss]
+    model.onss_to_oss_con = Constraint(onss_keys, rule=onss_to_oss_rule)
+
     
     
     # Capacity constraints
