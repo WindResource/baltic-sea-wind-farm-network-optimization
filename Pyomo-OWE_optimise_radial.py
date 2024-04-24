@@ -628,8 +628,8 @@ def opt_model(workspace_folder):
     model.viable_iac_ids = Set(initialize= viable_iac, dimen=2)
     model.viable_ec_ids = Set(initialize= viable_ec, dimen=2)
     
-    model.select_wf_var = Var(wf_ids, within=Binary)
-    model.select_oss_var = Var(oss_ids, within=Binary)
+    model.select_wf_var = Var(model.wf_ids, within=Binary)
+    model.select_oss_var = Var(model.oss_ids, within=Binary)
     model.select_iac_var = Var(model.viable_iac_ids, within=Binary)
     model.select_ec_var = Var(model.viable_ec_ids, within=Binary)
     
