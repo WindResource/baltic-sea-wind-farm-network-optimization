@@ -16,7 +16,7 @@ connection feasibility, capacity limitations, and distance constraints.
     - cost_per_distance_unit (float): Cost factor per unit of distance (e.g., per kilometer).
     Returns:
     - tuple of (dict, dict): Two dictionaries, one for connection costs and one for distances, 
-    with tuple keys representing connections (e.g., ('WF1', 'OSS1')).
+    with tuple ids representing connections (e.g., ('WF1', 'OSS1')).
 
 - add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_costs, distances,
         min_total_capacity, max_wf_oss_dist, max_oss_ss_dist, universal_offshore_ss_max_capacity):
@@ -395,6 +395,77 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
     
     return oss_costs
 
+def oss_cost_plh(wdepth, icover, pdist, capacity, polarity):
+    """
+    Placeholder function to calculate offshore substation costs.
+
+    Parameters:
+    - wdepth (float): Water depth.
+    - icover (int): Ice cover (binary: 0 for no ice, 1 for ice).
+    - pdist (float): Distance to port.
+    - capacity (float): Capacity of the offshore substation.
+    - polarity (str): Polarity of the cost calculation.
+
+    Returns:
+    - cost (float): Total cost of the offshore substation.
+    """
+    # Example cost calculation
+    cost = wdepth * 1000 + icover * 5000 + pdist * 2000 + capacity * 1000
+    
+    # Polarity adjustment
+    if polarity == "AC":
+        cost *= 1.1  # Example adjustment for AC costs
+    elif polarity == "DC":
+        cost *= 1.2  # Example adjustment for DC costs
+    
+    return cost
+
+def iac_cost_plh(distance, capacity, polarity):
+    """
+    Calculate inter-array cable costs.
+
+    Parameters:
+    - distance (float): Distance of the inter-array cable.
+    - capacity (float): Capacity of the inter-array cable.
+    - polarity (str): Polarity of the cost calculation.
+
+    Returns:
+    - cost (float): Total cost of the inter-array cable.
+    """
+    # Example cost calculation
+    cost = distance * 1500 + capacity * 400
+    
+    # Polarity adjustment
+    if polarity == "AC":
+        cost *= 1.1  # Example adjustment for AC costs
+    elif polarity == "DC":
+        cost *= 1.2  # Example adjustment for DC costs
+    
+    return cost
+
+def ec_cost_plh(distance, capacity, polarity):
+    """
+    Placeholder function to calculate export cable costs.
+
+    Parameters:
+    - distance (float): Distance of the export cable.
+    - capacity (float): Capacity of the export cable.
+    - polarity (str): Polarity of the cost calculation.
+
+    Returns:
+    - cost (float): Total cost of the export cable.
+    """
+    # Example cost calculation
+    cost = distance * 2000 + capacity * 500
+    
+    # Polarity adjustment
+    if polarity == "AC":
+        cost *= 1.1  # Example adjustment for AC costs
+    elif polarity == "DC":
+        cost *= 1.2  # Example adjustment for DC costs
+    
+    return cost
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great-circle distance between two points
@@ -415,26 +486,26 @@ def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat):
     """
     Find all pairs of offshore wind farms and offshore substations within 150km.
     
-    Parameters are dictionaries keyed by substation IDs with longitude and latitude values.
+    Parameters are dictionaries ided by substation IDs with longitude and latitude values.
     """
     connections = []
-    for wf_key, oss_key in product(wf_lon.keys(), oss_lon.keys()):
-        distance = haversine(wf_lon[wf_key], wf_lat[wf_key], oss_lon[oss_key], oss_lat[oss_key])
+    for wf_id, oss_id in product(wf_lon.keys(), oss_lon.keys()):
+        distance = haversine(wf_lon[wf_id], wf_lat[wf_id], oss_lon[oss_id], oss_lat[oss_id])
         if distance <= 150:
-            connections.append((int(wf_key), int(oss_key)))
+            connections.append((int(wf_id), int(oss_id)))
     return connections
 
 def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat):
     """
     Find all pairs of offshore and onshore substations within 300km.
     
-    Parameters are dictionaries keyed by substation IDs with longitude and latitude values.
+    Parameters are dictionaries ided by substation IDs with longitude and latitude values.
     """
     connections = []
-    for oss_key, onss_key in product(oss_lon.keys(), onss_lon.keys()):
-        distance = haversine(oss_lon[oss_key], oss_lat[oss_key], onss_lon[onss_key], onss_lat[onss_key])
-        if distance <= 300:
-            connections.append((int(oss_key), int(onss_key)))
+    for oss_id, onss_id in product(oss_lon.keys(), onss_lon.keys()):
+        distance = haversine(oss_lon[oss_id], oss_lat[oss_id], onss_lon[onss_id], onss_lat[onss_id])
+        if distance <= 500:
+            connections.append((int(oss_id), int(onss_id)))
             
     return connections
 
@@ -481,36 +552,36 @@ def opt_model(workspace_folder):
     onss_ids = [int(data[0]) for data in onss_dataset]
 
     # Wind farm data
-    wf_iso, wf_lon, wf_lat, wf_cap, wf_costs = {}, {}, {}, {}, {}
+    wf_iso, wf_lon, wf_lat, wf_cap, wf_cost = {}, {}, {}, {}, {}
 
     for data in wf_dataset:
-        key = int(data[0])
-        wf_iso[key] = data[1]
-        wf_lon[key] = data[2]
-        wf_lat[key] = data[3]
-        wf_cap[key] = data[5]
-        wf_costs[key] = data[6]
+        id = int(data[0])
+        wf_iso[id] = data[1]
+        wf_lon[id] = data[2]
+        wf_lat[id] = data[3]
+        wf_cap[id] = data[5]
+        wf_cost[id] = data[6]
 
     # Offshore substation data
     oss_iso, oss_lon, oss_lat, oss_wdepth, oss_icover, oss_pdist = {}, {}, {}, {}, {}, {}
 
     for data in oss_dataset:
-        key = int(data[0])
-        oss_iso[key] = data[1]
-        oss_lon[key] = data[2]
-        oss_lat[key] = data[3]
-        oss_wdepth[key] = data[4]
-        oss_icover[key] = data[5]
-        oss_pdist[key] = data[6]
+        id = int(data[0])
+        oss_iso[id] = data[1]
+        oss_lon[id] = data[2]
+        oss_lat[id] = data[3]
+        oss_wdepth[id] = data[4]
+        oss_icover[id] = data[5]
+        oss_pdist[id] = data[6]
     
     # Onshore substation data
     onss_iso, onss_lon, onss_lat = {}, {}, {}
 
     for data in onss_dataset:
-        key = int(data[0])
-        onss_iso[key] = data[1]
-        onss_lon[key] = data[2]
-        onss_lat[key] = data[3]
+        id = int(data[0])
+        onss_iso[id] = data[1]
+        onss_lon[id] = data[2]
+        onss_lat[id] = data[3]
 
     
     """
@@ -518,24 +589,30 @@ def opt_model(workspace_folder):
     """
     print("Defining model parameters...")
     
-    # Wind farm parameters
-    model.wf_iso = Param(wf_ids, initialize=wf_iso, within=Any)
-    model.wf_lon = Param(wf_ids, initialize=wf_lon, within=NonNegativeReals)
-    model.wf_lat = Param(wf_ids, initialize=wf_lat, within=NonNegativeReals)
-    model.wf_cap = Param(wf_ids, initialize=wf_cap, within=NonNegativeIntegers)
+    # Identifiers model components
+    model.wf_ids = Set(initialize=wf_ids)
+    model.oss_ids = Set(initialize=oss_ids)
+    model.onss_ids = Set(initialize=onss_ids)
+    
+    # Wind farm model parameters
+    model.wf_iso = Param(model.wf_ids, initialize=wf_iso, within=Any)
+    model.wf_lon = Param(model.wf_ids, initialize=wf_lon, within=NonNegativeReals)
+    model.wf_lat = Param(model.wf_ids, initialize=wf_lat, within=NonNegativeReals)
+    model.wf_cap = Param(model.wf_ids, initialize=wf_cap, within=NonNegativeIntegers)
+    model.wf_cost = Param(model.wf_ids, initialize=wf_cost, within=NonNegativeIntegers)
 
-    # Offshore substation parameters
-    model.oss_iso = Param(oss_ids, initialize=oss_iso, within=Any)
-    model.oss_lon = Param(oss_ids, initialize=oss_lon, within=NonNegativeReals)
-    model.oss_lat = Param(oss_ids, initialize=oss_lat, within=NonNegativeReals)
-    model.oss_wdepth = Param(oss_ids, initialize=oss_wdepth, within=NonNegativeIntegers)
-    model.oss_icover = Param(oss_ids, initialize=oss_icover, within=Binary)
-    model.oss_pdist = Param(oss_ids, initialize=oss_pdist, within=NonNegativeIntegers)
+    # Offshore substation model parameters
+    model.oss_iso = Param(model.oss_ids, initialize=oss_iso, within=Any)
+    model.oss_lon = Param(model.oss_ids, initialize=oss_lon, within=NonNegativeReals)
+    model.oss_lat = Param(model.oss_ids, initialize=oss_lat, within=NonNegativeReals)
+    model.oss_wdepth = Param(model.oss_ids, initialize=oss_wdepth, within=NonNegativeIntegers)
+    model.oss_icover = Param(model.oss_ids, initialize=oss_icover, within=Binary)
+    model.oss_pdist = Param(model.oss_ids, initialize=oss_pdist, within=NonNegativeIntegers)
 
-    # Onshore substation parameters
-    model.onss_iso = Param(onss_ids, initialize=onss_iso, within=Any)
-    model.onss_lon = Param(onss_ids, initialize=onss_lon, within=NonNegativeReals)
-    model.onss_lat = Param(onss_ids, initialize=onss_lat, within=NonNegativeReals)
+    # Onshore substation model parameters
+    model.onss_iso = Param(model.onss_ids, initialize=onss_iso, within=Any)
+    model.onss_lon = Param(model.onss_ids, initialize=onss_lon, within=NonNegativeReals)
+    model.onss_lat = Param(model.onss_ids, initialize=onss_lat, within=NonNegativeReals)
 
     """
     Define decision variables
@@ -557,99 +634,83 @@ def opt_model(workspace_folder):
     model.select_ec_var = Var(model.viable_ec_ids, within=Binary)
     
     # Print the decision variables
-    print("select_wf keys:", list(model.select_wf_var)[:5])
-    print("select_oss keys:", list(model.select_oss_var)[:5])
-    print("select_iac keys:", list(model.select_iac_var)[:5])
-    print("select_ec keys:", list(model.select_ec_var)[:5])
+    print("select_wf ids:", list(model.select_wf_var)[:5])
+    print("select_oss ids:", list(model.select_oss_var)[:5])
+    print("select_iac ids:", list(model.select_iac_var)[:20])
+    print("select_ec ids:", list(model.select_ec_var)[:20])
 
 
     """
     Define Expressions
     """
-    print("Defining expressions...")
+    print("Defining distance expressions...")
     
     
     # Distance expressions
     def iac_dist_rule(model, wf, oss):
-        if (wf, oss) in model.select_iac_var:
-            return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss]) * model.select_iac_var[wf, oss]
-        else:
-            return 0  # Return zero distance if the pair does not exist
-    model.iac_dist_exp = Expression(wf_ids, oss_ids, rule=iac_dist_rule)
+        return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss]) * model.select_iac_var[wf, oss]
+    model.iac_dist_exp = Expression(model.viable_iac_ids, rule=iac_dist_rule)
 
     def ec_dist_rule(model, oss, onss):
-        if (oss, onss) in model.select_ec_var:
-            return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss]) * model.select_ec_var[oss, onss]
-        else:
-            return 0  # Return zero distance if the pair does not exist
-    model.ec_dist_exp = Expression(oss_ids, onss_ids, rule=ec_dist_rule)
-
-    # Capacity expressions
+        return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss]) * model.select_ec_var[oss, onss]
+    model.ec_dist_exp = Expression(model.viable_ec_ids, rule=ec_dist_rule)
 
     
-    # IAC capacity expression
+    # Capacity expressions
+    print("Defining capacity expressions...")
+        
     def iac_capacity_rule(model, wf, oss):
-        if (wf, oss) in model.select_iac_var:
             return model.wf_cap[wf] * model.select_iac_var[wf, oss]
-        else:
-            return 0
     model.iac_cap_exp = Expression(model.viable_iac_ids, rule=iac_capacity_rule)
     
-    def oss_capacity_rule(model, wf, oss):
-        if (wf, oss) in model.select_iac_var:
-            return model.iac_cap_exp[wf, oss] * model.select_oss[oss]
-        else:
-            return 0
-    model.oss_cap_exp = Expression(oss_ids, rule=oss_capacity_rule)
+    def oss_capacity_rule(model, oss):
+    # Summing the capacity from wind farms connected to the offshore substation `oss`
+        return sum(model.iac_cap_exp[wf, oss] * model.select_iac_var[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
+    model.oss_cap_exp = Expression(model.oss_ids, rule=oss_capacity_rule)
 
     def ec_capacity_rule(model, oss, onss):
-        if (oss, onss) in model.select_ec_var:
-            return model.oss_cap_exp[oss] * model.select_ec_var[oss_key, onss]
-        else:
-            return 0
-    model.ec_cap_exp = Expression(oss_ids, rule=ec_capacity_rule)
+        return model.oss_cap_exp[oss] * model.select_ec_var[oss, onss]
+    model.ec_cap_exp = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
 
-    # Cost expressions
+    # Costs expressions
+    print("Defining costs expressions...")
+
+    def iac_cost_rule(model, wf, oss):
+        return iac_cost_plh(model.iac_dist_exp[wf, oss], model.iac_cap_exp[wf, oss], polarity = "AC")
+    model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
+    
     def oss_cost_rule(model, oss):
-        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_exp[oss], "AC")
-    model.oss_costs_exp = Expression(oss_ids, rule=oss_cost_rule)
+        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_exp[oss], polarity = "AC")
+    model.oss_cost_exp = Expression(model.oss_ids, rule=oss_cost_rule)
 
     def ec_cost_rule(model, oss, onss):
-        return export_cable_costs(model.ec_dist_exp[oss, onss], model.ec_cap_exp[oss, onss], polarity="AC")
-    model.ec_costs_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
-    
-    
-    # Print expressions
-    print("Printing expressions...")
-    print("iac_dist_exp:", model.iac_dist_exp)
-    print("ec_dist_exp:", model.ec_dist_exp)
-    print("oss_cap_exp:", model.oss_cap_exp)
-    print("ec_cap_exp:", model.ec_cap_exp)
-    print("oss_costs_exp:", model.oss_costs_exp)
-    print("ec_costs_exp:", model.ec_costs_exp)
-    
-    return
+        return ec_cost_plh(model.ec_dist_exp[oss, onss], model.ec_cap_exp[oss, onss], polarity = "AC")
+    model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
+
     
     """
     Define Objective function
     """
-    print("Defining objective function")
+    print("Defining objective function...")
 
-    def total_cost_rule(model):
+    def global_cost_rule(model):
         # Summing wind farm costs
-        wf_total_cost = sum(wf_costs[wf] * model.select_wf_var[wf] for wf in wf_ids)
+        wf_total_cost = sum(model.wf_cost[wf] * model.select_wf_var[wf] for wf in model.wf_ids)
         # Summing offshore substation costs
-        oss_total_cost = sum(model.oss_costs[oss] * model.select_oss_var[oss] for oss in oss_ids)
+        oss_total_cost = sum(model.oss_cost_exp[oss] * model.select_oss_var[oss] for oss in model.oss_ids)
         # Summing inter array cable costs for viable connections
-        iac_total_cost = sum(model.ec_costs[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_ec_ids)
+        iac_total_cost = sum(model.iac_cost_exp[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_iac_ids)
         # Summing export cable costs for viable connections
-        ec_total_cost = sum(model.ec_costs[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
-        # The objective is to minimize the total cost
+        ec_total_cost = sum(model.ec_cost_exp[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
+        # The objective is to minimize the global cost
         return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost
 
     # Set the objective in the model
-    model.total_cost_obj = Objective(rule=total_cost_rule, sense=minimize)
+    model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
     
+    print("Objective function defined.")
+    
+    return
     
     """
     Define Constraints
