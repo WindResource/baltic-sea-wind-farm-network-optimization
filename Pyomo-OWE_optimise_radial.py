@@ -475,10 +475,10 @@ def opt_model(workspace_folder):
     oss_dataset = np.load(oss_dataset_file, allow_pickle=True)
     onss_dataset = np.load(onss_dataset_file, allow_pickle=True)
 
-    # Keys data
-    wf_keys = [int(data[0]) for data in wf_dataset]
-    oss_keys = [int(data[0]) for data in oss_dataset]
-    onss_keys = [int(data[0]) for data in onss_dataset]
+    # Component identifiers
+    wf_ids = [int(data[0]) for data in wf_dataset]
+    oss_ids = [int(data[0]) for data in oss_dataset]
+    onss_ids = [int(data[0]) for data in onss_dataset]
 
     # Wind farm data
     wf_iso, wf_lon, wf_lat, wf_cap, wf_costs = {}, {}, {}, {}, {}
@@ -519,23 +519,23 @@ def opt_model(workspace_folder):
     print("Defining model parameters...")
     
     # Wind farm parameters
-    model.wf_iso = Param(wf_keys, initialize=wf_iso, within=Any)
-    model.wf_lon = Param(wf_keys, initialize=wf_lon, within=NonNegativeReals)
-    model.wf_lat = Param(wf_keys, initialize=wf_lat, within=NonNegativeReals)
-    model.wf_cap = Param(wf_keys, initialize=wf_cap, within=NonNegativeIntegers)
+    model.wf_iso = Param(wf_ids, initialize=wf_iso, within=Any)
+    model.wf_lon = Param(wf_ids, initialize=wf_lon, within=NonNegativeReals)
+    model.wf_lat = Param(wf_ids, initialize=wf_lat, within=NonNegativeReals)
+    model.wf_cap = Param(wf_ids, initialize=wf_cap, within=NonNegativeIntegers)
 
     # Offshore substation parameters
-    model.oss_iso = Param(oss_keys, initialize=oss_iso, within=Any)
-    model.oss_lon = Param(oss_keys, initialize=oss_lon, within=NonNegativeReals)
-    model.oss_lat = Param(oss_keys, initialize=oss_lat, within=NonNegativeReals)
-    model.oss_wdepth = Param(oss_keys, initialize=oss_wdepth, within=NonNegativeIntegers)
-    model.oss_icover = Param(oss_keys, initialize=oss_icover, within=Binary)
-    model.oss_pdist = Param(oss_keys, initialize=oss_pdist, within=NonNegativeIntegers)
+    model.oss_iso = Param(oss_ids, initialize=oss_iso, within=Any)
+    model.oss_lon = Param(oss_ids, initialize=oss_lon, within=NonNegativeReals)
+    model.oss_lat = Param(oss_ids, initialize=oss_lat, within=NonNegativeReals)
+    model.oss_wdepth = Param(oss_ids, initialize=oss_wdepth, within=NonNegativeIntegers)
+    model.oss_icover = Param(oss_ids, initialize=oss_icover, within=Binary)
+    model.oss_pdist = Param(oss_ids, initialize=oss_pdist, within=NonNegativeIntegers)
 
     # Onshore substation parameters
-    model.onss_iso = Param(onss_keys, initialize=onss_iso, within=Any)
-    model.onss_lon = Param(onss_keys, initialize=onss_lon, within=NonNegativeReals)
-    model.onss_lat = Param(onss_keys, initialize=onss_lat, within=NonNegativeReals)
+    model.onss_iso = Param(onss_ids, initialize=onss_iso, within=Any)
+    model.onss_lon = Param(onss_ids, initialize=onss_lon, within=NonNegativeReals)
+    model.onss_lat = Param(onss_ids, initialize=onss_lat, within=NonNegativeReals)
 
     """
     Define decision variables
@@ -548,26 +548,21 @@ def opt_model(workspace_folder):
 
     # You can then integrate these connections into your model as needed
     # For example, as a Pyomo Set
-    model.viable_iac = Set(initialize= viable_iac, dimen=2)
-    model.viable_ec = Set(initialize= viable_ec, dimen=2)
+    model.viable_iac_ids = Set(initialize= viable_iac, dimen=2)
+    model.viable_ec_ids = Set(initialize= viable_ec, dimen=2)
     
-    model.select_wf = Var(wf_keys, within=Binary)
-    model.select_oss = Var(oss_keys, within=Binary)
-    model.select_iac = Var(model.viable_iac, within=Binary)
-    model.select_ec = Var(model.viable_ec, within=Binary)
+    model.select_wf_var = Var(wf_ids, within=Binary)
+    model.select_oss_var = Var(oss_ids, within=Binary)
+    model.select_iac_var = Var(model.viable_iac_ids, within=Binary)
+    model.select_ec_var = Var(model.viable_ec_ids, within=Binary)
     
-    print("First 5 keys of each variable type:")
-    # Print first 5 keys of select_wf
-    print("select_wf keys:", list(model.select_wf)[:5])
-    # Print first 5 keys of select_oss
-    print("select_oss keys:", list(model.select_oss)[:5])
-    # Print first 5 keys of select_iac
-    print("select_iac keys:", list(model.select_iac)[:5])
-    # Print first 5 keys of select_ec
-    print("select_ec keys:", list(model.select_ec)[:5])
+    # Print the decision variables
+    print("select_wf keys:", list(model.select_wf_var)[:5])
+    print("select_oss keys:", list(model.select_oss_var)[:5])
+    print("select_iac keys:", list(model.select_iac_var)[:5])
+    print("select_ec keys:", list(model.select_ec_var)[:5])
 
-    return
-    
+
     """
     Define Expressions
     """
@@ -576,31 +571,64 @@ def opt_model(workspace_folder):
     
     # Distance expressions
     def iac_dist_rule(model, wf, oss):
-        return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss])
-    model.iac_dist_exp = Expression(wf_keys, oss_keys, rule=iac_dist_rule)
-    
+        if (wf, oss) in model.select_iac_var:
+            return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss]) * model.select_iac_var[wf, oss]
+        else:
+            return 0  # Return zero distance if the pair does not exist
+    model.iac_dist_exp = Expression(wf_ids, oss_ids, rule=iac_dist_rule)
+
     def ec_dist_rule(model, oss, onss):
-        return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss])
-    model.ec_dist_exp = Expression(oss_keys, onss_keys, rule=ec_dist_rule)
-    
+        if (oss, onss) in model.select_ec_var:
+            return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss]) * model.select_ec_var[oss, onss]
+        else:
+            return 0  # Return zero distance if the pair does not exist
+    model.ec_dist_exp = Expression(oss_ids, onss_ids, rule=ec_dist_rule)
+
     # Capacity expressions
-    def oss_capacity_rule(model, oss):
-        return sum(model.wf_cap[wf] * model.select_iac[wf, oss] for wf, oss_key in model.viable_iac if oss_key == oss)
-    model.oss_cap_exp = Expression(oss_keys, rule=oss_capacity_rule)
+
+    
+    # IAC capacity expression
+    def iac_capacity_rule(model, wf, oss):
+        if (wf, oss) in model.select_iac_var:
+            return model.wf_cap[wf] * model.select_iac_var[wf, oss]
+        else:
+            return 0
+    model.iac_cap_exp = Expression(model.viable_iac_ids, rule=iac_capacity_rule)
+    
+    def oss_capacity_rule(model, wf, oss):
+        if (wf, oss) in model.select_iac_var:
+            return model.iac_cap_exp[wf, oss] * model.select_oss[oss]
+        else:
+            return 0
+    model.oss_cap_exp = Expression(oss_ids, rule=oss_capacity_rule)
 
     def ec_capacity_rule(model, oss, onss):
-        return sum(model.oss_cap[oss] * model.select_ec[oss_key, onss] for oss_key, onss_key in model.viable_ec if oss_key == oss and onss_key == onss)
-    model.ec_cap_exp = Expression(model.viable_ec, rule=ec_capacity_rule)
+        if (oss, onss) in model.select_ec_var:
+            return model.oss_cap_exp[oss] * model.select_ec_var[oss_key, onss]
+        else:
+            return 0
+    model.ec_cap_exp = Expression(oss_ids, rule=ec_capacity_rule)
 
     # Cost expressions
     def oss_cost_rule(model, oss):
-        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap[oss], "AC")
-    model.oss_costs_exp = Expression(oss_keys, rule=oss_cost_rule)
+        return offshore_substation_costs(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_exp[oss], "AC")
+    model.oss_costs_exp = Expression(oss_ids, rule=oss_cost_rule)
 
     def ec_cost_rule(model, oss, onss):
-        return export_cable_costs(model.ec_dist[oss, onss], model.ec_cap[oss, onss], polarity="AC")
-    model.ec_costs_exp = Expression(model.viable_ec, rule=ec_cost_rule)
+        return export_cable_costs(model.ec_dist_exp[oss, onss], model.ec_cap_exp[oss, onss], polarity="AC")
+    model.ec_costs_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
     
+    
+    # Print expressions
+    print("Printing expressions...")
+    print("iac_dist_exp:", model.iac_dist_exp)
+    print("ec_dist_exp:", model.ec_dist_exp)
+    print("oss_cap_exp:", model.oss_cap_exp)
+    print("ec_cap_exp:", model.ec_cap_exp)
+    print("oss_costs_exp:", model.oss_costs_exp)
+    print("ec_costs_exp:", model.ec_costs_exp)
+    
+    return
     
     """
     Define Objective function
@@ -609,13 +637,13 @@ def opt_model(workspace_folder):
 
     def total_cost_rule(model):
         # Summing wind farm costs
-        wf_total_cost = sum(wf_costs[wf] * model.select_wf[wf] for wf in wf_keys)
+        wf_total_cost = sum(wf_costs[wf] * model.select_wf_var[wf] for wf in wf_ids)
         # Summing offshore substation costs
-        oss_total_cost = sum(model.oss_costs[oss] * model.select_oss[oss] for oss in oss_keys)
+        oss_total_cost = sum(model.oss_costs[oss] * model.select_oss_var[oss] for oss in oss_ids)
         # Summing inter array cable costs for viable connections
-        iac_total_cost = sum(model.ec_costs[wf, oss] * model.select_iac[wf, oss] for (wf, oss) in model.viable_ec)
+        iac_total_cost = sum(model.ec_costs[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_ec_ids)
         # Summing export cable costs for viable connections
-        ec_total_cost = sum(model.ec_costs[oss, onss] * model.select_ec[oss, onss] for (oss, onss) in model.viable_ec)
+        ec_total_cost = sum(model.ec_costs[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
         # The objective is to minimize the total cost
         return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost
 
@@ -632,7 +660,7 @@ def opt_model(workspace_folder):
     # Constraint 1: The sum of capacities of all selected wind farms meets at least a certain fraction of the total potential capacity of all wind farms considered.
     def min_total_wf_capacity_rule(model):
         min_required_capacity = 0.5 * sum(wf_cap.values())
-        return sum(model.wf_cap[wf] * model.select_wf[wf] for wf in wf_keys) >= min_required_capacity
+        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in wf_ids) >= min_required_capacity
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
 
     """
@@ -642,28 +670,28 @@ def opt_model(workspace_folder):
 
     # Constraint: Every selected wind farm is connected to exactly one offshore substation via exactly one inter-array cable
     def wind_farm_to_oss_rule(model, wf):
-        return sum(model.select_iac[wf, oss] for oss in oss_keys if (wf, oss) in model.viable_iac) == model.select_wf[wf]
-    model.wind_farm_to_oss_con = Constraint(wf_keys, rule=wind_farm_to_oss_rule)
+        return sum(model.select_iac_var[wf, oss] for oss in oss_ids if (wf, oss) in model.viable_iac_ids) == model.select_wf_var[wf]
+    model.wind_farm_to_oss_con = Constraint(wf_ids, rule=wind_farm_to_oss_rule)
 
     # Constraint: Inter-array cables can only connect selected wind farms to selected offshore substations
     def iac_wf_oss_connection_rule(model, wf, oss):
-        return model.select_iac[wf, oss] <= model.select_wf[wf] and model.select_iac[wf, oss] <= model.select_oss[oss]
-    model.iac_wf_oss_connection_con = Constraint(model.viable_iac, rule=iac_wf_oss_connection_rule)
+        return model.select_iac_var[wf, oss] <= model.select_wf_var[wf] and model.select_iac_var[wf, oss] <= model.select_oss_var[oss]
+    model.iac_wf_oss_connection_con = Constraint(model.viable_iac_ids, rule=iac_wf_oss_connection_rule)
 
     # Constraint: Every selected offshore substation is connected to exactly one onshore substation via exactly one export cable
     def oss_to_onss_rule(model, oss):
-        return sum(model.select_ec[oss, onss] for onss in onss_keys if (oss, onss) in model.viable_ec) == model.select_oss[oss]
-    model.oss_to_onss_con = Constraint(oss_keys, rule=oss_to_onss_rule)
+        return sum(model.select_ec_var[oss, onss] for onss in onss_ids if (oss, onss) in model.viable_ec_ids) == model.select_oss_var[oss]
+    model.oss_to_onss_con = Constraint(oss_ids, rule=oss_to_onss_rule)
 
     # Constraint: Export cables can only connect selected offshore substations to selected onshore substations
     def ec_oss_onss_connection_rule(model, oss, onss):
-        return model.select_ec[oss, onss] <= model.select_oss[oss] and model.select_ec[oss, onss] <= model.onss_iso[onss]
-    model.ec_oss_onss_connection_con = Constraint(model.viable_ec, rule=ec_oss_onss_connection_rule)
+        return model.select_ec_var[oss, onss] <= model.select_oss_var[oss] and model.select_ec_var[oss, onss] <= model.onss_iso[onss]
+    model.ec_oss_onss_connection_con = Constraint(model.viable_ec_ids, rule=ec_oss_onss_connection_rule)
 
     # New Constraint: Every selected onshore substation must connect to exactly one offshore substation via exactly one export cable
     def onss_to_oss_rule(model, onss):
-        return sum(model.select_ec[oss, onss] for oss in oss_keys if (oss, onss) in model.viable_ec) == model.onss_iso[onss]
-    model.onss_to_oss_con = Constraint(onss_keys, rule=onss_to_oss_rule)
+        return sum(model.select_ec_var[oss, onss] for oss in oss_ids if (oss, onss) in model.viable_ec_ids) == model.onss_iso[onss]
+    model.onss_to_oss_con = Constraint(onss_ids, rule=onss_to_oss_rule)
 
     
     
@@ -672,18 +700,18 @@ def opt_model(workspace_folder):
     """
     # Constraint 2.1: Capacity of inter-array cable equals the capacity of the connected wind farm
     def iac_capacity_rule(model, wf, oss):
-        return model.select_iac[wf, oss] * model.wf_cap[wf] == model.select_wf[wf] * model.wf_cap[wf]
-    model.iac_capacity_con = Constraint(model.viable_iac, rule=iac_capacity_rule)
+        return model.select_iac_var[wf, oss] * model.wf_cap[wf] == model.select_wf_var[wf] * model.wf_cap[wf]
+    model.iac_capacity_con = Constraint(model.viable_iac_ids, rule=iac_capacity_rule)
 
     # Constraint 2.2: Capacity of offshore substation equals the capacity of the connected inter-array cable
     def oss_capacity_rule(model, wf, oss):
-        return model.select_oss[oss] * model.oss_cap[oss] == model.select_iac[wf, oss] * model.wf_cap[wf]
-    model.oss_capacity_con = Constraint(model.viable_iac, rule=oss_capacity_rule)
+        return model.select_oss_var[oss] * model.oss_cap[oss] == model.select_iac_var[wf, oss] * model.wf_cap[wf]
+    model.oss_capacity_con = Constraint(model.viable_iac_ids, rule=oss_capacity_rule)
 
     # Constraint 2.3: Capacity of export cable equals the capacity of the connected offshore substation
     def ec_capacity_rule(model, oss, onss):
-        return model.select_ec[oss, onss] * model.oss_cap[oss] == model.select_oss[oss] * model.oss_cap[oss]
-    model.ec_capacity_con = Constraint(model.viable_ec, rule=ec_capacity_rule)
+        return model.select_ec_var[oss, onss] * model.oss_cap[oss] == model.select_oss_var[oss] * model.oss_cap[oss]
+    model.ec_capacity_con = Constraint(model.viable_ec_ids, rule=ec_capacity_rule)
 
 
     """
@@ -691,19 +719,19 @@ def opt_model(workspace_folder):
     """
     # Constraint 3.1: ISO of the wind farm equals the ISO of the connected offshore substation
     def wf_oss_iso_matching_rule(model, wf, oss):
-        if (wf, oss) in model.viable_iac:
-            return model.select_iac[wf, oss] * (model.wf_iso[wf] == model.oss_iso[oss]) == model.select_iac[wf, oss]
+        if (wf, oss) in model.viable_iac_ids:
+            return model.select_iac_var[wf, oss] * (model.wf_iso[wf] == model.oss_iso[oss]) == model.select_iac_var[wf, oss]
         else:
             return Constraint.Skip
-    model.wf_oss_iso_con = Constraint(model.viable_iac, rule=wf_oss_iso_matching_rule)
+    model.wf_oss_iso_con = Constraint(model.viable_iac_ids, rule=wf_oss_iso_matching_rule)
 
     # Constraint 3.2: ISO of the offshore substation equals the ISO of the connected onshore substation
     def oss_onss_iso_matching_rule(model, oss, onss):
-        if (oss, onss) in model.viable_ec:
-            return model.select_ec[oss, onss] * (model.oss_iso[oss] == model.onss_iso[onss]) == model.select_ec[oss, onss]
+        if (oss, onss) in model.viable_ec_ids:
+            return model.select_ec_var[oss, onss] * (model.oss_iso[oss] == model.onss_iso[onss]) == model.select_ec_var[oss, onss]
         else:
             return Constraint.Skip
-    model.oss_onss_iso_con = Constraint(model.viable_ec, rule=oss_onss_iso_matching_rule)
+    model.oss_onss_iso_con = Constraint(model.viable_ec_ids, rule=oss_onss_iso_matching_rule)
 
 
 
