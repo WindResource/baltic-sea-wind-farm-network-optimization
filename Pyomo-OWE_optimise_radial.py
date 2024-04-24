@@ -623,8 +623,6 @@ def opt_model(workspace_folder):
     viable_iac = find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat)
     viable_ec = find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat)
 
-    # You can then integrate these connections into your model as needed
-    # For example, as a Pyomo Set
     model.viable_iac_ids = Set(initialize= viable_iac, dimen=2)
     model.viable_ec_ids = Set(initialize= viable_ec, dimen=2)
     
