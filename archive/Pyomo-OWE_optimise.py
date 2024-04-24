@@ -579,11 +579,13 @@ def opt_model(workspace_folder):
         # Summing wind farm costs
         wf_total_cost = sum(wf_costs[wf] * model.select_wf[wf] for wf in wf_keys)
         # Summing offshore substation costs
-        oss_total_cost = sum(model.oss_costs[oss] for oss in oss_keys)
+        oss_total_cost = sum(model.oss_costs[oss] * model.select_oss[oss] for oss in oss_keys)
+        # Summing inter array cable costs for viable connections
+        iac_total_cost = sum(model.ec_costs[wf, oss] for (wf, oss) in model.viable_ec)
         # Summing export cable costs for viable connections
         ec_total_cost = sum(model.ec_costs[oss, onss] for (oss, onss) in model.viable_ec)
         # The objective is to minimize the total cost
-        return wf_total_cost + oss_total_cost + ec_total_cost
+        return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost
 
     # Set the objective in the model
     model.total_cost = Objective(rule=total_cost_rule, sense=minimize)
