@@ -123,7 +123,6 @@ def haversine_distance_scalar(lon1, lat1, lon2, lat2):
 
     return distance
 
-from pyomo.environ import Ceiling, minimize
 
 def export_cable_costs(distance, required_active_power, polarity="AC"):
     """
@@ -140,6 +139,8 @@ def export_cable_costs(distance, required_active_power, polarity="AC"):
                 associated with the selected HVAC cables.
     """
 
+    from pyomo.environ import Ceiling, minimize
+    
     length = 1.2 * distance
 
     required_active_power *= 1e6  # (MW > W)
@@ -420,7 +421,7 @@ def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat):
     for wf_key, oss_key in product(wf_lon.keys(), oss_lon.keys()):
         distance = haversine(wf_lon[wf_key], wf_lat[wf_key], oss_lon[oss_key], oss_lat[oss_key])
         if distance <= 150:
-            connections.append((wf_key, oss_key))
+            connections.append((int(wf_key), int(oss_key)))
     return connections
 
 def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat):
@@ -433,7 +434,8 @@ def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat):
     for oss_key, onss_key in product(oss_lon.keys(), onss_lon.keys()):
         distance = haversine(oss_lon[oss_key], oss_lat[oss_key], onss_lon[onss_key], onss_lat[onss_key])
         if distance <= 300:
-            connections.append((oss_key, onss_key))
+            connections.append((int(oss_key), int(onss_key)))
+            
     return connections
 
 def opt_model(workspace_folder):
@@ -474,15 +476,15 @@ def opt_model(workspace_folder):
     onss_dataset = np.load(onss_dataset_file, allow_pickle=True)
 
     # Keys data
-    wf_keys = [data[0] for data in wf_dataset]
-    oss_keys = [data[0] for data in oss_dataset]
-    onss_keys = [data[0] for data in onss_dataset]
+    wf_keys = [int(data[0]) for data in wf_dataset]
+    oss_keys = [int(data[0]) for data in oss_dataset]
+    onss_keys = [int(data[0]) for data in onss_dataset]
 
     # Wind farm data
     wf_iso, wf_lon, wf_lat, wf_cap, wf_costs = {}, {}, {}, {}, {}
 
     for data in wf_dataset:
-        key = data[0]
+        key = int(data[0])
         wf_iso[key] = data[1]
         wf_lon[key] = data[2]
         wf_lat[key] = data[3]
@@ -493,7 +495,7 @@ def opt_model(workspace_folder):
     oss_iso, oss_lon, oss_lat, oss_wdepth, oss_icover, oss_pdist = {}, {}, {}, {}, {}, {}
 
     for data in oss_dataset:
-        key = data[0]
+        key = int(data[0])
         oss_iso[key] = data[1]
         oss_lon[key] = data[2]
         oss_lat[key] = data[3]
@@ -505,7 +507,7 @@ def opt_model(workspace_folder):
     onss_iso, onss_lon, onss_lat = {}, {}, {}
 
     for data in onss_dataset:
-        key = data[0]
+        key = int(data[0])
         onss_iso[key] = data[1]
         onss_lon[key] = data[2]
         onss_lat[key] = data[3]
@@ -553,8 +555,19 @@ def opt_model(workspace_folder):
     model.select_oss = Var(oss_keys, within=Binary)
     model.select_iac = Var(model.viable_iac, within=Binary)
     model.select_ec = Var(model.viable_ec, within=Binary)
+    
+    print("First 5 keys of each variable type:")
+    # Print first 5 keys of select_wf
+    print("select_wf keys:", list(model.select_wf)[:5])
+    # Print first 5 keys of select_oss
+    print("select_oss keys:", list(model.select_oss)[:5])
+    # Print first 5 keys of select_iac
+    print("select_iac keys:", list(model.select_iac)[:5])
+    # Print first 5 keys of select_ec
+    print("select_ec keys:", list(model.select_ec)[:5])
 
-
+    return
+    
     """
     Define Expressions
     """
