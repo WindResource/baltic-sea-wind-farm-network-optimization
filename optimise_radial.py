@@ -537,6 +537,18 @@ def opt_model(workspace_folder):
     """
     print("Processing data...")
     
+    # Mapping ISO country codes of Baltic Sea countries to unique integers
+    iso_to_int_mp = {
+        'DE': 1,  # Germany
+        'DK': 2,  # Denmark
+        'EE': 3,  # Estonia
+        'FI': 4,  # Finland
+        'LV': 5,  # Latvia
+        'LT': 6,  # Lithuania
+        'PL': 7,  # Poland
+        'SE': 8   # Sweden
+    }
+
     # Load datasets
     wf_dataset_file = os.path.join(workspace_folder, 'wf_data.npy')
     oss_dataset_file = os.path.join(workspace_folder, 'oss_data.npy')
@@ -556,7 +568,7 @@ def opt_model(workspace_folder):
 
     for data in wf_dataset:
         id = int(data[0])
-        wf_iso[id] = data[1]
+        wf_iso[id] = iso_to_int_mp[data[1]]
         wf_lon[id] = data[2]
         wf_lat[id] = data[3]
         wf_cap[id] = data[5]
@@ -567,7 +579,7 @@ def opt_model(workspace_folder):
 
     for data in oss_dataset:
         id = int(data[0])
-        oss_iso[id] = data[1]
+        oss_iso[id] = iso_to_int_mp[data[1]]
         oss_lon[id] = data[2]
         oss_lat[id] = data[3]
         oss_wdepth[id] = data[4]
@@ -579,11 +591,10 @@ def opt_model(workspace_folder):
 
     for data in onss_dataset:
         id = int(data[0])
-        onss_iso[id] = data[1]
+        onss_iso[id] = iso_to_int_mp[data[1]]
         onss_lon[id] = data[2]
         onss_lat[id] = data[3]
 
-    
     """
     Define model parameters
     """
@@ -595,14 +606,14 @@ def opt_model(workspace_folder):
     model.onss_ids = Set(initialize=onss_ids)
     
     # Wind farm model parameters
-    model.wf_iso = Param(model.wf_ids, initialize=wf_iso, within=Any)
+    model.wf_iso = Param(model.wf_ids, initialize=wf_iso, within=NonNegativeIntegers)
     model.wf_lon = Param(model.wf_ids, initialize=wf_lon, within=NonNegativeReals)
     model.wf_lat = Param(model.wf_ids, initialize=wf_lat, within=NonNegativeReals)
     model.wf_cap = Param(model.wf_ids, initialize=wf_cap, within=NonNegativeIntegers)
     model.wf_cost = Param(model.wf_ids, initialize=wf_cost, within=NonNegativeIntegers)
 
     # Offshore substation model parameters
-    model.oss_iso = Param(model.oss_ids, initialize=oss_iso, within=Any)
+    model.oss_iso = Param(model.oss_ids, initialize=oss_iso, within=NonNegativeIntegers)
     model.oss_lon = Param(model.oss_ids, initialize=oss_lon, within=NonNegativeReals)
     model.oss_lat = Param(model.oss_ids, initialize=oss_lat, within=NonNegativeReals)
     model.oss_wdepth = Param(model.oss_ids, initialize=oss_wdepth, within=NonNegativeIntegers)
@@ -610,7 +621,7 @@ def opt_model(workspace_folder):
     model.oss_pdist = Param(model.oss_ids, initialize=oss_pdist, within=NonNegativeIntegers)
 
     # Onshore substation model parameters
-    model.onss_iso = Param(model.onss_ids, initialize=onss_iso, within=Any)
+    model.onss_iso = Param(model.onss_ids, initialize=onss_iso, within=NonNegativeIntegers)
     model.onss_lon = Param(model.onss_ids, initialize=onss_lon, within=NonNegativeReals)
     model.onss_lat = Param(model.onss_ids, initialize=onss_lat, within=NonNegativeReals)
 
@@ -781,7 +792,7 @@ def opt_model(workspace_folder):
 
     def global_cost_rule(model):
         """
-        Calculate the total cost of establishing and operating a wind farm network. This includes the costs of selecting
+        Calculate the total cost of the energy system. This includes the costs of selecting
         and connecting wind farms, offshore substations, and onshore substations. The objective is to minimize this total cost.
 
         The total cost is computed by summing:
@@ -805,10 +816,6 @@ def opt_model(workspace_folder):
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
 
-    
-    print("Objective function defined.")
-    
-    
     """
     Define Constraints
     """
@@ -868,82 +875,86 @@ def opt_model(workspace_folder):
     
     model.oss_to_onss_con = Constraint(model.oss_ids, rule=oss_to_onss_rule)
 
-    def consistency_oss_rule(model, oss):
+    def match_iso_wf_oss_rule(model, wf, oss):
         """
-        Confirm that if an offshore substation (OSS) is active, it handles exactly one input and one output.
-        This function ensures that active offshore substations maintain a one-to-one correspondence between
-        the inter-array cables (IAC) they receive from wind farms and the export cables (EC) they send to onshore substations.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - oss: The index of the offshore substation being evaluated.
-
-        Returns:
-        - A constraint expression that each OSS has no more than one incoming and one outgoing connection,
-        and these must match in number.
-        """
-        input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
-        output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.onss_ids if (oss, onss) in model.viable_ec_ids)
-        return (input_from_wf == output_to_onss) & (input_from_wf <= 1)
-
-    model.consistency_oss_con = Constraint(model.oss_ids, rule=consistency_oss_rule)
-
-
-    def iso_code_matching_rule(model, wf, oss, onss):
-        """
-        Ensures that the country code (ISO) of the wind farm, offshore substation, and onshore substation matches
-        for all active connections. This constraint applies only where there is both an inter-array cable (IAC) 
-        and an export cable (EC) connection linking these components in sequence.
+        Ensures that the country code (ISO) of the wind farm matches that of the connected offshore substation
+        for all active inter-array cable (IAC) connections.
 
         Parameters:
         - model: The Pyomo model object containing the decision variables and parameters.
         - wf: The index of the wind farm being evaluated.
         - oss: The index of the offshore substation being evaluated.
-        - onss: The index of the onshore substation being evaluated.
 
         Returns:
-        - A constraint expression that enforces matching ISO codes across connected components.
+        - A constraint expression that enforces matching ISO codes between wind farms and offshore substations.
         """
-        if (wf, oss) in model.viable_iac_ids and (oss, onss) in model.viable_ec_ids:
-            return (model.wf_iso[wf] == model.oss_iso[oss]) & (model.oss_iso[oss] == model.onss_iso[onss]) | \
-                (model.select_iac_var[wf, oss] == 0) | (model.select_ec_var[oss, onss] == 0)
+        if (wf, oss) in model.viable_iac_ids:
+            return model.select_iac_var[wf, oss] * (model.wf_iso[wf] - model.oss_iso[oss]) == 0
         else:
             return Constraint.Skip
 
-    # Applying the constraint across all triple combinations of wf, oss, and onss
-    model.iso_code_matching_con = Constraint(model.wf_ids, model.oss_ids, model.onss_ids, rule=iso_code_matching_rule)
+    model.match_iso_wf_oss_con = Constraint(model.wf_ids, model.oss_ids, rule=match_iso_wf_oss_rule)
 
+    def match_iso_oss_onss_rule(model, oss, onss):
+        """
+        Ensures that the country code (ISO) of the offshore substation matches that of the connected onshore substation
+        for all active export cable (EC) connections.
 
+        Parameters:
+        - model: The Pyomo model object containing the decision variables and parameters.
+        - oss: The index of the offshore substation being evaluated.
+        - onss: The index of the onshore substation being evaluated.
 
+        Returns:
+        - A constraint expression that enforces matching ISO codes between offshore substations and onshore substations.
+        """
+        if (oss, onss) in model.viable_ec_ids:
+            return model.select_ec_var[oss, onss] * (model.oss_iso[oss] - model.onss_iso[onss]) == 0
+        else:
+            return Constraint.Skip
+
+    model.match_iso_oss_onss_con = Constraint(model.oss_ids, model.onss_ids, rule=match_iso_oss_onss_rule)
 
     """
     Solve the model
     """
     print("Solving model...")
-    
+
     # Create a solver object and specify PySCIPOpt as the solver
-    solver = SolverFactory('pyscipopt')
+    solver = SolverFactory('scip')
 
     # Solve the model
-    results = solver.solve(model)
-    
-    """
-    Print the solution
-    """
-    print("Succes! Displaying the solution...")
-    
-    # Check solver status and retrieve solution
-    if results.solver.termination_condition == TerminationCondition.optimal:
-        # Model was solved to optimality
-        model.display()
-    elif results.solver.termination_condition == TerminationCondition.infeasible:
-        # Model is infeasible
-        print("Model is infeasible.")
-    else:
-        # Other termination conditions (e.g., solver error)
-        print("Solver terminated with status:", results.solver.termination_condition)
+    results = solver.solve(model, tee=True)  # tee=True to display solver output during solving
 
-    return model
+    """
+        Print the solution
+        """
+    if results.solver.status == SolverStatus.ok and results.solver.termination_condition == TerminationCondition.optimal:
+        print("Success! Displaying the solution...")
+        
+        # Print selected wind farms
+        selected_wf = [wf for wf in model.wf_ids if model.select_wf_var[wf].value == 1]
+        print("Selected Wind Farms: ", selected_wf)
+        
+        # Print selected offshore substations
+        selected_oss = [oss for oss in model.oss_ids if model.select_oss_var[oss].value == 1]
+        print("Selected Offshore Substations: ", selected_oss)
+        
+        # Print active inter-array cable connections
+        active_iac = [(wf, oss) for (wf, oss) in model.viable_iac_ids if model.select_iac_var[wf, oss].value == 1]
+        print("Active Inter-Array Cables: ", active_iac)
+        
+        # Print active export cable connections
+        active_ec = [(oss, onss) for (oss, onss) in model.viable_ec_ids if model.select_ec_var[oss, onss].value == 1]
+        print("Active Export Cables: ", active_ec)
+
+    elif results.solver.termination_condition == TerminationCondition.infeasible:
+        print("No solution found: Problem is infeasible.")
+    else:
+        print("Solver Status: ", results.solver.status)
+    
+    return None
+
 
 # Define the main block
 if __name__ == "__main__":
