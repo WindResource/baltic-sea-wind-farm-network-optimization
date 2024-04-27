@@ -466,6 +466,26 @@ def ec_cost_plh(distance, capacity, polarity):
     
     return cost
 
+def onss_cost_plh(capacity, threshold):
+    """
+    Calculate the cost for ONSS expansion above a certain capacity.
+
+    Parameters:
+    - capacity (float): The total capacity for which the cost is to be calculated.
+    - threshold (float): The capacity threshold specific to the ONSS above which costs are incurred.
+    
+    Returns:
+    - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
+    """
+    
+    # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
+    cost_function = (capacity - threshold) * 1000
+    
+    # Ensure that the cost is only applied above the capacity threshold and is zero at or below the threshold
+    cost_function_max = (cost_function + abs(cost_function)) / 2
+    
+    return cost_function_max
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great-circle distance between two points
@@ -482,31 +502,38 @@ def haversine(lon1, lat1, lon2, lat2):
     r = 6371  # Radius of Earth in kilometers
     return c * r
 
-def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat):
+def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat, wf_iso, oss_iso):
     """
-    Find all pairs of offshore wind farms and offshore substations within 150km.
+    Find all pairs of offshore wind farms and offshore substations within 150km,
+    ensuring that they belong to the same country based on their ISO codes.
     
-    Parameters are dictionaries ided by substation IDs with longitude and latitude values.
+    Parameters are dictionaries indexed by IDs with longitude, latitude, and ISO codes.
     """
     connections = []
     for wf_id, oss_id in product(wf_lon.keys(), oss_lon.keys()):
+        # Calculate the distance first to see if they are within the viable range
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], oss_lon[oss_id], oss_lat[oss_id])
-        if distance <= 150:
-            connections.append((int(wf_id), int(oss_id)))
+        if distance <= 150:  # Check if the distance is within 150 km
+            # Then check if the ISO codes match for the current wind farm and offshore substation pair
+            if wf_iso[wf_id] == oss_iso[oss_id]:
+                connections.append((int(wf_id), int(oss_id)))
     return connections
 
-def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat):
+def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat, oss_iso, onss_iso):
     """
-    Find all pairs of offshore and onshore substations within 300km.
+    Find all pairs of offshore and onshore substations within 300km,
+    ensuring that they belong to the same country based on their ISO codes.
     
-    Parameters are dictionaries ided by substation IDs with longitude and latitude values.
+    Parameters are dictionaries indexed by substation IDs with longitude, latitude, and ISO codes.
     """
     connections = []
     for oss_id, onss_id in product(oss_lon.keys(), onss_lon.keys()):
+        # Calculate the distance first to see if they are within the viable range
         distance = haversine(oss_lon[oss_id], oss_lat[oss_id], onss_lon[onss_id], onss_lat[onss_id])
-        if distance <= 500:
-            connections.append((int(oss_id), int(onss_id)))
-            
+        if distance <= 300:  # Check if the distance is within 300 km
+            # Then check if the ISO codes match for the current offshore and onshore substation pair
+            if oss_iso[oss_id] == onss_iso[onss_id]:
+                connections.append((int(oss_id), int(onss_id)))
     return connections
 
 def opt_model(workspace_folder):
@@ -587,13 +614,14 @@ def opt_model(workspace_folder):
         oss_pdist[id] = data[6]
     
     # Onshore substation data
-    onss_iso, onss_lon, onss_lat = {}, {}, {}
+    onss_iso, onss_lon, onss_lat, onss_cthr = {}, {}, {}, {}
 
     for data in onss_dataset:
         id = int(data[0])
         onss_iso[id] = iso_to_int_mp[data[1]]
         onss_lon[id] = data[2]
         onss_lat[id] = data[3]
+        onss_cthr[id] = data[4]
 
     """
     Define model parameters
@@ -624,6 +652,7 @@ def opt_model(workspace_folder):
     model.onss_iso = Param(model.onss_ids, initialize=onss_iso, within=NonNegativeIntegers)
     model.onss_lon = Param(model.onss_ids, initialize=onss_lon, within=NonNegativeReals)
     model.onss_lat = Param(model.onss_ids, initialize=onss_lat, within=NonNegativeReals)
+    model.onss_cthr = Param(model.onss_ids, initialize=onss_cthr, within=NonNegativeIntegers)
 
     """
     Define decision variables
@@ -631,23 +660,32 @@ def opt_model(workspace_folder):
     print("Defining decision parameters...")
     
     # Calculate viable connections
-    viable_iac = find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat)
-    viable_ec = find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat)
+    viable_iac = find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat, wf_iso, oss_iso)
+    viable_ec = find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat, oss_iso, onss_iso)
 
     model.viable_iac_ids = Set(initialize= viable_iac, dimen=2)
     model.viable_ec_ids = Set(initialize= viable_ec, dimen=2)
     
     model.select_wf_var = Var(model.wf_ids, within=Binary)
     model.select_oss_var = Var(model.oss_ids, within=Binary)
+    model.select_onss_var = Var(model.onss_ids, within=Binary)
     model.select_iac_var = Var(model.viable_iac_ids, within=Binary)
     model.select_ec_var = Var(model.viable_ec_ids, within=Binary)
     
-    # Print the decision variables
-    print("select_wf ids:", list(model.select_wf_var)[:5])
-    print("select_oss ids:", list(model.select_oss_var)[:5])
-    print("select_iac ids:", list(model.select_iac_var)[:20])
-    print("select_ec ids:", list(model.select_ec_var)[:20])
+    
+    # Define a dictionary containing variable names and their respective lengths
+    print_variables = {
+        "select_wf": model.select_wf_var,
+        "select_oss": model.select_oss_var,
+        "select_onss": model.select_onss_var,
+        "select_iac": model.select_iac_var,
+        "select_ec": model.select_ec_var
+    }
 
+    # Iterate over the dictionary and print variable ids and their lengths
+    for name, var in print_variables.items():
+        print(f"{name} ids:", list(var)[:20])  # Print variable ids
+        print(f"Number of {name} indices:", len(var))  # Print number of indices
 
     """
     Define Expressions
@@ -735,7 +773,21 @@ def opt_model(workspace_folder):
 
     model.ec_cap_exp = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
 
-    
+    def onss_capacity_rule(model, onss):
+        """
+        Calculate the total transmission capacity received by an onshore substation (ONSS) from all connected offshore substations (OSS) through export cables (EC).
+
+        Parameters:
+        - model: The Pyomo model object.
+        - onss: Index of the onshore substation.
+
+        Returns:
+        - The total capacity received by the ONSS from all connected OSS.
+        """
+        return sum(model.ec_cap_exp[oss, onss] for oss in model.oss_ids if (oss, onss) in model.viable_ec_ids)
+
+    model.onss_cap_exp = Expression(model.onss_ids, rule=onss_capacity_rule)
+
     def iac_cost_rule(model, wf, oss):
         """
         Calculate the cost of an inter-array cable (IAC) connection based on distance and capacity.
@@ -784,6 +836,21 @@ def opt_model(workspace_folder):
     
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
+    def onss_cost_rule(model, onss):
+        """
+        Calculate the cost of operating an onshore substation (ONSS) based on its capacity.
+        Costs are incurred only if the capacity exceeds a certain threshold specific to the ONSS.
+
+        Parameters:
+        - model: The Pyomo model object.
+        - onss: Index of the onshore substation.
+
+        Returns:
+        - The calculated operational cost of the ONSS if it exceeds its specific capacity threshold.
+        """
+        return onss_cost_plh(model.onss_cap_exp[onss], model.onss_cthr[onss])
+
+    model.onss_cost_exp = Expression(model.onss_ids, rule=onss_cost_rule)
 
     """
     Define Objective function
@@ -809,9 +876,11 @@ def opt_model(workspace_folder):
         """
         wf_total_cost = sum(model.wf_cost[wf] * model.select_wf_var[wf] for wf in model.wf_ids)
         oss_total_cost = sum(model.oss_cost_exp[oss] * model.select_oss_var[oss] for oss in model.oss_ids)
+        onss_total_costs = sum(model.onss_cost_exp[onss] * model.select_onss_var[onss] for onss in model.onss_ids)
         iac_total_cost = sum(model.iac_cost_exp[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_iac_ids)
         ec_total_cost = sum(model.ec_cost_exp[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
-        return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost
+        
+        return wf_total_cost + oss_total_cost + onss_total_costs + iac_total_cost + ec_total_cost
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
@@ -875,45 +944,7 @@ def opt_model(workspace_folder):
     
     model.oss_to_onss_con = Constraint(model.oss_ids, rule=oss_to_onss_rule)
 
-    def match_iso_wf_oss_rule(model, wf, oss):
-        """
-        Ensures that the country code (ISO) of the wind farm matches that of the connected offshore substation
-        for all active inter-array cable (IAC) connections.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - wf: The index of the wind farm being evaluated.
-        - oss: The index of the offshore substation being evaluated.
-
-        Returns:
-        - A constraint expression that enforces matching ISO codes between wind farms and offshore substations.
-        """
-        if (wf, oss) in model.viable_iac_ids:
-            return model.select_iac_var[wf, oss] * (model.wf_iso[wf] - model.oss_iso[oss]) == 0
-        else:
-            return Constraint.Skip
-
-    model.match_iso_wf_oss_con = Constraint(model.wf_ids, model.oss_ids, rule=match_iso_wf_oss_rule)
-
-    def match_iso_oss_onss_rule(model, oss, onss):
-        """
-        Ensures that the country code (ISO) of the offshore substation matches that of the connected onshore substation
-        for all active export cable (EC) connections.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - oss: The index of the offshore substation being evaluated.
-        - onss: The index of the onshore substation being evaluated.
-
-        Returns:
-        - A constraint expression that enforces matching ISO codes between offshore substations and onshore substations.
-        """
-        if (oss, onss) in model.viable_ec_ids:
-            return model.select_ec_var[oss, onss] * (model.oss_iso[oss] - model.onss_iso[onss]) == 0
-        else:
-            return Constraint.Skip
-
-    model.match_iso_oss_onss_con = Constraint(model.oss_ids, model.onss_ids, rule=match_iso_oss_onss_rule)
+    return
 
     """
     Solve the model
