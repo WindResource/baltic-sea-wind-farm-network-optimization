@@ -1074,25 +1074,22 @@ def opt_model(workspace_folder):
         - A dictionary with configured solver options suitable for SCIP when solving NLP problems with binary variables.
         """
         solver_options = {
-            'tolerances/feasibility': 1e-6,  # Tighter feasibility tolerance
-            'tolerances/optimality': 1e-6,   # Tighter optimality tolerance
-            'tolerances/integrality': 1e-6,  # Tighter integrality tolerance for binary and integer variables
-            'presolving/maxrounds': 20,      # Increase the number of presolving rounds to handle complex models
-            'propagating/maxrounds': 50,    # Increase propagation rounds to improve constraint satisfaction
-            'presolving/domcol': 'aggressive',  # Aggressive dominance column reduction
-            'presolving/dualagg': True,      # Enable dual aggregation to combine constraints
-            'parallel/threads': -1,          # Utilize all available CPU cores
-            'emphasis': {'feasibility': True, 'optimality': False, 'hard': False},  # Emphasize feasibility
-            'nodeselection': 'hybrid',       # Use a hybrid strategy for node selection to balance depth and best-bound
-            'branching/varsel': 'pscost',    # Use pseudocost branching
-            'conflict/enable': True,         # Enable conflict analysis
-            'separating/maxrounds': -1,      # Unlimited separation rounds at each node
-            'separating/aggressive': True,   # Aggressive separation to frequently generate cutting planes
-            'heuristics/rens/freq': 5,       # More frequent execution of RENS heuristic
-            'heuristics/diving/freq': 5,     # Frequent diving heuristics to explore promising branches
-            'propagating/maxroundsroot': 30,  # More propagation rounds at the root node
-            'limits/nodes': 1e6,             # Node limit to control the size of the search tree
-            'limits/totalnodes': 1e6         # Total node limit across all threads
+            'numerics/scaling': 1,  # Enable scaling
+            'tolerances/feasibility': 1e-6,  # Tolerance for feasibility checks
+            'tolerances/optimality': 1e-6,   # Tolerance for optimality conditions
+            'tolerances/integrality': 1e-6,  # Tolerance for integer variable constraints
+            'presolving/maxrounds': 20,      # Max presolve iterations to simplify the model
+            'propagating/maxrounds': 50,     # Max constraint propagation rounds
+            'parallel/threads': -1,          # Use all CPU cores for parallel processing
+            'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
+            'branching/varsel': 'pscost',    # Pseudocost variable selection in branching
+            'separating/aggressive': True,   # Enable aggressive separation
+            'conflict/enable': True,         # Activate conflict analysis
+            'heuristics/rens/freq': 10,      # Frequency of RENS heuristic
+            'heuristics/diving/freq': 10,    # Frequency of diving heuristic
+            'propagating/maxroundsroot': 15, # Propagation rounds at root node
+            'limits/nodes': 1e5,             # Maximum nodes in search tree
+            'limits/totalnodes': 1e5         # Total node limit across threads
         }
 
         return solver_options
