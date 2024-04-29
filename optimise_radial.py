@@ -1001,10 +1001,10 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        global_cap_frac = 0.5
-        
-        min_required_capacity = global_cap_frac * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
-        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
+        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= model.min_required_capacity
+    
+    # Precompute minimum required capacity
+    model.min_required_capacity = 0.5 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
     
@@ -1012,34 +1012,36 @@ def opt_model(workspace_folder):
         """
         Ensure each selected wind farm is connected to exactly one offshore substation.
         This function ensures that if a wind farm is selected, it must be connected to a single offshore substation.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - wf: The index of the wind farm being evaluated.
-
-        Returns:
-        - A constraint expression enforcing one-to-one connection between selected wind farms and offshore substations.
         """
-        return sum(model.select_iac_var[wf, oss] for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids) == model.select_wf_var[wf]
+        return sum(model.select_iac_var[wf, oss] for oss in model.precomputed_wf_oss[wf]) == model.select_wf_var[wf]
+
+    # Precompute the list of viable offshore substations for each wind farm
+    model.precomputed_wf_oss = {
+        wf: [oss for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids]
+        for wf in model.viable_wf_ids
+    }
 
     model.wind_farm_to_oss_con = Constraint(model.viable_wf_ids, rule=wf_to_oss_rule)
+
 
     def oss_to_onss_rule(model, oss):
         """
         Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
         This function enforces that offshore substations relay their connections to precisely one onshore substation.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - oss: The index of the offshore substation being evaluated.
-
-        Returns:
-        - A constraint expression that limits each offshore substation to a single output to onshore substations,
-        matching its input connections.
         """
-        input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-        output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids)
+        input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.precomputed_iac[oss])
+        output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.precomputed_ec[oss])
         return output_to_onss == input_from_wf
+    
+    # Precompute the filtered sets for each oss to speed up access within the function
+    model.precomputed_iac = {
+        oss: [wf for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids]
+        for oss in model.viable_oss_ids
+    }
+    model.precomputed_ec = {
+        oss: [onss for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids]
+        for oss in model.viable_oss_ids
+    }
     
     model.oss_to_onss_con = Constraint(model.viable_oss_ids, rule=oss_to_onss_rule)
 
@@ -1063,13 +1065,6 @@ def opt_model(workspace_folder):
         """
         Configure SCIP solver options to optimize performance for NLP problems with many binary variables.
 
-        Options:
-        - Adjust feasibility and optimality tolerances to ensure tighter convergence criteria.
-        - Increase the number of propagation and separation rounds to strengthen the LP relaxation.
-        - Enable more aggressive presolving and separating strategies to reduce problem complexity and improve bound tightening.
-        - Use advanced branching and node selection strategies to explore the search tree more efficiently.
-        - Enable additional heuristics and conflict analysis to improve solution quality and solver robustness.
-
         Returns:
         - A dictionary with configured solver options suitable for SCIP when solving NLP problems with binary variables.
         """
@@ -1078,7 +1073,7 @@ def opt_model(workspace_folder):
             'tolerances/feasibility': 1e-6,  # Tolerance for feasibility checks
             'tolerances/optimality': 1e-6,   # Tolerance for optimality conditions
             'tolerances/integrality': 1e-6,  # Tolerance for integer variable constraints
-            'presolving/maxrounds': 20,      # Max presolve iterations to simplify the model
+            'presolving/maxrounds': 50,      # Max presolve iterations to simplify the model
             'propagating/maxrounds': 50,     # Max constraint propagation rounds
             'parallel/threads': -1,          # Use all CPU cores for parallel processing
             'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
