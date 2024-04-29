@@ -581,7 +581,7 @@ def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat, wf_iso, oss_iso):
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], oss_lon[oss_id], oss_lat[oss_id])
         if distance <= 150:  # Check if the distance is within 150 km
             # Then check if the ISO codes match for the current wind farm and offshore substation pair
-            if wf_iso[wf_id] == oss_iso[oss_id]:
+            if wf_iso[wf_id] == 6: #oss_iso[oss_id]:
                 connections.append((int(wf_id), int(oss_id)))
     return connections
 
@@ -598,9 +598,42 @@ def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat, oss_iso, onss_iso):
         distance = haversine(oss_lon[oss_id], oss_lat[oss_id], onss_lon[onss_id], onss_lat[onss_id])
         if distance <= 300:  # Check if the distance is within 300 km
             # Then check if the ISO codes match for the current offshore and onshore substation pair
-            if oss_iso[oss_id] == onss_iso[onss_id]:
+            if oss_iso[oss_id] == 6: #onss_iso[onss_id]:
                 connections.append((int(oss_id), int(onss_id)))
     return connections
+
+def get_viable_entities(viable_iac, viable_ec):
+    """
+    Identifies unique wind farm, offshore substation, and onshore substation IDs
+    based on their involvement in viable inter-array and export cable connections.
+
+    Parameters:
+    - viable_iac (list of tuples): List of tuples, each representing a viable connection
+        between a wind farm and an offshore substation (wf_id, oss_id).
+    - viable_ec (list of tuples): List of tuples, each representing a viable connection
+        between an offshore substation and an onshore substation (oss_id, onss_id).
+
+    Returns:
+    - viable_wf (set): Set of wind farm IDs with at least one viable connection to an offshore substation.
+    - viable_oss (set): Set of offshore substation IDs involved in at least one viable connection
+        either to a wind farm or an onshore substation.
+    - viable_onss (set): Set of onshore substation IDs with at least one viable connection to an offshore substation.
+    """
+    viable_wf = set()
+    viable_oss = set()
+    viable_onss = set()
+
+    # Extract unique wind farm and offshore substation IDs from inter-array connections
+    for wf_id, oss_id in viable_iac:
+        viable_wf.add(int(wf_id))
+        viable_oss.add(int(oss_id))
+
+    # Extract unique offshore and onshore substation IDs from export cable connections
+    for oss_id, onss_id in viable_ec:
+        viable_oss.add(int(oss_id))
+        viable_onss.add(int(onss_id))
+
+    return viable_wf, viable_oss, viable_onss
 
 def opt_model(workspace_folder):
     """
@@ -618,10 +651,13 @@ def opt_model(workspace_folder):
     """
     print("Initialising model...")
     
-    # Set the SCIP binary directory
-    scip_dir = "C:\\Program Files\\SCIPOptSuite 9.0.0"
-    os.environ["SCIPOPTDIR"] = scip_dir
-
+    # # Set the SCIP binary directory
+    # scip_dir = "C:\\Program Files\\SCIPOptSuite 9.0.0"
+    # os.environ["SCIPOPTDIR"] = scip_dir
+    
+    # Set the path to the Gurobi solver executable
+    gurobi_path = "C:\\gurobi1003\\win64\\bin\\gurobi_cl.exe"
+    
     # Create a Pyomo model
     model = ConcreteModel()
 
@@ -732,9 +768,12 @@ def opt_model(workspace_folder):
     model.viable_iac_ids = Set(initialize= viable_iac, dimen=2)
     model.viable_ec_ids = Set(initialize= viable_ec, dimen=2)
     
-    model.select_wf_var = Var(model.wf_ids, within=Binary)
-    model.select_oss_var = Var(model.oss_ids, within=Binary)
-    model.select_onss_var = Var(model.onss_ids, within=Binary)
+    # Calculate viable entities based on the viable connections
+    model.viable_wf_ids, model.viable_oss_ids, model.viable_onss_ids = get_viable_entities(viable_iac, viable_ec)
+    
+    model.select_wf_var = Var(model.viable_wf_ids, within=Binary)
+    model.select_oss_var = Var(model.viable_oss_ids, within=Binary)
+    model.select_onss_var = Var(model.viable_onss_ids, within=Binary)
     model.select_iac_var = Var(model.viable_iac_ids, within=Binary)
     model.select_ec_var = Var(model.viable_ec_ids, within=Binary)
     
@@ -940,9 +979,9 @@ def opt_model(workspace_folder):
         Returns:
         - The computed total cost of the network configuration, which the optimization process seeks to minimize.
         """
-        wf_total_cost = sum(model.wf_cost[wf] * model.select_wf_var[wf] for wf in model.wf_ids)
-        oss_total_cost = sum(model.oss_cost_exp[oss] * model.select_oss_var[oss] for oss in model.oss_ids)
-        onss_total_costs = sum(model.onss_cost_exp[onss] * model.select_onss_var[onss] for onss in model.onss_ids)
+        wf_total_cost = sum(model.wf_cost[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids)
+        oss_total_cost = sum(model.oss_cost_exp[oss] * model.select_oss_var[oss] for oss in model.viable_oss_ids)
+        onss_total_costs = sum(model.onss_cost_exp[onss] * model.select_onss_var[onss] for onss in model.viable_onss_ids)
         iac_total_cost = sum(model.iac_cost_exp[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_iac_ids)
         ec_total_cost = sum(model.ec_cost_exp[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
         
@@ -968,10 +1007,10 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        global_cap_frac = 0.5
+        global_cap_frac = 0.00001
         
-        min_required_capacity = global_cap_frac * sum(model.wf_cap[wf] for wf in model.wf_ids)
-        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.wf_ids) >= min_required_capacity
+        min_required_capacity = global_cap_frac * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
     
@@ -987,43 +1026,48 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression enforcing one-to-one connection between selected wind farms and offshore substations.
         """
-        return sum(model.select_iac_var[wf, oss] for oss in model.oss_ids if (wf, oss) in model.viable_iac_ids) == model.select_wf_var[wf]
+        return sum(model.select_iac_var[wf, oss] for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids) == model.select_wf_var[wf]
 
-    model.wind_farm_to_oss_con = Constraint(model.wf_ids, rule=wind_farm_to_oss_rule)
+    model.wind_farm_to_oss_con = Constraint(model.viable_wf_ids, rule=wind_farm_to_oss_rule)
 
-    def oss_to_onss_rule(model, oss):
-        """
-        Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
-        This function enforces that offshore substations relay their connections to precisely one onshore substation.
+    # def oss_to_onss_rule(model, oss):
+    #     """
+    #     Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
+    #     This function enforces that offshore substations relay their connections to precisely one onshore substation.
 
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - oss: The index of the offshore substation being evaluated.
+    #     Parameters:
+    #     - model: The Pyomo model object containing the decision variables and parameters.
+    #     - oss: The index of the offshore substation being evaluated.
 
-        Returns:
-        - A constraint expression that limits each offshore substation to a single output to onshore substations,
-        matching its input connections.
-        """
-        input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
-        output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.onss_ids if (oss, onss) in model.viable_ec_ids)
-        return output_to_onss == input_from_wf
+    #     Returns:
+    #     - A constraint expression that limits each offshore substation to a single output to onshore substations,
+    #     matching its input connections.
+    #     """
+    #     input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
+    #     output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.onss_ids if (oss, onss) in model.viable_ec_ids)
+    #     return output_to_onss == input_from_wf
     
-    model.oss_to_onss_con = Constraint(model.oss_ids, rule=oss_to_onss_rule)
+    # model.oss_to_onss_con = Constraint(model.oss_ids, rule=oss_to_onss_rule)
+
 
     """
     Solve the model
     """
     print("Solving model...")
 
-    # Create a solver
-    solver = SolverFactory('scip')
+    # # Create a solver
+    # solver = SolverFactory('scip')
+    
+    # Create a solver object and specify the solver executable path
+    solver = SolverFactory('gurobi')
+    solver.options['executable'] = gurobi_path
 
     # Define the path for the solver log
     solver_log_path = os.path.join(workspace_folder, "solver_log.txt")
     
     # Pass the log path directly to the solver
     results = solver.solve(model, tee=True, logfile=solver_log_path)
-
+    
     # Detailed checking of solver results
     if results.solver.status == SolverStatus.ok:
         if results.solver.termination_condition == TerminationCondition.optimal:
