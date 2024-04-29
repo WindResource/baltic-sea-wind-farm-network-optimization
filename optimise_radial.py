@@ -395,6 +395,72 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
     
     return oss_costs
 
+def save_results(model, workspace_folder):
+    """
+    Save selected components and their attributes from the optimization model to .npy and .txt files as structured arrays.
+
+    This function extracts selected component data such as IDs, coordinates, capacities, and costs from the model,
+    based on the results of the optimization. It saves the data in both NumPy structured array format (.npy) for 
+    numerical analysis and text format (.txt) for readability, in the specified workspace folder.
+
+    Parameters:
+    - model (ConcreteModel): The optimized Pyomo ConcreteModel containing the results.
+    - workspace_folder (str): Path to the directory where output files will be saved.
+
+    Each component's data is saved in a separate file named according to the component type (e.g., 'wf_data.npy' for wind farms).
+    """
+    components = {
+        'wf': {
+            'var': model.select_wf_var,
+            'ids': model.wf_ids,
+            'data': ['wf_iso', 'wf_lon', 'wf_lat', 'wf_cap', 'wf_cost'],
+            'dtype': [('id', 'i4'), ('iso', 'i4'), ('lon', 'f8'), ('lat', 'f8'), ('cap', 'i4'), ('cost', 'f8')]
+        },
+        'oss': {
+            'var': model.select_oss_var,
+            'ids': model.oss_ids,
+            'data': ['oss_iso', 'oss_lon', 'oss_lat', 'oss_wdepth', 'oss_icover', 'oss_pdist'],
+            'dtype': [('id', 'i4'), ('iso', 'i4'), ('lon', 'f8'), ('lat', 'f8'), ('wdepth', 'i4'), ('icover', 'i1'), ('pdist', 'i4')]
+        },
+        'onss': {
+            'var': model.select_onss_var,
+            'ids': model.onss_ids,
+            'data': ['onss_iso', 'onss_lon', 'onss_lat', 'onss_cthr'],
+            'dtype': [('id', 'i4'), ('iso', 'i4'), ('lon', 'f8'), ('lat', 'f8'), ('cthr', 'i4')]
+        },
+        'iac': {
+            'var': model.select_iac_var,
+            'ids': model.viable_iac_ids,
+            'data': ['iac_dist_exp', 'iac_cap_exp', 'iac_cost_exp'],
+            'dtype': [('wf_id', 'i4'), ('oss_id', 'i4'), ('dist', 'f8'), ('cap', 'i4'), ('cost', 'f8')]
+        },
+        'ec': {
+            'var': model.select_ec_var,
+            'ids': model.viable_ec_ids,
+            'data': ['ec_dist_exp', 'ec_cap_exp', 'ec_cost_exp'],
+            'dtype': [('oss_id', 'i4'), ('onss_id', 'i4'), ('dist', 'f8'), ('cap', 'i4'), ('cost', 'f8')]
+        }
+    }
+
+    for comp, details in components.items():
+        selected_ids = [idx for idx in details['ids'] if details['var'][idx].value() == 1]
+        data_to_save = []
+        for idx in selected_ids:
+            item_data = (idx if isinstance(idx, tuple) else (idx,))
+            for param_name in details['data']:
+                param = getattr(model, param_name)
+                item_data += (param[idx].value if hasattr(param[idx], 'value') else param[idx],)
+            data_to_save.append(item_data)
+
+        # Create a structured numpy array
+        np_data = np.array(data_to_save, dtype=details['dtype'])
+        np.save(os.path.join(workspace_folder, f"{comp}_data.npy"), np_data)
+        with open(os.path.join(workspace_folder, f"{comp}_data.txt"), 'w') as file:
+            for item in np_data:
+                file.write(str(tuple(item)) + '\n')
+
+        print(f"Saved {comp} data to {workspace_folder} as structured numpy array and text file.")
+
 def oss_cost_plh(wdepth, icover, pdist, capacity, polarity):
     """
     Placeholder function to calculate offshore substation costs.
@@ -944,46 +1010,41 @@ def opt_model(workspace_folder):
     
     model.oss_to_onss_con = Constraint(model.oss_ids, rule=oss_to_onss_rule)
 
-    return
-
     """
     Solve the model
     """
     print("Solving model...")
 
-    # Create a solver object and specify PySCIPOpt as the solver
+    # Create a solver
     solver = SolverFactory('scip')
 
-    # Solve the model
-    results = solver.solve(model, tee=True)  # tee=True to display solver output during solving
-
-    """
-        Print the solution
-        """
-    if results.solver.status == SolverStatus.ok and results.solver.termination_condition == TerminationCondition.optimal:
-        print("Success! Displaying the solution...")
-        
-        # Print selected wind farms
-        selected_wf = [wf for wf in model.wf_ids if model.select_wf_var[wf].value == 1]
-        print("Selected Wind Farms: ", selected_wf)
-        
-        # Print selected offshore substations
-        selected_oss = [oss for oss in model.oss_ids if model.select_oss_var[oss].value == 1]
-        print("Selected Offshore Substations: ", selected_oss)
-        
-        # Print active inter-array cable connections
-        active_iac = [(wf, oss) for (wf, oss) in model.viable_iac_ids if model.select_iac_var[wf, oss].value == 1]
-        print("Active Inter-Array Cables: ", active_iac)
-        
-        # Print active export cable connections
-        active_ec = [(oss, onss) for (oss, onss) in model.viable_ec_ids if model.select_ec_var[oss, onss].value == 1]
-        print("Active Export Cables: ", active_ec)
-
-    elif results.solver.termination_condition == TerminationCondition.infeasible:
-        print("No solution found: Problem is infeasible.")
-    else:
-        print("Solver Status: ", results.solver.status)
+    # Define the path for the solver log
+    solver_log_path = os.path.join(workspace_folder, "solver_log.txt")
     
+    # Pass the log path directly to the solver
+    results = solver.solve(model, tee=True, logfile=solver_log_path)
+
+    # Detailed checking of solver results
+    if results.solver.status == SolverStatus.ok:
+        if results.solver.termination_condition == TerminationCondition.optimal:
+            print("Solver found an optimal solution.")
+            save_results(model, workspace_folder)
+        elif results.solver.termination_condition == TerminationCondition.infeasible:
+            print("Problem is infeasible. Check model constraints and data.")
+        elif results.solver.termination_condition == TerminationCondition.unbounded:
+            print("Problem is unbounded. Check objective function and constraints.")
+        else:
+            print(f"Solver terminated with condition: {results.solver.termination_condition}.")
+    elif results.solver.status == SolverStatus.error:
+        print("Solver error occurred. Check solver log for more details.")
+    elif results.solver.status == SolverStatus.warning:
+        print("Solver finished with warnings. Results may not be reliable.")
+    else:
+        print(f"Unexpected solver status: {results.solver.status}. Check solver log for details.")
+
+    # Optionally, print a message about where the solver log was saved
+    print(f"Solver log saved to {solver_log_path}")
+
     return None
 
 
