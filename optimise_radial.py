@@ -581,7 +581,7 @@ def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat, wf_iso, oss_iso):
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], oss_lon[oss_id], oss_lat[oss_id])
         if distance <= 150:  # Check if the distance is within 150 km
             # Then check if the ISO codes match for the current wind farm and offshore substation pair
-            if wf_iso[wf_id] == 6: #oss_iso[oss_id]:
+            if wf_iso[wf_id] == oss_iso[oss_id]:
                 connections.append((int(wf_id), int(oss_id)))
     return connections
 
@@ -598,7 +598,7 @@ def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat, oss_iso, onss_iso):
         distance = haversine(oss_lon[oss_id], oss_lat[oss_id], onss_lon[onss_id], onss_lat[onss_id])
         if distance <= 300:  # Check if the distance is within 300 km
             # Then check if the ISO codes match for the current offshore and onshore substation pair
-            if oss_iso[oss_id] == 6: #onss_iso[onss_id]:
+            if oss_iso[oss_id] == onss_iso[onss_id]:
                 connections.append((int(oss_id), int(onss_id)))
     return connections
 
@@ -650,13 +650,6 @@ def opt_model(workspace_folder):
     Initialise model
     """
     print("Initialising model...")
-    
-    # # Set the SCIP binary directory
-    # scip_dir = "C:\\Program Files\\SCIPOptSuite 9.0.0"
-    # os.environ["SCIPOPTDIR"] = scip_dir
-    
-    # Set the path to the Gurobi solver executable
-    gurobi_path = "C:\\gurobi1003\\win64\\bin\\gurobi_cl.exe"
     
     # Create a Pyomo model
     model = ConcreteModel()
@@ -858,9 +851,9 @@ def opt_model(workspace_folder):
         Returns:
         - The total capacity received by the OSS from connected wind farms.
         """
-        return sum(model.iac_cap_exp[wf, oss] * model.select_iac_var[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
+        return sum(model.iac_cap_exp[wf, oss] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
     
-    model.oss_cap_exp = Expression(model.oss_ids, rule=oss_capacity_rule)
+    model.oss_cap_exp = Expression(model.viable_oss_ids, rule=oss_capacity_rule)
 
     def ec_capacity_rule(model, oss, onss):
         """
@@ -889,9 +882,10 @@ def opt_model(workspace_folder):
         Returns:
         - The total capacity received by the ONSS from all connected OSS.
         """
-        return sum(model.ec_cap_exp[oss, onss] for oss in model.oss_ids if (oss, onss) in model.viable_ec_ids)
 
-    model.onss_cap_exp = Expression(model.onss_ids, rule=onss_capacity_rule)
+        return sum(model.ec_cap_exp[oss, onss] * model.select_ec_var[oss,onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
+
+    model.onss_cap_exp = Expression(model.viable_onss_ids, rule=onss_capacity_rule)
 
     def iac_cost_rule(model, wf, oss):
         """
@@ -923,7 +917,7 @@ def opt_model(workspace_folder):
         """
         return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_exp[oss], polarity = "AC")
 
-    model.oss_cost_exp = Expression(model.oss_ids, rule=oss_cost_rule)
+    model.oss_cost_exp = Expression(model.viable_oss_ids, rule=oss_cost_rule)
 
     def ec_cost_rule(model, oss, onss):
         """
@@ -955,7 +949,7 @@ def opt_model(workspace_folder):
         """
         return onss_cost_plh(model.onss_cap_exp[onss], model.onss_cthr[onss])
 
-    model.onss_cost_exp = Expression(model.onss_ids, rule=onss_cost_rule)
+    model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
     """
     Define Objective function
@@ -985,7 +979,7 @@ def opt_model(workspace_folder):
         iac_total_cost = sum(model.iac_cost_exp[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_iac_ids)
         ec_total_cost = sum(model.ec_cost_exp[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
         
-        return wf_total_cost + oss_total_cost + onss_total_costs + iac_total_cost + ec_total_cost
+        return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost #+ onss_total_costs
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
@@ -1007,14 +1001,14 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        global_cap_frac = 0.00001
+        global_cap_frac = 0.5
         
         min_required_capacity = global_cap_frac * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
     
-    def wind_farm_to_oss_rule(model, wf):
+    def wf_to_oss_rule(model, wf):
         """
         Ensure each selected wind farm is connected to exactly one offshore substation.
         This function ensures that if a wind farm is selected, it must be connected to a single offshore substation.
@@ -1028,26 +1022,26 @@ def opt_model(workspace_folder):
         """
         return sum(model.select_iac_var[wf, oss] for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids) == model.select_wf_var[wf]
 
-    model.wind_farm_to_oss_con = Constraint(model.viable_wf_ids, rule=wind_farm_to_oss_rule)
+    model.wind_farm_to_oss_con = Constraint(model.viable_wf_ids, rule=wf_to_oss_rule)
 
-    # def oss_to_onss_rule(model, oss):
-    #     """
-    #     Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
-    #     This function enforces that offshore substations relay their connections to precisely one onshore substation.
+    def oss_to_onss_rule(model, oss):
+        """
+        Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
+        This function enforces that offshore substations relay their connections to precisely one onshore substation.
 
-    #     Parameters:
-    #     - model: The Pyomo model object containing the decision variables and parameters.
-    #     - oss: The index of the offshore substation being evaluated.
+        Parameters:
+        - model: The Pyomo model object containing the decision variables and parameters.
+        - oss: The index of the offshore substation being evaluated.
 
-    #     Returns:
-    #     - A constraint expression that limits each offshore substation to a single output to onshore substations,
-    #     matching its input connections.
-    #     """
-    #     input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
-    #     output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.onss_ids if (oss, onss) in model.viable_ec_ids)
-    #     return output_to_onss == input_from_wf
+        Returns:
+        - A constraint expression that limits each offshore substation to a single output to onshore substations,
+        matching its input connections.
+        """
+        input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
+        output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids)
+        return output_to_onss == input_from_wf
     
-    # model.oss_to_onss_con = Constraint(model.oss_ids, rule=oss_to_onss_rule)
+    model.oss_to_onss_con = Constraint(model.viable_oss_ids, rule=oss_to_onss_rule)
 
 
     """
@@ -1055,18 +1049,73 @@ def opt_model(workspace_folder):
     """
     print("Solving model...")
 
+    # # Set the SCIP binary directory
+    # scip_dir = "C:\\Program Files\\SCIPOptSuite 9.0.0"
+    # os.environ["SCIPOPTDIR"] = scip_dir
+    
     # # Create a solver
     # solver = SolverFactory('scip')
     
+    # Set the path to the Gurobi solver executable
+    # gurobi_path = "C:\\gurobi1003\\win64\\bin\\gurobi_cl.exe"
+    
+    def configure_scip_solver():
+        """
+        Configure SCIP solver options to optimize performance for NLP problems with many binary variables.
+
+        Options:
+        - Adjust feasibility and optimality tolerances to ensure tighter convergence criteria.
+        - Increase the number of propagation and separation rounds to strengthen the LP relaxation.
+        - Enable more aggressive presolving and separating strategies to reduce problem complexity and improve bound tightening.
+        - Use advanced branching and node selection strategies to explore the search tree more efficiently.
+        - Enable additional heuristics and conflict analysis to improve solution quality and solver robustness.
+
+        Returns:
+        - A dictionary with configured solver options suitable for SCIP when solving NLP problems with binary variables.
+        """
+        solver_options = {
+            'tolerances/feasibility': 1e-6,  # Tighter feasibility tolerance
+            'tolerances/optimality': 1e-6,   # Tighter optimality tolerance
+            'tolerances/integrality': 1e-6,  # Tighter integrality tolerance for binary and integer variables
+            'presolving/maxrounds': 20,      # Increase the number of presolving rounds to handle complex models
+            'propagating/maxrounds': 50,    # Increase propagation rounds to improve constraint satisfaction
+            'presolving/domcol': 'aggressive',  # Aggressive dominance column reduction
+            'presolving/dualagg': True,      # Enable dual aggregation to combine constraints
+            'parallel/threads': -1,          # Utilize all available CPU cores
+            'emphasis': {'feasibility': True, 'optimality': False, 'hard': False},  # Emphasize feasibility
+            'nodeselection': 'hybrid',       # Use a hybrid strategy for node selection to balance depth and best-bound
+            'branching/varsel': 'pscost',    # Use pseudocost branching
+            'conflict/enable': True,         # Enable conflict analysis
+            'separating/maxrounds': -1,      # Unlimited separation rounds at each node
+            'separating/aggressive': True,   # Aggressive separation to frequently generate cutting planes
+            'heuristics/rens/freq': 5,       # More frequent execution of RENS heuristic
+            'heuristics/diving/freq': 5,     # Frequent diving heuristics to explore promising branches
+            'propagating/maxroundsroot': 30,  # More propagation rounds at the root node
+            'limits/nodes': 1e6,             # Node limit to control the size of the search tree
+            'limits/totalnodes': 1e6         # Total node limit across all threads
+        }
+
+        return solver_options
+
+    
+    # Set the path to the CBC solver executable
+    scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
+    
     # Create a solver object and specify the solver executable path
-    solver = SolverFactory('gurobi')
-    solver.options['executable'] = gurobi_path
+    solver = SolverFactory('scip')
+    solver.options['executable'] = scip_path
 
     # Define the path for the solver log
     solver_log_path = os.path.join(workspace_folder, "solver_log.txt")
     
+    # Retrieve solver options with the configured settings
+    solver_options = configure_scip_solver()
+    
     # Pass the log path directly to the solver
-    results = solver.solve(model, tee=True, logfile=solver_log_path)
+    results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
+    
+    
+    return
     
     # Detailed checking of solver results
     if results.solver.status == SolverStatus.ok:
