@@ -788,168 +788,54 @@ def opt_model(workspace_folder):
     """
     Define Expressions
     """
-    print("Defining distance expressions...")
+    print("Defining expressions...")
     
-    def iac_dist_rule(model, wf, oss):
-        """
-        Calculate the geographic distance between a wind farm (WF) and an offshore substation (OSS) using the Haversine formula,
-        only if there is an inter-array cable (IAC) connection.
-
-        Parameters:
-        - model: The Pyomo model object.
-        - wf: Index of the wind farm.
-        - oss: Index of the offshore substation.
-
-        Returns:
-        - The calculated distance multiplied by the binary decision variable indicating if the connection exists.
-        """
-        return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss]) * model.select_iac_var[wf, oss]
-    
-    model.iac_dist_exp = Expression(model.viable_iac_ids, rule=iac_dist_rule)
-
-    def ec_dist_rule(model, oss, onss):
-        """
-        Calculate the geographic distance between an offshore substation (OSS) and an onshore substation (ONSS) using the Haversine formula,
-        only if there is an export cable (EC) connection.
-
-        Parameters:
-        - model: The Pyomo model object.
-        - oss: Index of the offshore substation.
-        - onss: Index of the onshore substation.
-
-        Returns:
-        - The calculated distance multiplied by the binary decision variable indicating if the connection exists.
-        """
-        return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss]) * model.select_ec_var[oss, onss]
-    
-    model.ec_dist_exp = Expression(model.viable_ec_ids, rule=ec_dist_rule)
-    
-    def iac_capacity_rule(model, wf, oss):
-        """
-        Calculate the capacity contribution of a wind farm (WF) to an offshore substation (OSS) through an inter-array cable (IAC).
-
-        Parameters:
-        - model: The Pyomo model object.
-        - wf: Index of the wind farm.
-        - oss: Index of the offshore substation.
-
-        Returns:
-        - The wind farm's capacity multiplied by the binary decision variable indicating if the connection exists.
-        """
-        return model.wf_cap[wf] * model.select_iac_var[wf, oss]
-    
-    model.iac_cap_exp = Expression(model.viable_iac_ids, rule=iac_capacity_rule)
-
-    def oss_capacity_rule(model, oss):
-        """
-        Sum the capacities from all connected wind farms to an offshore substation (OSS).
-
-        Parameters:
-        - model: The Pyomo model object.
-        - oss: Index of the offshore substation.
-
-        Returns:
-        - The total capacity received by the OSS from connected wind farms.
-        """
-        return sum(model.iac_cap_exp[wf, oss] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-    
-    model.oss_cap_exp = Expression(model.viable_oss_ids, rule=oss_capacity_rule)
-
-    def ec_capacity_rule(model, oss, onss):
-        """
-        Calculate the transmission capacity from an offshore substation (OSS) to an onshore substation (ONSS) through an export cable (EC).
-
-        Parameters:
-        - model: The Pyomo model object.
-        - oss: Index of the offshore substation.
-        - onss: Index of the onshore substation.
-
-        Returns:
-        - The capacity of the OSS multiplied by the binary decision variable indicating if the connection exists.
-        """
-        return model.oss_cap_exp[oss] * model.select_ec_var[oss, onss]
-
-    model.ec_cap_exp = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
-
-    def onss_capacity_rule(model, onss):
-        """
-        Calculate the total transmission capacity received by an onshore substation (ONSS) from all connected offshore substations (OSS) through export cables (EC).
-
-        Parameters:
-        - model: The Pyomo model object.
-        - onss: Index of the onshore substation.
-
-        Returns:
-        - The total capacity received by the ONSS from all connected OSS.
-        """
-
-        return sum(model.ec_cap_exp[oss, onss] * model.select_ec_var[oss,onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
-
-    model.onss_cap_exp = Expression(model.viable_onss_ids, rule=onss_capacity_rule)
-
     def iac_cost_rule(model, wf, oss):
         """
-        Calculate the cost of an inter-array cable (IAC) connection based on distance and capacity.
-
-        Parameters:
-        - model: The Pyomo model object.
-        - wf: Index of the wind farm.
-        - oss: Index of the offshore substation.
-
-        Returns:
-        - The calculated cost of the IAC.
+        Direct calculation of IAC cost based on distance and capacity, incorporating directly into the cost expression.
         """
-        return iac_cost_plh(model.iac_dist_exp[wf, oss], model.iac_cap_exp[wf, oss], polarity = "AC")
-        
+        distance = haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss]) * model.select_iac_var[wf, oss]
+        capacity = model.wf_cap[wf] * model.select_iac_var[wf, oss]
+        return iac_cost_plh(distance, capacity, polarity="AC")
+
     model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
 
     def oss_cost_rule(model, oss):
         """
-        Calculate the cost of maintaining an offshore substation (OSS) based on water depth, ice cover, and port distance,
-        adjusted by its capacity.
-
-        Parameters:
-        - model: The Pyomo model object.
-        - oss: Index of the offshore substation.
-
-        Returns:
-        - The calculated cost of the OSS.
+        Direct calculation of OSS cost based on water depth, ice cover, port distance, and total capacity from all connected wind farms.
         """
-        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_exp[oss], polarity = "AC")
+        total_capacity = sum(model.wf_cap[wf] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
+        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], total_capacity, polarity="AC")
 
     model.oss_cost_exp = Expression(model.viable_oss_ids, rule=oss_cost_rule)
 
     def ec_cost_rule(model, oss, onss):
         """
-        Calculate the cost of an export cable (EC) connection between an OSS and an ONSS based on the distance and the transmission capacity.
-
-        Parameters:
-        - model: The Pyomo model object.
-        - oss: Index of the offshore substation.
-        - onss: Index of the onshore substation.
-
-        Returns:
-        - The calculated cost of the EC.
+        Direct calculation of EC cost based on distance and capacity, incorporating directly into the cost expression.
         """
-        return ec_cost_plh(model.ec_dist_exp[oss, onss], model.ec_cap_exp[oss, onss], polarity = "AC")
-    
+        distance = haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss]) * model.select_ec_var[oss, onss]
+        capacity = sum(model.wf_cap[wf] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids) * model.select_ec_var[oss, onss]
+        return ec_cost_plh(distance, capacity, polarity="AC")
+
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
     def onss_cost_rule(model, onss):
         """
-        Calculate the cost of operating an onshore substation (ONSS) based on its capacity.
-        Costs are incurred only if the capacity exceeds a certain threshold specific to the ONSS.
-
-        Parameters:
-        - model: The Pyomo model object.
-        - onss: Index of the onshore substation.
-
-        Returns:
-        - The calculated operational cost of the ONSS if it exceeds its specific capacity threshold.
+        Calculate the total transmission capacity received by an onshore substation (ONSS) from all connected offshore substations (OSS)
+        through export cables (EC). This implementation streamlines the expression by directly calculating the sum of products of capacities
+        and decision variables, avoiding nested loops where possible.
         """
-        return onss_cost_plh(model.onss_cap_exp[onss], model.onss_cthr[onss])
+        # Utilize a generator expression to sum capacities directly
+        total_capacity = sum(
+            model.wf_cap[wf] * model.select_iac_var[wf, oss] * model.select_ec_var[oss, onss]
+            for oss, onss_pair in model.viable_ec_ids if onss_pair == onss
+            for wf, oss_pair in model.viable_iac_ids if oss_pair == oss
+        )
+        return onss_cost_plh(total_capacity, model.onss_cthr[onss])
 
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
+
+
 
     """
     Define Objective function
@@ -1001,10 +887,8 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= model.min_required_capacity
-    
-    # Precompute minimum required capacity
-    model.min_required_capacity = 0.5 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 0.5 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
     
@@ -1012,38 +896,49 @@ def opt_model(workspace_folder):
         """
         Ensure each selected wind farm is connected to exactly one offshore substation.
         This function ensures that if a wind farm is selected, it must be connected to a single offshore substation.
+
+        Parameters:
+        - model: The Pyomo model object containing the decision variables and parameters.
+        - wf: The index of the wind farm being evaluated.
+
+        Returns:
+        - A constraint expression enforcing one-to-one connection between selected wind farms and offshore substations.
         """
-        return sum(model.select_iac_var[wf, oss] for oss in model.precomputed_wf_oss[wf]) == model.select_wf_var[wf]
+        return sum(model.select_iac_var[wf, oss] for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids) == model.select_wf_var[wf]
 
-    # Precompute the list of viable offshore substations for each wind farm
-    model.precomputed_wf_oss = {
-        wf: [oss for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids]
-        for wf in model.viable_wf_ids
-    }
-
-    model.wind_farm_to_oss_con = Constraint(model.viable_wf_ids, rule=wf_to_oss_rule)
-
+    model.wf_to_oss_con = Constraint(model.viable_wf_ids, rule=wf_to_oss_rule)
 
     def oss_to_onss_rule(model, oss):
         """
-        Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
-        This function enforces that offshore substations relay their connections to precisely one onshore substation.
+        Ensure each selected offshore substation is connected to exactly one onshore substation.
+        This function ensures that if an offshore substation is selected, it must be connected to a single onshore substation.
+
+        Parameters:
+        - model: The Pyomo model object containing the decision variables and parameters.
+        - oss: The index of the offshore substation being evaluated.
+
+        Returns:
+        - A constraint expression enforcing one-to-one connection between selected offshore substations and onshore substations.
         """
-        input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.precomputed_iac[oss])
-        output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.precomputed_ec[oss])
-        return output_to_onss == input_from_wf
-    
-    # Precompute the filtered sets for each oss to speed up access within the function
-    model.precomputed_iac = {
-        oss: [wf for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids]
-        for oss in model.viable_oss_ids
-    }
-    model.precomputed_ec = {
-        oss: [onss for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids]
-        for oss in model.viable_oss_ids
-    }
-    
+        return sum(model.select_ec_var[oss, onss] for onss in model.viable_ec_ids if (oss, onss) in model.viable_ec_ids) == model.select_oss_var[oss]
+
     model.oss_to_onss_con = Constraint(model.viable_oss_ids, rule=oss_to_onss_rule)
+
+    def onss_selection_rule(model, onss):
+        """
+        Ensure that if any offshore substation is connected to an onshore substation, 
+        then the onshore substation is also selected.
+
+        Parameters:
+        - model: The Pyomo model object containing the decision variables and parameters.
+        - onss: The index of the onshore substation being evaluated.
+
+        Returns:
+        - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
+        """
+        return sum(model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids) <= model.select_onss_var[onss]
+
+    model.onss_selection_con = Constraint(model.viable_onss_ids, rule=onss_selection_rule)
 
 
     """
@@ -1070,16 +965,16 @@ def opt_model(workspace_folder):
         """
         solver_options = {
             'numerics/scaling': 1,  # Enable scaling
-            'tolerances/feasibility': 1e-6,  # Tolerance for feasibility checks
-            'tolerances/optimality': 1e-6,   # Tolerance for optimality conditions
-            'tolerances/integrality': 1e-6,  # Tolerance for integer variable constraints
-            'presolving/maxrounds': 50,      # Max presolve iterations to simplify the model
+            'tolerances/feasibility': 1e-5,  # Tolerance for feasibility checks
+            'tolerances/optimality': 1e-5,   # Tolerance for optimality conditions
+            'tolerances/integrality': 1e-5,  # Tolerance for integer variable constraints
+            'presolving/maxrounds': 20,      # Max presolve iterations to simplify the model
             'propagating/maxrounds': 50,     # Max constraint propagation rounds
             'parallel/threads': -1,          # Use all CPU cores for parallel processing
             'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
             'branching/varsel': 'pscost',    # Pseudocost variable selection in branching
-            'separating/aggressive': True,   # Enable aggressive separation
-            'conflict/enable': True,         # Activate conflict analysis
+            'separating/aggressive': 1,   # Enable aggressive separation
+            'conflict/enable': 1,         # Activate conflict analysis
             'heuristics/rens/freq': 10,      # Frequency of RENS heuristic
             'heuristics/diving/freq': 10,    # Frequency of diving heuristic
             'propagating/maxroundsroot': 15, # Propagation rounds at root node
