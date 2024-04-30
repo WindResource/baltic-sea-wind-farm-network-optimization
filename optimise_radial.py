@@ -819,7 +819,7 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        min_required_capacity = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 0.5 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
@@ -854,7 +854,7 @@ def opt_model(workspace_folder):
         """
         return sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids) == model.select_oss_var[oss]
 
-    model.onss_selection_con = Constraint(model.viable_oss_ids, rule=oss_selection_rule)
+    model.oss_con = Constraint(model.viable_oss_ids, rule=oss_selection_rule)
 
     def oss_to_onss_rule(model, oss):
         """
@@ -875,21 +875,21 @@ def opt_model(workspace_folder):
     
     model.oss_to_onss_con = Constraint(model.viable_oss_ids, rule=oss_to_onss_rule)
 
-    # def onss_selection_rule(model, onss):
-    #     """
-    #     Ensure that if any offshore substation is connected to an onshore substation, 
-    #     then the onshore substation is also selected.
+    def onss_selection_rule(model, onss):
+        """
+        Ensure that if any offshore substation is connected to an onshore substation, 
+        then the onshore substation is also selected.
 
-    #     Parameters:
-    #     - model: The Pyomo model object containing the decision variables and parameters.
-    #     - onss: The index of the onshore substation being evaluated.
+        Parameters:
+        - model: The Pyomo model object containing the decision variables and parameters.
+        - onss: The index of the onshore substation being evaluated.
 
-    #     Returns:
-    #     - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
-    #     """
-    #     return sum(model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids) == model.select_onss_var[onss]
+        Returns:
+        - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
+        """
+        return sum(model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids) == model.select_onss_var[onss]
 
-    # model.onss_selection_con = Constraint(model.viable_onss_ids, rule=onss_selection_rule)
+    model.onss_con = Constraint(model.viable_onss_ids, rule=onss_selection_rule)
 
     """
     Solve the model
@@ -918,7 +918,7 @@ def opt_model(workspace_folder):
             'tolerances/feasibility': 1e-5,  # Tolerance for feasibility checks
             'tolerances/optimality': 1e-5,   # Tolerance for optimality conditions
             'tolerances/integrality': 1e-5,  # Tolerance for integer variable constraints
-            'presolving/maxrounds': 20,      # Max presolve iterations to simplify the model
+            'presolving/maxrounds': 50,      # Max presolve iterations to simplify the model
             'propagating/maxrounds': 50,     # Max constraint propagation rounds
             'parallel/threads': -1,          # Use all CPU cores for parallel processing
             'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
@@ -1011,8 +1011,3 @@ if __name__ == "__main__":
 
     # Call the optimization model function
     opt_model(workspace_folder)
-
-
-
-
-
