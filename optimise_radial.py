@@ -395,72 +395,6 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
     
     return oss_costs
 
-def save_results(model, workspace_folder):
-    """
-    Save selected components and their attributes from the optimization model to .npy and .txt files as structured arrays.
-
-    This function extracts selected component data such as IDs, coordinates, capacities, and costs from the model,
-    based on the results of the optimization. It saves the data in both NumPy structured array format (.npy) for 
-    numerical analysis and text format (.txt) for readability, in the specified workspace folder.
-
-    Parameters:
-    - model (ConcreteModel): The optimized Pyomo ConcreteModel containing the results.
-    - workspace_folder (str): Path to the directory where output files will be saved.
-
-    Each component's data is saved in a separate file named according to the component type (e.g., 'wf_data.npy' for wind farms).
-    """
-    components = {
-        'wf': {
-            'var': model.select_wf_var,
-            'ids': model.wf_ids,
-            'data': ['wf_iso', 'wf_lon', 'wf_lat', 'wf_cap', 'wf_cost'],
-            'dtype': [('id', 'i4'), ('iso', 'i4'), ('lon', 'f8'), ('lat', 'f8'), ('cap', 'i4'), ('cost', 'f8')]
-        },
-        'oss': {
-            'var': model.select_oss_var,
-            'ids': model.oss_ids,
-            'data': ['oss_iso', 'oss_lon', 'oss_lat', 'oss_wdepth', 'oss_icover', 'oss_pdist'],
-            'dtype': [('id', 'i4'), ('iso', 'i4'), ('lon', 'f8'), ('lat', 'f8'), ('wdepth', 'i4'), ('icover', 'i1'), ('pdist', 'i4')]
-        },
-        'onss': {
-            'var': model.select_onss_var,
-            'ids': model.onss_ids,
-            'data': ['onss_iso', 'onss_lon', 'onss_lat', 'onss_cthr'],
-            'dtype': [('id', 'i4'), ('iso', 'i4'), ('lon', 'f8'), ('lat', 'f8'), ('cthr', 'i4')]
-        },
-        'iac': {
-            'var': model.select_iac_var,
-            'ids': model.viable_iac_ids,
-            'data': ['iac_dist_exp', 'iac_cap_exp', 'iac_cost_exp'],
-            'dtype': [('wf_id', 'i4'), ('oss_id', 'i4'), ('dist', 'f8'), ('cap', 'i4'), ('cost', 'f8')]
-        },
-        'ec': {
-            'var': model.select_ec_var,
-            'ids': model.viable_ec_ids,
-            'data': ['ec_dist_exp', 'ec_cap_exp', 'ec_cost_exp'],
-            'dtype': [('oss_id', 'i4'), ('onss_id', 'i4'), ('dist', 'f8'), ('cap', 'i4'), ('cost', 'f8')]
-        }
-    }
-
-    for comp, details in components.items():
-        selected_ids = [idx for idx in details['ids'] if details['var'][idx].value() == 1]
-        data_to_save = []
-        for idx in selected_ids:
-            item_data = (idx if isinstance(idx, tuple) else (idx,))
-            for param_name in details['data']:
-                param = getattr(model, param_name)
-                item_data += (param[idx].value if hasattr(param[idx], 'value') else param[idx],)
-            data_to_save.append(item_data)
-
-        # Create a structured numpy array
-        np_data = np.array(data_to_save, dtype=details['dtype'])
-        np.save(os.path.join(workspace_folder, f"{comp}_data.npy"), np_data)
-        with open(os.path.join(workspace_folder, f"{comp}_data.txt"), 'w') as file:
-            for item in np_data:
-                file.write(str(tuple(item)) + '\n')
-
-        print(f"Saved {comp} data to {workspace_folder} as structured numpy array and text file.")
-
 def oss_cost_plh(wdepth, icover, pdist, capacity, polarity):
     """
     Placeholder function to calculate offshore substation costs.
@@ -794,9 +728,9 @@ def opt_model(workspace_folder):
         """
         Direct calculation of IAC cost based on distance and capacity, incorporating directly into the cost expression.
         """
-        distance = haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss]) * model.select_iac_var[wf, oss]
-        capacity = model.wf_cap[wf] * model.select_iac_var[wf, oss]
-        return iac_cost_plh(distance, capacity, polarity="AC")
+        model.iac_dist = haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss]) * model.select_iac_var[wf, oss]
+        model.iac_cap = model.wf_cap[wf] * model.select_iac_var[wf, oss]
+        return iac_cost_plh(model.iac_dist, model.iac_cap, polarity="AC")
 
     model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
 
@@ -804,8 +738,8 @@ def opt_model(workspace_folder):
         """
         Direct calculation of OSS cost based on water depth, ice cover, port distance, and total capacity from all connected wind farms.
         """
-        total_capacity = sum(model.wf_cap[wf] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], total_capacity, polarity="AC")
+        model.oss_cap = sum(model.wf_cap[wf] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
+        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap, polarity="AC")
 
     model.oss_cost_exp = Expression(model.viable_oss_ids, rule=oss_cost_rule)
 
@@ -813,9 +747,9 @@ def opt_model(workspace_folder):
         """
         Direct calculation of EC cost based on distance and capacity, incorporating directly into the cost expression.
         """
-        distance = haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss]) * model.select_ec_var[oss, onss]
-        capacity = sum(model.wf_cap[wf] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids) * model.select_ec_var[oss, onss]
-        return ec_cost_plh(distance, capacity, polarity="AC")
+        model.ec_dist = haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss]) * model.select_ec_var[oss, onss]
+        model.ec_cap = sum(model.wf_cap[wf] * model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids) * model.select_ec_var[oss, onss]
+        return ec_cost_plh(model.ec_dist, model.ec_cap, polarity="AC")
 
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
@@ -826,16 +760,14 @@ def opt_model(workspace_folder):
         and decision variables, avoiding nested loops where possible.
         """
         # Utilize a generator expression to sum capacities directly
-        total_capacity = sum(
+        model.onss_cap = sum(
             model.wf_cap[wf] * model.select_iac_var[wf, oss] * model.select_ec_var[oss, onss]
             for oss, onss_pair in model.viable_ec_ids if onss_pair == onss
             for wf, oss_pair in model.viable_iac_ids if oss_pair == oss
         )
-        return onss_cost_plh(total_capacity, model.onss_cthr[onss])
+        return onss_cost_plh(model.onss_cap, model.onss_cthr[onss])
 
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
-
-
 
     """
     Define Objective function
@@ -887,7 +819,7 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        min_required_capacity = 0.5 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
@@ -908,23 +840,7 @@ def opt_model(workspace_folder):
 
     model.wf_to_oss_con = Constraint(model.viable_wf_ids, rule=wf_to_oss_rule)
 
-    def oss_to_onss_rule(model, oss):
-        """
-        Ensure each selected offshore substation is connected to exactly one onshore substation.
-        This function ensures that if an offshore substation is selected, it must be connected to a single onshore substation.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - oss: The index of the offshore substation being evaluated.
-
-        Returns:
-        - A constraint expression enforcing one-to-one connection between selected offshore substations and onshore substations.
-        """
-        return sum(model.select_ec_var[oss, onss] for onss in model.viable_ec_ids if (oss, onss) in model.viable_ec_ids) == model.select_oss_var[oss]
-
-    model.oss_to_onss_con = Constraint(model.viable_oss_ids, rule=oss_to_onss_rule)
-
-    def onss_selection_rule(model, onss):
+    def oss_selection_rule(model, oss):
         """
         Ensure that if any offshore substation is connected to an onshore substation, 
         then the onshore substation is also selected.
@@ -936,10 +852,44 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
         """
-        return sum(model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids) <= model.select_onss_var[onss]
+        return sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids) == model.select_oss_var[oss]
 
-    model.onss_selection_con = Constraint(model.viable_onss_ids, rule=onss_selection_rule)
+    model.onss_selection_con = Constraint(model.viable_oss_ids, rule=oss_selection_rule)
 
+    def oss_to_onss_rule(model, oss):
+        """
+        Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
+        This function enforces that offshore substations relay their connections to precisely one onshore substation.
+
+        Parameters:
+        - model: The Pyomo model object containing the decision variables and parameters.
+        - oss: The index of the offshore substation being evaluated.
+
+        Returns:
+        - A constraint expression that limits each offshore substation to a single output to onshore substations,
+        matching its input connections.
+        """
+        input_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
+        output_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids)
+        return output_to_onss == input_from_wf
+    
+    model.oss_to_onss_con = Constraint(model.viable_oss_ids, rule=oss_to_onss_rule)
+
+    # def onss_selection_rule(model, onss):
+    #     """
+    #     Ensure that if any offshore substation is connected to an onshore substation, 
+    #     then the onshore substation is also selected.
+
+    #     Parameters:
+    #     - model: The Pyomo model object containing the decision variables and parameters.
+    #     - onss: The index of the onshore substation being evaluated.
+
+    #     Returns:
+    #     - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
+    #     """
+    #     return sum(model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids) == model.select_onss_var[onss]
+
+    # model.onss_selection_con = Constraint(model.viable_onss_ids, rule=onss_selection_rule)
 
     """
     Solve the model
@@ -984,6 +934,35 @@ def opt_model(workspace_folder):
 
         return solver_options
 
+    def save_results(model, workspace_folder):
+        """
+        Save the IDs of selected components of the optimization model into both .npy and .txt files.
+
+        Parameters:
+        - model: The optimized Pyomo model.
+        - workspace_folder: The path to the directory where results will be saved.
+        """
+        selected_components = {
+            'wf_ids': [wf for wf in model.viable_wf_ids if model.select_wf_var[wf].value == 1],
+            'oss_ids': [oss for oss in model.viable_oss_ids if model.select_oss_var[oss].value == 1],
+            'onss_ids': [onss for onss in model.viable_onss_ids if model.select_onss_var[onss].value == 1],
+            'iac_ids': [(wf, oss) for wf, oss in model.viable_iac_ids if model.select_iac_var[wf, oss].value == 1],
+            'ec_ids': [(oss, onss) for oss, onss in model.viable_ec_ids if model.select_ec_var[oss, onss].value == 1]
+        }
+
+        for key, ids in selected_components.items():
+            npy_file_path = os.path.join(f"{workspace_folder}\\results", f'{key}.npy')
+            txt_file_path = os.path.join(f"{workspace_folder}\\results", f'{key}.txt')
+
+            # Save as .npy file
+            np.save(npy_file_path, np.array(ids, dtype=object))
+
+            # Save as .txt file for easier viewing
+            with open(txt_file_path, 'w') as file:
+                for id in ids:
+                    file.write(f'{id}\n')
+
+            print(f'Saved {str(key)}')
     
     # Set the path to the CBC solver executable
     scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
@@ -1000,9 +979,6 @@ def opt_model(workspace_folder):
     
     # Pass the log path directly to the solver
     results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
-    
-    
-    return
     
     # Detailed checking of solver results
     if results.solver.status == SolverStatus.ok:
