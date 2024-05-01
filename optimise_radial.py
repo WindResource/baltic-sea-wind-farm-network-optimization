@@ -862,8 +862,8 @@ def opt_model(workspace_folder):
             'tolerances/feasibility': 1e-5,  # Tolerance for feasibility checks
             'tolerances/optimality': 1e-5,   # Tolerance for optimality conditions
             'tolerances/integrality': 1e-5,  # Tolerance for integer variable constraints
-            'presolving/maxrounds': 50,      # Max presolve iterations to simplify the model
-            'propagating/maxrounds': 50,     # Max constraint propagation rounds
+            'presolving/maxrounds': -1,      # Max presolve iterations to simplify the model
+            'propagating/maxrounds': -1,     # Max constraint propagation rounds
             'parallel/threads': -1,          # Use all CPU cores for parallel processing
             'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
             'branching/varsel': 'pscost',    # Pseudocost variable selection in branching
@@ -874,7 +874,10 @@ def opt_model(workspace_folder):
             'propagating/maxroundsroot': 15, # Propagation rounds at root node
             'limits/nodes': 1e5,             # Maximum nodes in search tree
             'limits/totalnodes': 1e5,         # Total node limit across threads
-            'emphasis/feasibility': 1         # Emphasize feasibility
+            'emphasis/feasibility': 1,         # Emphasize feasibility
+            'emphasis/memory': 1,           # Emphasize memory
+            'separating/maxrounds': 10,  # Limit cut rounds at non-root nodes
+            'heuristics/feaspump/freq': 10  # Frequency of feasibility pump heuristic
         }
 
         return solver_options
@@ -909,7 +912,7 @@ def opt_model(workspace_folder):
 
             print(f'Saved {str(key)}')
     
-    # Set the path to the CBC solver executable
+    # Set the path to the Scip solver executable
     scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
     
     # Create a solver object and specify the solver executable path
