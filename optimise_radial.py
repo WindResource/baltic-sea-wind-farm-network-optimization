@@ -643,14 +643,14 @@ def opt_model(workspace_folder):
         oss_pdist[id] = data[6]
     
     # Onshore substation data
-    onss_iso, onss_lon, onss_lat, onss_cthr = {}, {}, {}, {}
+    onss_iso, onss_lon, onss_lat, onss_thold = {}, {}, {}, {}
 
     for data in onss_dataset:
         id = int(data[0])
         onss_iso[id] = iso_to_int_mp[data[1]]
         onss_lon[id] = data[2]
         onss_lat[id] = data[3]
-        onss_cthr[id] = data[4]
+        onss_thold[id] = data[4]
 
     """
     Define model parameters
@@ -681,7 +681,7 @@ def opt_model(workspace_folder):
     model.onss_iso = Param(model.onss_ids, initialize=onss_iso, within=NonNegativeIntegers)
     model.onss_lon = Param(model.onss_ids, initialize=onss_lon, within=NonNegativeReals)
     model.onss_lat = Param(model.onss_ids, initialize=onss_lat, within=NonNegativeReals)
-    model.onss_cthr = Param(model.onss_ids, initialize=onss_cthr, within=NonNegativeIntegers)
+    model.onss_thold = Param(model.onss_ids, initialize=onss_thold, within=NonNegativeIntegers)
 
     """
     Define decision variables
@@ -760,12 +760,8 @@ def opt_model(workspace_folder):
         and decision variables, avoiding nested loops where possible.
         """
         # Utilize a generator expression to sum capacities directly
-        model.onss_cap = sum(
-            model.wf_cap[wf] * model.select_iac_var[wf, oss] * model.select_ec_var[oss, onss]
-            for oss, onss_pair in model.viable_ec_ids if onss_pair == onss
-            for wf, oss_pair in model.viable_iac_ids if oss_pair == oss
-        )
-        return onss_cost_plh(model.onss_cap, model.onss_cthr[onss])
+        model.onss_cap = sum(model.oss_cap * model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
+        return onss_cost_plh(model.onss_cap, model.onss_thold[onss])
 
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
@@ -819,7 +815,7 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        min_required_capacity = 0.01 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 0.8 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
