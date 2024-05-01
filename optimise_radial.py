@@ -729,16 +729,14 @@ def opt_model(workspace_folder):
     """
     def iac_distance_rule(model, wf, oss):
         return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss])
+    model.iac_dist = Expression(model.viable_iac_ids, rule=iac_distance_rule)
 
     def iac_capacity_rule(model, wf, oss):
         return model.wf_cap[wf] * model.select_iac_var[wf, oss]
-
-    model.iac_dist = Expression(model.viable_iac_ids, rule=iac_distance_rule)
     model.iac_cap = Expression(model.viable_iac_ids, rule=iac_capacity_rule)
 
     def iac_cost_rule(model, wf, oss):
         return iac_cost_plh(model.iac_dist[wf, oss], model.iac_cap[wf, oss], polarity="AC")
-
     model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
 
     """
@@ -746,12 +744,10 @@ def opt_model(workspace_folder):
     """
     def oss_capacity_rule(model, oss):
         return sum(model.iac_cap[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
-
     model.oss_cap = Expression(model.oss_ids, rule=oss_capacity_rule)
 
     def oss_cost_rule(model, oss):
         return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap[oss], polarity="AC")
-
     model.oss_cost_exp = Expression(model.oss_ids, rule=oss_cost_rule)
 
     """
@@ -759,16 +755,14 @@ def opt_model(workspace_folder):
     """
     def ec_distance_rule(model, oss, onss):
         return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss])
-
+    model.ec_dist = Expression(model.viable_ec_ids, rule=ec_distance_rule)
+    
     def ec_capacity_rule(model, oss, onss):
         return sum(model.iac_cap[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids) * model.select_ec_var[oss, onss]
-
-    model.ec_dist = Expression(model.viable_ec_ids, rule=ec_distance_rule)
     model.ec_cap = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
 
     def ec_cost_rule(model, oss, onss):
         return ec_cost_plh(model.ec_dist[oss, onss], model.ec_cap[oss, onss], polarity="AC")
-
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
     """
@@ -776,12 +770,10 @@ def opt_model(workspace_folder):
     """
     def onss_capacity_rule(model, onss):
         return sum(model.ec_cap[oss, onss] for oss in model.oss_ids if (oss, onss) in model.viable_ec_ids)
-
     model.onss_cap = Expression(model.onss_ids, rule=onss_capacity_rule)
 
     def onss_cost_rule(model, onss):
         return onss_cost_plh(model.onss_cap[onss], model.onss_thold[onss])
-
     model.onss_cost_exp = Expression(model.onss_ids, rule=onss_cost_rule)
 
 
