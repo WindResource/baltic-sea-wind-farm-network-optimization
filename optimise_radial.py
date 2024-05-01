@@ -819,11 +819,11 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
         """
-        min_required_capacity = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 0.01 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
-    
+
     def iac_select_rule(model, wf):
         """ Check
         Ensure each selected wind farm is connected to exactly one offshore substation.
@@ -842,6 +842,25 @@ def opt_model(workspace_folder):
         return connect_to_oss >= model.select_wf_var[wf]
 
     model.iac_select_con = Constraint(model.viable_wf_ids, rule=iac_select_rule)
+    
+    def ec_select_rule(model, oss):
+            """
+            Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
+            This function enforces that offshore substations relay their connections to precisely one onshore substation.
+
+            Parameters:
+            - model: The Pyomo model object containing the decision variables and parameters.
+            - oss: The index of the offshore substation being evaluated.
+
+            Returns:
+            - A constraint expression that limits each offshore substation to a single output to onshore substations,
+            matching its input connections.
+            """
+            connect_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
+            connect_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids)
+            return connect_from_wf == connect_to_onss
+    
+    model.ec_select_con = Constraint(model.viable_oss_ids, rule=ec_select_rule)
 
     def oss_select_rule(model, oss):
         """ Check
@@ -855,29 +874,10 @@ def opt_model(workspace_folder):
         Returns:
         - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
         """
-        M = len(model.viable_wf_ids)  # Assuming maximum number of wind farms that can connect
         connect_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
         return model.select_oss_var[oss] == connect_from_wf
 
     model.oss_select_con = Constraint(model.viable_oss_ids, rule=oss_select_rule)
-
-    # def ec_select_rule(model, oss):
-    #     """
-    #     Ensure each selected wind farm is connected to exactly one offshore substation.
-    #     If a wind farm is not selected, this constraint should not force any offshore substation connection.
-    #     This function ensures that if a wind farm is selected, it must be connected to a single offshore substation.
-
-    #     Parameters:
-    #     - model: The Pyomo model object containing the decision variables and parameters.
-    #     - wf: The index of the wind farm being evaluated.
-
-    #     Returns:
-    #     - A constraint expression enforcing one-to-one connection between selected wind farms and offshore substations.
-    #     """
-    #     connect_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids)
-    #     return connect_to_onss >= model.select_oss_var[oss]
-
-    # model.ec_select_con = Constraint(model.viable_oss_ids, rule=ec_select_rule)
 
     def onss_select_rule(model, onss):
         """ Check
@@ -897,67 +897,10 @@ def opt_model(workspace_folder):
 
     model.onss_select_con = Constraint(model.viable_onss_ids, rule=onss_select_rule)
 
-        # def wf_to_oss_to_onss_rule(model, oss):
-    #     """
-    #     Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
-    #     This function enforces that offshore substations relay their connections to precisely one onshore substation.
-
-    #     Parameters:
-    #     - model: The Pyomo model object containing the decision variables and parameters.
-    #     - oss: The index of the offshore substation being evaluated.
-
-    #     Returns:
-    #     - A constraint expression that limits each offshore substation to a single output to onshore substations,
-    #     matching its input connections.
-    #     """
-    #     connect_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-    #     connect_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids)
-    #     return connect_from_wf == connect_to_onss
-    
-    # model.wf_to_oss_to_onss_con = Constraint(model.viable_oss_ids, rule=wf_to_oss_to_onss_rule)
-
-    # def limit_offshore_substations_rule(model):
-    #     """
-    #     Ensures that the total number of selected offshore substations does not exceed the total number of selected wind farms.
-
-    #     Parameters:
-    #     - model: The Pyomo model object containing all model components.
-
-    #     Returns:
-    #     - A constraint expression that the number of selected offshore substations is less than or equal to the number of selected wind farms.
-    #     """
-    #     return sum(model.select_oss_var[oss] for oss in model.viable_oss_ids) <= sum(model.select_wf_var[wf] for wf in model.viable_wf_ids)
-
-    # model.limit_offshore_substations_con = Constraint(rule=limit_offshore_substations_rule)
-    
-    # def limit_onshore_substations_rule(model):
-    #     """
-    #     Ensures that the total number of selected onshore substations does not exceed the total number of selected wind farms.
-
-    #     Parameters:
-    #     - model: The Pyomo model object containing all model components.
-
-    #     Returns:
-    #     - A constraint expression that the number of selected onshore substations is less than or equal to the number of selected wind farms.
-    #     """
-    #     return sum(model.select_onss_var[onss] for onss in model.viable_onss_ids) <= sum(model.select_wf_var[wf] for wf in model.viable_wf_ids)
-
-    # model.limit_onshore_substations_con = Constraint(rule=limit_onshore_substations_rule)
-
     """
     Solve the model
     """
     print("Solving model...")
-
-    # # Set the SCIP binary directory
-    # scip_dir = "C:\\Program Files\\SCIPOptSuite 9.0.0"
-    # os.environ["SCIPOPTDIR"] = scip_dir
-    
-    # # Create a solver
-    # solver = SolverFactory('scip')
-    
-    # Set the path to the Gurobi solver executable
-    # gurobi_path = "C:\\gurobi1003\\win64\\bin\\gurobi_cl.exe"
     
     def configure_scip_solver():
         """
