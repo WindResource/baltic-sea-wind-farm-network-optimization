@@ -801,96 +801,48 @@ def opt_model(workspace_folder):
     """
     Define Constraints
     """
-    print("Defining constraints...")
+    print("Defining capacity constraints...")
 
     def min_total_wf_capacity_rule(model):
         """
         Enforce that the sum of the capacities of all selected wind farms meets at least a specified minimum fraction 
-        of the total potential capacity of all wind farms considered. This constraint ensures that the optimized layout 
-        provides sufficient capacity to meet energy production targets or requirements.
-        
-        Parameters:
-        - model: The Pyomo model object containing all model components.
-        
-        Returns:
-        - A constraint expression that the total capacity of selected wind farms is at least a certain fraction of the total potential capacity.
+        of the total potential capacity of all wind farms considered.
         """
-        min_required_capacity = 0.8 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 0.5 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
-    
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
 
-    def iac_select_rule(model, wf):
-        """ Check
-        Ensure each selected wind farm is connected to exactly one offshore substation.
-        If a wind farm is not selected, this constraint should not force any offshore substation connection.
-        This function ensures that if a wind farm is selected, it must be connected to a single offshore substation.
+    print("Defining connectivity constraints...")
 
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - wf: The index of the wind farm being evaluated.
+    def iac_connect_rule(model, wf):
+        """Ensure that if a wind farm is selected, it is connected to exactly one offshore substation."""
+        connect_to_oss = sum(model.select_iac_var[wf, oss] for oss in model.oss_ids if (wf, oss) in model.viable_iac_ids)
+        return connect_to_oss == model.select_wf_var[wf]
+    model.iac_select_con = Constraint(model.wf_ids, rule=iac_connect_rule)
 
-        Returns:
-        - A constraint expression enforcing one-to-one connection between selected wind farms and offshore substations.
-        """
-        
-        connect_to_oss = sum(model.select_iac_var[wf, oss] for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids)
-        return connect_to_oss >= model.select_wf_var[wf]
-
-    model.iac_select_con = Constraint(model.viable_wf_ids, rule=iac_select_rule)
-    
-    def ec_select_rule(model, oss):
-            """
-            Ensure each offshore substation that is connected to any wind farm transmits to exactly one onshore substation.
-            This function enforces that offshore substations relay their connections to precisely one onshore substation.
-
-            Parameters:
-            - model: The Pyomo model object containing the decision variables and parameters.
-            - oss: The index of the offshore substation being evaluated.
-
-            Returns:
-            - A constraint expression that limits each offshore substation to a single output to onshore substations,
-            matching its input connections.
-            """
-            connect_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-            connect_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.viable_onss_ids if (oss, onss) in model.viable_ec_ids)
-            return connect_from_wf == connect_to_onss
-    
-    model.ec_select_con = Constraint(model.viable_oss_ids, rule=ec_select_rule)
+    def ec_connect_rule(model, oss):
+        """Ensure that if an offshore substation is operational, it must connect to exactly one onshore substation."""
+        connect_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.onss_ids if (oss, onss) in model.viable_ec_ids)
+        return connect_to_onss == model.select_oss_var[oss]
+    model.oss_onss_connection_activation_con = Constraint(model.oss_ids, rule=ec_connect_rule)
 
     def oss_select_rule(model, oss):
-        """ Check
-        Ensure that if any offshore substation is connected to an onshore substation,
-        then the onshore substation is also selected.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - oss: The index of the offshore substation being evaluated.
-
-        Returns:
-        - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
+        """
+        Ensure that if any wind farm is connected to an offshore substation,
+        then the offshore substation is also selected.
         """
         connect_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
         return model.select_oss_var[oss] == connect_from_wf
-
     model.oss_select_con = Constraint(model.viable_oss_ids, rule=oss_select_rule)
 
     def onss_select_rule(model, onss):
-        """ Check
+        """
         Ensure that if any offshore substation is connected to an onshore substation,
         then the onshore substation is also selected.
-
-        Parameters:
-        - model: The Pyomo model object containing the decision variables and parameters.
-        - onss: The index of the onshore substation being evaluated.
-
-        Returns:
-        - A constraint expression enforcing the selection of onshore substations based on the connectivity with offshore substations.
         """
-        M = len(model.viable_oss_ids)  # Assuming maximum number of offshore substations
+        M = len(model.viable_oss_ids)  # Assuming maximum number of viable offshore substations
         connect_from_oss = sum(model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
         return model.select_onss_var[onss] * M >= connect_from_oss
-
     model.onss_select_con = Constraint(model.viable_onss_ids, rule=onss_select_rule)
 
     """
