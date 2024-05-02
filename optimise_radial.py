@@ -465,10 +465,9 @@ def find_viable_ec(wf_lon, wf_lat, onss_lon, onss_lat, wf_iso, onss_iso):
     for wf_id, onss_id in product(wf_lon.keys(), onss_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], onss_lon[onss_id], onss_lat[onss_id])
-        if distance <= 300:  # Check if the distance is within 300 km
-            # Then check if the ISO codes match for the current offshore and onshore substation pair
-            if wf_iso[wf_id] == onss_iso[onss_id]:
-                connections.append((int(wf_id), int(onss_id)))
+        if distance <= 300 and wf_iso[wf_id] == onss_iso[onss_id]:  # Check if the distance is within 300 km and check if the ISO codes match
+            connections.append((int(wf_id), int(onss_id)))
+
     return connections
 
 def get_viable_entities(viable_ec):
@@ -628,26 +627,26 @@ def opt_model(workspace_folder):
     """
     def ec_distance_rule(model, wf, onss):
         return haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss])
-    model.ec_dist = Expression(model.viable_ec_ids, rule=ec_distance_rule)
+    model.ec_dist_exp = Expression(model.viable_ec_ids, rule=ec_distance_rule)
 
     def ec_capacity_rule(model, wf, onss):
-        return model.wf_cap[wf] * model.select_ec_var[wf, onss]
-    model.ec_cap = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
+        return model.wf_cap[wf]
+    model.ec_cap_exp = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
 
     def ec_cost_rule(model, wf, onss):
-        return ec_cost_plh(model.ec_dist[wf, onss], model.ec_cap[wf, onss], polarity="AC")
+        return ec_cost_plh(model.ec_dist_exp[wf, onss], model.ec_cap_exp[wf, onss], polarity="AC")
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
     """
     Define expressions for Onshore Substations (ONSS)
     """
     def onss_capacity_rule(model, onss):
-        return sum(model.ec_cap[wf, onss] for wf in model.wf_ids if (wf, onss) in model.viable_ec_ids)
-    model.onss_cap = Expression(model.onss_ids, rule=onss_capacity_rule)
+        return sum(model.wf_cap[wf] for wf in model.viable_wf_ids if (wf, onss) in model.viable_ec_ids)
+    model.onss_cap = Expression(model.viable_onss_ids, rule=onss_capacity_rule)
 
     def onss_cost_rule(model, onss):
         return onss_cost_plh(model.onss_cap[onss], model.onss_thold[onss])
-    model.onss_cost_exp = Expression(model.onss_ids, rule=onss_cost_rule)
+    model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
     """
     Define Objective function
@@ -672,7 +671,7 @@ def opt_model(workspace_folder):
         - The computed total cost of the network configuration, which the optimization process seeks to minimize.
         """
         wf_total_cost = sum(model.wf_cost[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids)
-        onss_total_costs = sum(5000 * model.select_onss_var[onss] for onss in model.viable_onss_ids)
+        onss_total_costs = sum(model.onss_cost_exp[onss] * model.select_onss_var[onss] for onss in model.viable_onss_ids)
         ec_total_cost = sum(model.ec_cost_exp[wf, onss] * model.select_ec_var[wf, onss] for (wf, onss) in model.viable_ec_ids)
         
         return wf_total_cost + ec_total_cost + onss_total_costs
@@ -690,7 +689,7 @@ def opt_model(workspace_folder):
         Enforce that the sum of the capacities of all selected wind farms meets at least a specified minimum fraction 
         of the total potential capacity of all wind farms considered.
         """
-        min_required_capacity = 0.8 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
 
@@ -776,7 +775,7 @@ def opt_model(workspace_folder):
                 'headers': "ID, Longitude, Latitude, Capacity, Cost"
             },
             'ec_ids': {
-                'data': np.array([(wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], expr_f(model.ec_cap[wf, onss]), expr_f(model.ec_cost_exp[wf, onss])) 
+                'data': np.array([(wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], expr_f(model.ec_cap_exp[wf, onss]), expr_f(model.ec_cost_exp[wf, onss])) 
                                 for wf, onss in model.viable_ec_ids if model.select_ec_var[wf, onss].value == 1], 
                                 dtype=[('wf_id', int), ('onss_id', int), ('wf_lon', float), ('wf_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
@@ -784,13 +783,13 @@ def opt_model(workspace_folder):
         }
 
         # Ensure the results directory exists
-        results_dir = os.path.join(workspace_folder, "results")
+        results_dir = os.path.join(workspace_folder, "results", "radial")
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
 
         for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'{key}.npy')
-            txt_file_path = os.path.join(results_dir, f'{key}.txt')
+            npy_file_path = os.path.join(results_dir, f'{key}_r.npy')
+            txt_file_path = os.path.join(results_dir, f'{key}_r.txt')
 
             # Save as .npy file
             np.save(npy_file_path, info['data'])
@@ -810,8 +809,8 @@ def opt_model(workspace_folder):
             os.makedirs(results_dir)
 
         for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'{key}.npy')
-            txt_file_path = os.path.join(results_dir, f'{key}.txt')
+            npy_file_path = os.path.join(results_dir, f'{key}_r.npy')
+            txt_file_path = os.path.join(results_dir, f'{key}_r.txt')
 
             # Save as .npy file
             np.save(npy_file_path, info['data'])
@@ -833,7 +832,7 @@ def opt_model(workspace_folder):
     solver.options['executable'] = scip_path
 
     # Define the path for the solver log
-    solver_log_path = os.path.join(f"{workspace_folder}\\results", "solver_log.txt")
+    solver_log_path = os.path.join(workspace_folder, "results", "radial", "solver_log_r.txt")
     
     # Retrieve solver options with the configured settings
     solver_options = configure_scip_solver()
