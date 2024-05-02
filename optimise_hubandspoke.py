@@ -729,52 +729,52 @@ def opt_model(workspace_folder):
     """
     def iac_distance_rule(model, wf, oss):
         return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss])
-    model.iac_dist = Expression(model.viable_iac_ids, rule=iac_distance_rule)
+    model.iac_dist_exp = Expression(model.viable_iac_ids, rule=iac_distance_rule)
 
     def iac_capacity_rule(model, wf, oss):
-        return model.wf_cap[wf] * model.select_iac_var[wf, oss]
-    model.iac_cap = Expression(model.viable_iac_ids, rule=iac_capacity_rule)
+        return model.wf_cap[wf]
+    model.iac_cap_exp = Expression(model.viable_iac_ids, rule=iac_capacity_rule)
 
     def iac_cost_rule(model, wf, oss):
-        return iac_cost_plh(model.iac_dist[wf, oss], model.iac_cap[wf, oss], polarity="AC")
+        return iac_cost_plh(model.iac_dist_exp[wf, oss], model.iac_cap_exp[wf, oss], polarity="AC")
     model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
 
     """
     Define expressions for Offshore Substation (OSS) capacity
     """
     def oss_capacity_rule(model, oss):
-        return sum(model.iac_cap[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
-    model.oss_cap = Expression(model.oss_ids, rule=oss_capacity_rule)
+        return sum(model.iac_cap_exp[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
+    model.oss_cap_exp = Expression(model.viable_oss_ids, rule=oss_capacity_rule)
 
     def oss_cost_rule(model, oss):
-        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap[oss], polarity="AC")
-    model.oss_cost_exp = Expression(model.oss_ids, rule=oss_cost_rule)
+        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_exp[oss], polarity="AC")
+    model.oss_cost_exp = Expression(model.viable_oss_ids, rule=oss_cost_rule)
 
     """
     Define distance and capacity expressions for Export Cables (EC)
     """
     def ec_distance_rule(model, oss, onss):
         return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss])
-    model.ec_dist = Expression(model.viable_ec_ids, rule=ec_distance_rule)
+    model.ec_dist_exp = Expression(model.viable_ec_ids, rule=ec_distance_rule)
     
     def ec_capacity_rule(model, oss, onss):
-        return sum(model.iac_cap[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids) * model.select_ec_var[oss, onss]
-    model.ec_cap = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
+        return sum(model.iac_cap_exp[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
+    model.ec_cap_exp = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
 
     def ec_cost_rule(model, oss, onss):
-        return ec_cost_plh(model.ec_dist[oss, onss], model.ec_cap[oss, onss], polarity="AC")
+        return ec_cost_plh(model.ec_dist_exp[oss, onss], model.ec_cap_exp[oss, onss], polarity="AC")
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
     """
     Define expressions for Onshore Substation (ONSS) capacity
     """
     def onss_capacity_rule(model, onss):
-        return sum(model.ec_cap[oss, onss] for oss in model.oss_ids if (oss, onss) in model.viable_ec_ids)
-    model.onss_cap = Expression(model.onss_ids, rule=onss_capacity_rule)
+        return sum(model.ec_cap_exp[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
+    model.onss_cap_exp = Expression(model.viable_onss_ids, rule=onss_capacity_rule)
 
     def onss_cost_rule(model, onss):
-        return onss_cost_plh(model.onss_cap[onss], model.onss_thold[onss])
-    model.onss_cost_exp = Expression(model.onss_ids, rule=onss_cost_rule)
+        return onss_cost_plh(model.onss_cap_exp[onss], model.onss_thold[onss])
+    model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
 
     """
@@ -801,7 +801,7 @@ def opt_model(workspace_folder):
         """
         wf_total_cost = sum(model.wf_cost[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids)
         oss_total_cost = sum(model.oss_cost_exp[oss] * model.select_oss_var[oss] for oss in model.viable_oss_ids)
-        onss_total_costs = sum(5000 * model.select_onss_var[onss] for onss in model.viable_onss_ids)
+        onss_total_costs = sum(model.onss_cost_exp[onss] * model.select_onss_var[onss] for onss in model.viable_onss_ids)
         iac_total_cost = sum(model.iac_cost_exp[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_iac_ids)
         ec_total_cost = sum(model.ec_cost_exp[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
         
@@ -820,7 +820,7 @@ def opt_model(workspace_folder):
         Enforce that the sum of the capacities of all selected wind farms meets at least a specified minimum fraction 
         of the total potential capacity of all wind farms considered.
         """
-        min_required_capacity = 0.8 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        min_required_capacity = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
     model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
 
@@ -843,8 +843,9 @@ def opt_model(workspace_folder):
         Ensure that if any wind farm is connected to an offshore substation,
         then the offshore substation is also selected.
         """
+        M = len(model.viable_wf_ids)
         connect_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-        return model.select_oss_var[oss] == connect_from_wf
+        return model.select_oss_var[oss] * M >= connect_from_wf
     model.oss_select_con = Constraint(model.viable_oss_ids, rule=oss_select_rule)
 
     def onss_select_rule(model, onss):
@@ -915,25 +916,25 @@ def opt_model(workspace_folder):
                 'headers': "ID, Longitude, Latitude, Capacity, Cost"
             },
             'oss_ids': {
-                'data': np.array([(oss, model.oss_lon[oss], model.oss_lat[oss], expr_f(model.oss_cap[oss]), expr_f(model.oss_cost_exp[oss])) 
+                'data': np.array([(oss, model.oss_lon[oss], model.oss_lat[oss], expr_f(model.oss_cap_exp[oss]), expr_f(model.oss_cost_exp[oss])) 
                                 for oss in model.viable_oss_ids if model.select_oss_var[oss].value == 1], 
                                 dtype=[('id', int), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "ID, Longitude, Latitude, Capacity, Cost"
             },
             'onss_ids': {
-                'data': np.array([(onss, model.onss_lon[onss], model.onss_lat[onss], expr_f(model.onss_cap[onss]), expr_f(model.onss_cost_exp[onss])) 
+                'data': np.array([(onss, model.onss_lon[onss], model.onss_lat[onss], expr_f(model.onss_cap_exp[onss]), expr_f(model.onss_cost_exp[onss])) 
                                 for onss in model.viable_onss_ids if model.select_onss_var[onss].value == 1], 
                                 dtype=[('id', int), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "ID, Longitude, Latitude, Capacity, Cost"
             },
             'iac_ids': {
-                'data': np.array([(wf, oss, model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss], expr_f(model.iac_cap[wf, oss]), expr_f(model.iac_cost_exp[wf, oss])) 
+                'data': np.array([(wf, oss, model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss], expr_f(model.iac_cap_exp[wf, oss]), expr_f(model.iac_cost_exp[wf, oss])) 
                                 for wf, oss in model.viable_iac_ids if model.select_iac_var[wf, oss].value == 1], 
                                 dtype=[('wf_id', int), ('oss_id', int), ('wf_lon', float), ('wf_lat', float), ('oss_lon', float), ('oss_lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
             },
             'ec_ids': {
-                'data': np.array([(oss, onss, model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss], expr_f(model.ec_cap[oss, onss]), expr_f(model.ec_cost_exp[oss, onss])) 
+                'data': np.array([(oss, onss, model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss], expr_f(model.ec_cap_exp[oss, onss]), expr_f(model.ec_cost_exp[oss, onss])) 
                                 for oss, onss in model.viable_ec_ids if model.select_ec_var[oss, onss].value == 1], 
                                 dtype=[('oss_id', int), ('onss_id', int), ('oss_lon', float), ('oss_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
@@ -941,13 +942,13 @@ def opt_model(workspace_folder):
         }
 
         # Ensure the results directory exists
-        results_dir = os.path.join(workspace_folder, "results")
+        results_dir = os.path.join(workspace_folder, "results", "hubspoke")
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
 
         for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'{key}.npy')
-            txt_file_path = os.path.join(results_dir, f'{key}.txt')
+            npy_file_path = os.path.join(results_dir, f'{key}_hs.npy')
+            txt_file_path = os.path.join(results_dir, f'{key}_hs.txt')
 
             # Save as .npy file
             np.save(npy_file_path, info['data'])
@@ -967,8 +968,8 @@ def opt_model(workspace_folder):
             os.makedirs(results_dir)
 
         for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'{key}.npy')
-            txt_file_path = os.path.join(results_dir, f'{key}.txt')
+            npy_file_path = os.path.join(results_dir, f'{key}_hs.npy')
+            txt_file_path = os.path.join(results_dir, f'{key}_hs.txt')
 
             # Save as .npy file
             np.save(npy_file_path, info['data'])
@@ -990,7 +991,7 @@ def opt_model(workspace_folder):
     solver.options['executable'] = scip_path
 
     # Define the path for the solver log
-    solver_log_path = os.path.join(f"{workspace_folder}\\results", "solver_log.txt")
+    solver_log_path = os.path.join(workspace_folder, "results", "hubspoke", "solver_log_hs.txt")
     
     # Retrieve solver options with the configured settings
     solver_options = configure_scip_solver()
