@@ -699,19 +699,20 @@ def opt_model(workspace_folder):
     model.viable_wf_ids, model.viable_oss_ids, model.viable_onss_ids = get_viable_entities(viable_iac, viable_ec)
     
     # Initialize variables to one
-    model.select_wf_var = Var(model.viable_wf_ids, within=Binary)
-    model.select_oss_var = Var(model.viable_oss_ids, within=Binary)
-    model.select_onss_var = Var(model.viable_onss_ids, within=Binary)
-    model.select_iac_var = Var(model.viable_iac_ids, within=Binary)
-    model.select_ec_var = Var(model.viable_ec_ids, within=Binary)
+    model.wf_bool_var = Var(model.viable_wf_ids, within=Binary)
+    
+    model.oss_cap_var = Var(model.viable_oss_ids, within=NonNegativeReals)
+    model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
+    model.iac_cap_var = Var(model.viable_iac_ids, within=NonNegativeReals)
+    model.ec_cap_var = Var(model.viable_ec_ids, within=NonNegativeReals)
 
     # Define a dictionary containing variable names and their respective lengths
     print_variables = {
-        "select_wf": model.select_wf_var,
-        "select_oss": model.select_oss_var,
-        "select_onss": model.select_onss_var,
-        "select_iac": model.select_iac_var,
-        "select_ec": model.select_ec_var
+        "select_wf": model.wf_bool_var,
+        "select_oss": model.oss_cap_var,
+        "select_onss": model.onss_cap_var,
+        "select_iac": model.iac_cap_var,
+        "select_ec": model.ec_cap_var
     }
 
     # Iterate over the dictionary and print variable ids and their lengths
@@ -724,6 +725,14 @@ def opt_model(workspace_folder):
     """
     print("Defining expressions...")
 
+    
+    """
+    Define expressions for wind farms (WF)
+    """
+    def wf_cost_rule(model, wf):
+        return model.wf_cost[wf] * model.wf_bool_var[wf]
+    model.wf_cost_exp = Expression(model.viable_wf_ids, rule=wf_cost_rule)
+    
     """
     Define distance and capacity expressions for Inter-Array Cables (IAC)
     """
@@ -731,23 +740,16 @@ def opt_model(workspace_folder):
         return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss])
     model.iac_dist_exp = Expression(model.viable_iac_ids, rule=iac_distance_rule)
 
-    def iac_capacity_rule(model, wf, oss):
-        return model.wf_cap[wf]
-    model.iac_cap_exp = Expression(model.viable_iac_ids, rule=iac_capacity_rule)
-
     def iac_cost_rule(model, wf, oss):
-        return iac_cost_plh(model.iac_dist_exp[wf, oss], model.iac_cap_exp[wf, oss], polarity="AC")
+        return iac_cost_plh(model.iac_dist_exp[wf, oss], model.iac_cap_var[wf, oss], polarity="AC")
     model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
 
     """
     Define expressions for Offshore Substation (OSS) capacity
     """
-    def oss_capacity_rule(model, oss):
-        return sum(model.iac_cap_exp[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
-    model.oss_cap_exp = Expression(model.viable_oss_ids, rule=oss_capacity_rule)
 
     def oss_cost_rule(model, oss):
-        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_exp[oss], polarity="AC")
+        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_var[oss], polarity="AC")
     model.oss_cost_exp = Expression(model.viable_oss_ids, rule=oss_cost_rule)
 
     """
@@ -756,24 +758,17 @@ def opt_model(workspace_folder):
     def ec_distance_rule(model, oss, onss):
         return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss])
     model.ec_dist_exp = Expression(model.viable_ec_ids, rule=ec_distance_rule)
-    
-    def ec_capacity_rule(model, oss, onss):
-        return sum(model.iac_cap_exp[wf, oss] for wf in model.wf_ids if (wf, oss) in model.viable_iac_ids)
-    model.ec_cap_exp = Expression(model.viable_ec_ids, rule=ec_capacity_rule)
 
     def ec_cost_rule(model, oss, onss):
-        return ec_cost_plh(model.ec_dist_exp[oss, onss], model.ec_cap_exp[oss, onss], polarity="AC")
+        return ec_cost_plh(model.ec_dist_exp[oss, onss], model.ec_cap_var[oss, onss], polarity="AC")
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
     """
     Define expressions for Onshore Substation (ONSS) capacity
     """
-    def onss_capacity_rule(model, onss):
-        return sum(model.ec_cap_exp[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
-    model.onss_cap_exp = Expression(model.viable_onss_ids, rule=onss_capacity_rule)
 
     def onss_cost_rule(model, onss):
-        return onss_cost_plh(model.onss_cap_exp[onss], model.onss_thold[onss])
+        return onss_cost_plh(model.onss_cap_var[onss], model.onss_thold[onss])
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
 
@@ -799,11 +794,11 @@ def opt_model(workspace_folder):
         Returns:
         - The computed total cost of the network configuration, which the optimization process seeks to minimize.
         """
-        wf_total_cost = sum(model.wf_cost[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids)
-        oss_total_cost = sum(model.oss_cost_exp[oss] * model.select_oss_var[oss] for oss in model.viable_oss_ids)
-        onss_total_costs = sum(model.onss_cost_exp[onss] * model.select_onss_var[onss] for onss in model.viable_onss_ids)
-        iac_total_cost = sum(model.iac_cost_exp[wf, oss] * model.select_iac_var[wf, oss] for (wf, oss) in model.viable_iac_ids)
-        ec_total_cost = sum(model.ec_cost_exp[oss, onss] * model.select_ec_var[oss, onss] for (oss, onss) in model.viable_ec_ids)
+        wf_total_cost = sum(model.wf_cost_exp[wf] for wf in model.viable_wf_ids)
+        oss_total_cost = sum(model.oss_cost_exp[oss] for oss in model.viable_oss_ids)
+        onss_total_costs = sum(model.onss_cost_exp[onss] for onss in model.viable_onss_ids)
+        iac_total_cost = sum(model.iac_cost_exp[wf, oss] for (wf, oss) in model.viable_iac_ids)
+        ec_total_cost = sum(model.ec_cost_exp[oss, onss] for (oss, onss) in model.viable_ec_ids)
         
         return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost + onss_total_costs
 
@@ -815,48 +810,53 @@ def opt_model(workspace_folder):
     """
     print("Defining capacity constraints...")
 
-    def min_total_wf_capacity_rule(model):
+    def tot_wf_cap_rule(model):
         """
-        Enforce that the sum of the capacities of all selected wind farms meets at least a specified minimum fraction 
-        of the total potential capacity of all wind farms considered.
+        Ensure the selected wind farms collectively meet a minimum required capacity.
+        This capacity is specified as a fraction of the total potential capacity of all considered wind farms.
         """
-        min_required_capacity = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
-        return sum(model.wf_cap[wf] * model.select_wf_var[wf] for wf in model.viable_wf_ids) >= min_required_capacity
-    model.min_total_wf_capacity_con = Constraint(rule=min_total_wf_capacity_rule)
+        min_req_cap = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
+        return sum(model.wf_bool_var[wf] * model.wf_cap[wf] for wf in model.viable_wf_ids) >= min_req_cap
+    model.tot_wf_cap_con = Constraint(rule=tot_wf_cap_rule)
+    
+    def iac_cap_connect_rule(model, wf):
+        """
+        Ensure each selected wind farm is connected to exactly one offshore substation.
+        The connection capacity must match the selected wind farm's capacity.
+        """
+        connect_to_oss = sum(model.iac_cap_var[wf, oss] for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids)
+        return connect_to_oss >= model.wf_bool_var[wf] * model.wf_cap[wf]
+    model.iac_cap_connect_con = Constraint(model.viable_wf_ids, rule=iac_cap_connect_rule)
 
-    print("Defining connectivity constraints...")
-
-    def iac_connect_rule(model, wf):
-        """Ensure that if a wind farm is selected, it is connected to exactly one offshore substation."""
-        connect_to_oss = sum(model.select_iac_var[wf, oss] for oss in model.oss_ids if (wf, oss) in model.viable_iac_ids)
-        return connect_to_oss == model.select_wf_var[wf]
-    model.iac_select_con = Constraint(model.viable_wf_ids, rule=iac_connect_rule)
-
-    def ec_connect_rule(model, oss):
-        """Ensure that if an offshore substation is operational, it must connect to exactly one onshore substation."""
-        connect_to_onss = sum(model.select_ec_var[oss, onss] for onss in model.onss_ids if (oss, onss) in model.viable_ec_ids)
-        return connect_to_onss == model.select_oss_var[oss]
-    model.oss_onss_connection_activation_con = Constraint(model.viable_oss_ids, rule=ec_connect_rule)
-
-    def oss_select_rule(model, oss):
+    def oss_cap_connect_rule(model, oss):
         """
-        Ensure that if any wind farm is connected to an offshore substation,
-        then the offshore substation is also selected.
+        Ensure the capacity of each offshore substation matches or exceeds the total capacity of the connected wind farms.
+        This ensures that the substation can handle all incoming power from the connected farms.
         """
-        M = len(model.viable_wf_ids)
-        connect_from_wf = sum(model.select_iac_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-        return model.select_oss_var[oss] * M >= connect_from_wf
-    model.oss_select_con = Constraint(model.viable_oss_ids, rule=oss_select_rule)
+        connect_from_wf = sum(model.iac_cap_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
+        return model.oss_cap_var[oss] >= connect_from_wf
+    model.oss_cap_connect_con = Constraint(model.viable_oss_ids, rule=oss_cap_connect_rule)
 
-    def onss_select_rule(model, onss):
+    def ec_cap_connect_rule(model, oss):
         """
-        Ensure that if any offshore substation is connected to an onshore substation,
-        then the onshore substation is also selected.
+        Ensure the connection capacity from each offshore substation to onshore substations matches the substation's capacity.
+        This links the offshore substation's output directly to the export cables.
         """
-        M = len(model.viable_oss_ids)  # Assuming maximum number of viable offshore substations
-        connect_from_oss = sum(model.select_ec_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
-        return model.select_onss_var[onss] * M >= connect_from_oss
-    model.onss_select_con = Constraint(model.viable_onss_ids, rule=onss_select_rule)
+        connect_to_oss = sum(model.ec_cap_var[oss, onss] for onss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
+        return connect_to_oss >= model.oss_cap_var[oss]
+    model.ec_cap_connect_con = Constraint(model.viable_oss_ids, rule=ec_cap_connect_rule)
+    
+    def onss_cap_connect_rule(model, onss):
+        """
+        Ensure the capacity of each onshore substation is at least the total incoming capacity from the connected offshore substations.
+        This ensures that the onshore substation can handle all incoming power.
+        """
+        connect_from_oss = sum(model.ec_cap_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
+        return model.onss_cap_var[onss] >= connect_from_oss
+    model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
+
+
+
 
     """
     Solve the model
@@ -905,37 +905,52 @@ def opt_model(workspace_folder):
         - model: The optimized Pyomo model.
         - workspace_folder: The path to the directory where results will be saved.
         """
-        def expr_f(e):
+        def exp_f(e):
             return round(e.expr())
+        
+        def var_f(v):
+            return round(v.value)
+        
+        # Mapping ISO country codes of Baltic Sea countries to unique integers
+        int_to_iso_mp = {
+            1 : 'DE',  # Germany
+            2 : 'DK',  # Denmark
+            3 : 'EE',  # Estonia
+            4 : 'FI',  # Finland
+            5 : 'LV',  # Latvia
+            6 : 'LT',  # Lithuania
+            7 : 'PL',  # Poland
+            8 : 'SE'   # Sweden
+        }
         
         selected_components = {
             'wf_ids': {
-                'data': np.array([(wf, model.wf_lon[wf], model.wf_lat[wf], model.wf_cap[wf], model.wf_cost[wf]) 
-                                for wf in model.viable_wf_ids if model.select_wf_var[wf].value == 1], 
-                                dtype=[('id', int), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
-                'headers': "ID, Longitude, Latitude, Capacity, Cost"
+            'data': np.array([(wf, int_to_iso_mp[model.wf_iso[wf]], model.wf_lon[wf], model.wf_lat[wf], model.wf_cap[wf], model.wf_cost[wf]) 
+                            for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0], 
+                            dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
+            'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
             },
             'oss_ids': {
-                'data': np.array([(oss, model.oss_lon[oss], model.oss_lat[oss], expr_f(model.oss_cap_exp[oss]), expr_f(model.oss_cost_exp[oss])) 
-                                for oss in model.viable_oss_ids if model.select_oss_var[oss].value == 1], 
-                                dtype=[('id', int), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
-                'headers': "ID, Longitude, Latitude, Capacity, Cost"
+                'data': np.array([(oss, int_to_iso_mp[model.oss_iso[oss]], model.oss_lon[oss], model.oss_lat[oss], model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], var_f(model.oss_cap_var[oss]), exp_f(model.oss_cost_exp[oss])) 
+                                for oss in model.viable_oss_ids if model.oss_cap_var[oss].value > 0], 
+                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', int), ('cost', int)]),
+                'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
             },
             'onss_ids': {
-                'data': np.array([(onss, model.onss_lon[onss], model.onss_lat[onss], expr_f(model.onss_cap_exp[onss]), expr_f(model.onss_cost_exp[onss])) 
-                                for onss in model.viable_onss_ids if model.select_onss_var[onss].value == 1], 
-                                dtype=[('id', int), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
-                'headers': "ID, Longitude, Latitude, Capacity, Cost"
+                'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), exp_f(model.onss_cost_exp[onss])) 
+                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
+                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', int), ('cost', int)]),
+                'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
             },
             'iac_ids': {
-                'data': np.array([(wf, oss, model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss], expr_f(model.iac_cap_exp[wf, oss]), expr_f(model.iac_cost_exp[wf, oss])) 
-                                for wf, oss in model.viable_iac_ids if model.select_iac_var[wf, oss].value == 1], 
+                'data': np.array([(wf, oss, model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss], var_f(model.iac_cap_var[wf, oss]), exp_f(model.iac_cost_exp[wf, oss])) 
+                                for wf, oss in model.viable_iac_ids if model.iac_cap_var[wf, oss].value > 0], 
                                 dtype=[('wf_id', int), ('oss_id', int), ('wf_lon', float), ('wf_lat', float), ('oss_lon', float), ('oss_lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
             },
             'ec_ids': {
-                'data': np.array([(oss, onss, model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss], expr_f(model.ec_cap_exp[oss, onss]), expr_f(model.ec_cost_exp[oss, onss])) 
-                                for oss, onss in model.viable_ec_ids if model.select_ec_var[oss, onss].value == 1], 
+                'data': np.array([(oss, onss, model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec_cap_var[oss, onss]), exp_f(model.ec_cost_exp[oss, onss])) 
+                                for oss, onss in model.viable_ec_ids if model.ec_cap_var[oss, onss].value > 0], 
                                 dtype=[('oss_id', int), ('onss_id', int), ('oss_lon', float), ('oss_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
             }
@@ -961,9 +976,8 @@ def opt_model(workspace_folder):
 
             print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
 
-
         # Ensure the results directory exists
-        results_dir = os.path.join(workspace_folder, "results")
+        results_dir = os.path.join(workspace_folder, "results", "hubspoke")
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
 
@@ -982,20 +996,19 @@ def opt_model(workspace_folder):
 
             print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
 
-
     # Set the path to the Scip solver executable
     scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
-    
+
     # Create a solver object and specify the solver executable path
     solver = SolverFactory('scip')
     solver.options['executable'] = scip_path
 
     # Define the path for the solver log
     solver_log_path = os.path.join(workspace_folder, "results", "hubspoke", "solver_log_hs.txt")
-    
+
     # Retrieve solver options with the configured settings
     solver_options = configure_scip_solver()
-    
+
     # Pass the log path directly to the solver
     results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
     
@@ -1021,7 +1034,6 @@ def opt_model(workspace_folder):
     print(f"Solver log saved to {solver_log_path}")
 
     return None
-
 
 # Define the main block
 if __name__ == "__main__":
