@@ -420,6 +420,23 @@ def oss_cost_plh(wdepth, icover, pdist, capacity, polarity):
     
     return cost
 
+def onss_cost_plh(capacity, threshold):
+    """
+    Calculate the cost for ONSS expansion above a certain capacity.
+
+    Parameters:
+    - capacity (float): The total capacity for which the cost is to be calculated.
+    - threshold (float): The capacity threshold specific to the ONSS above which costs are incurred.
+    
+    Returns:
+    - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
+    """
+    
+    # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
+    cost_function = (capacity - threshold) * 100
+    
+    return cost_function
+
 def iac_cost_plh(distance, capacity, polarity):
     """
     Calculate inter-array cable costs.
@@ -433,7 +450,7 @@ def iac_cost_plh(distance, capacity, polarity):
     - cost (float): Total cost of the inter-array cable.
     """
     # Example cost calculation
-    cost = distance * 1500 + capacity * 400
+    cost = distance * 1500 + capacity * 100
     
     # Polarity adjustment
     if polarity == "AC":
@@ -456,7 +473,7 @@ def ec_cost_plh(distance, capacity, polarity):
     - cost (float): Total cost of the export cable.
     """
     # Example cost calculation
-    cost = distance * 2000 + capacity * 500
+    cost = distance * 2000 + capacity * 100
     
     # Polarity adjustment
     if polarity == "AC":
@@ -465,26 +482,6 @@ def ec_cost_plh(distance, capacity, polarity):
         cost *= 1.2  # Example adjustment for DC costs
     
     return cost
-
-def onss_cost_plh(capacity, threshold):
-    """
-    Calculate the cost for ONSS expansion above a certain capacity.
-
-    Parameters:
-    - capacity (float): The total capacity for which the cost is to be calculated.
-    - threshold (float): The capacity threshold specific to the ONSS above which costs are incurred.
-    
-    Returns:
-    - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
-    """
-    
-    # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    cost_function = (capacity - threshold) * 1000
-    
-    # Ensure that the cost is only applied above the capacity threshold and is zero at or below the threshold
-    cost_function_max = (cost_function + abs(cost_function)) / 2
-    
-    return cost_function_max
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -698,13 +695,15 @@ def opt_model(workspace_folder):
     # Calculate viable entities based on the viable connections
     model.viable_wf_ids, model.viable_oss_ids, model.viable_onss_ids = get_viable_entities(viable_iac, viable_ec)
     
-    # Initialize variables to one
+    # Initialize variables
     model.wf_bool_var = Var(model.viable_wf_ids, within=Binary)
     
     model.oss_cap_var = Var(model.viable_oss_ids, within=NonNegativeReals)
     model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     model.iac_cap_var = Var(model.viable_iac_ids, within=NonNegativeReals)
     model.ec_cap_var = Var(model.viable_ec_ids, within=NonNegativeReals)
+    
+    model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
 
     # Define a dictionary containing variable names and their respective lengths
     print_variables = {
@@ -771,7 +770,6 @@ def opt_model(workspace_folder):
         return onss_cost_plh(model.onss_cap_var[onss], model.onss_thold[onss])
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
-
     """
     Define Objective function
     """
@@ -796,7 +794,7 @@ def opt_model(workspace_folder):
         """
         wf_total_cost = sum(model.wf_cost_exp[wf] for wf in model.viable_wf_ids)
         oss_total_cost = sum(model.oss_cost_exp[oss] for oss in model.viable_oss_ids)
-        onss_total_costs = sum(model.onss_cost_exp[onss] for onss in model.viable_onss_ids)
+        onss_total_costs = sum(model.onss_cost_var[onss] for onss in model.viable_onss_ids)
         iac_total_cost = sum(model.iac_cost_exp[wf, oss] for (wf, oss) in model.viable_iac_ids)
         ec_total_cost = sum(model.ec_cost_exp[oss, onss] for (oss, onss) in model.viable_ec_ids)
         
@@ -808,7 +806,7 @@ def opt_model(workspace_folder):
     """
     Define Constraints
     """
-    print("Defining capacity constraints...")
+    print("Defining total capacity constraint...")
 
     def tot_wf_cap_rule(model):
         """
@@ -818,6 +816,8 @@ def opt_model(workspace_folder):
         min_req_cap = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
         return sum(model.wf_bool_var[wf] * model.wf_cap[wf] for wf in model.viable_wf_ids) >= min_req_cap
     model.tot_wf_cap_con = Constraint(rule=tot_wf_cap_rule)
+    
+    print("Defining capacity constraints...")
     
     def iac_cap_connect_rule(model, wf):
         """
@@ -842,10 +842,12 @@ def opt_model(workspace_folder):
         Ensure the connection capacity from each offshore substation to onshore substations matches the substation's capacity.
         This links the offshore substation's output directly to the export cables.
         """
-        connect_to_oss = sum(model.ec_cap_var[oss, onss] for onss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
-        return connect_to_oss >= model.oss_cap_var[oss]
+        connect_to_onss = sum(model.ec_cap_var[oss, onss] for onss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
+        return connect_to_onss >= model.oss_cap_var[oss]
     model.ec_cap_connect_con = Constraint(model.viable_oss_ids, rule=ec_cap_connect_rule)
     
+    model.slack_var = Var(model.viable_onss_ids, within=NonNegativeReals)
+
     def onss_cap_connect_rule(model, onss):
         """
         Ensure the capacity of each onshore substation is at least the total incoming capacity from the connected offshore substations.
@@ -854,9 +856,17 @@ def opt_model(workspace_folder):
         connect_from_oss = sum(model.ec_cap_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
         return model.onss_cap_var[onss] >= connect_from_oss
     model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
-
-
-
+    
+    
+    print("Defining auxillary cost constraint...")
+    
+    def onss_cost_rule(model, onss):
+        """
+        Ensure the cost variable for each onshore substation meets or exceeds the calculated cost.
+        """
+        return model.onss_cost_var[onss] >= model.onss_cost_exp[onss]
+    model.onss_cost_con = Constraint(model.viable_onss_ids, rule=onss_cost_rule)
+    
 
     """
     Solve the model
@@ -937,7 +947,7 @@ def opt_model(workspace_folder):
                 'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
             },
             'onss_ids': {
-                'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), exp_f(model.onss_cost_exp[onss])) 
+                'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), var_f(model.onss_cost_var[onss])) 
                                 for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', int), ('cost', int)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
@@ -1009,9 +1019,8 @@ def opt_model(workspace_folder):
     # Retrieve solver options with the configured settings
     solver_options = configure_scip_solver()
 
-    # Pass the log path directly to the solver
     results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
-    
+
     # Detailed checking of solver results
     if results.solver.status == SolverStatus.ok:
         if results.solver.termination_condition == TerminationCondition.optimal:
