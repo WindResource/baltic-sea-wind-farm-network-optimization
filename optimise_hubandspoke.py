@@ -91,146 +91,7 @@ def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
 
     return total_costs
 
-def haversine_distance_scalar(lon1, lat1, lon2, lat2):
-    """
-    Calculate the Haversine distance between two sets of coordinates.
-
-    Parameters:
-        lon1 (float): Longitude of the first coordinate.
-        lat1 (float): Latitude of the first coordinate.
-        lon2 (float): Longitude of the second coordinate.
-        lat2 (float): Latitude of the second coordinate.
-
-    Returns:
-        float: Haversine distance in meters.
-    """
-    # Radius of the Earth in meters
-    r = 6371 * 1e3
-    
-    # Convert latitude and longitude from degrees to radians
-    lon1, lat1, lon2, lat2 = np.radians(lon1), np.radians(lat1), np.radians(lon2), np.radians(lat2)
-
-    # Calculate differences in coordinates
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-
-    # Apply Haversine formula
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-    c = 2 * np.arcsin(np.sqrt(a))
-
-    # Calculate the distance
-    distance = c * r 
-
-    return distance
-
-
-def export_cable_costs(distance, required_active_power, polarity="AC"):
-    """
-    Calculate the costs associated with selecting export cables for a given length, desired capacity,
-    and desired voltage.
-
-    Parameters:
-        length (float): The length of the cable (in meters).
-        desired_capacity (float): The desired capacity of the cable (in watts).
-        desired_voltage (int): The desired voltage of the cable (in kilovolts).
-
-    Returns:
-        tuple: A tuple containing the equipment costs, installation costs, and total costs
-                associated with the selected HVAC cables.
-    """
-
-    from pyomo.environ import Ceiling, minimize
-    
-    length = 1.2 * distance
-
-    required_active_power *= 1e6  # (MW > W)
-    required_voltage = 400
-
-    # Define data_tuples where each column represents (tension, section, resistance, capacitance, ampacity, cost, inst_cost)
-    cable_data = [
-        (132, 630, 39.5, 209, 818, 406, 335),
-        (132, 800, 32.4, 217, 888, 560, 340),
-        (132, 1000, 27.5, 238, 949, 727, 350),
-        (220, 500, 48.9, 136, 732, 362, 350),
-        (220, 630, 39.1, 151, 808, 503, 360),
-        (220, 800, 31.9, 163, 879, 691, 370),
-        (220, 1000, 27.0, 177, 942, 920, 380),
-        (400, 800, 31.4, 130, 870, 860, 540),
-        (400, 1000, 26.5, 140, 932, 995, 555),
-        (400, 1200, 22.1, 170, 986, 1130, 570),
-        (400, 1400, 18.9, 180, 1015, 1265, 580),
-        (400, 1600, 16.6, 190, 1036, 1400, 600),
-        (400, 2000, 13.2, 200, 1078, 1535, 615)
-    ]
-
-    # Filter data based on desired voltage
-    cable_data = [cable for cable in cable_data if cable[0] >= required_voltage]
-
-    # Define the scaling factors for each column:
-    """
-    Voltage (kV) > (V)
-    Section (mm^2) > (m^2)
-    Resistance (mΩ/km) > (Ω/m)
-    Capacitance (nF/km) > (F/m)
-    Ampacity (A)
-    Equipment cost (eu/m)
-    Installation cost (eu/m)
-    """
-    scaling_factors = [1e3, 1e-6, 1e-6, 1e-12, 1, 1, 1]
-
-    # Apply scaling to each column in cable_data
-    scaled_cable_data = []
-    for cable in cable_data:
-        scaled_cable = [cable[i] * scaling_factors[i] for i in range(len(cable))]
-        scaled_cable_data.append(scaled_cable)
-
-    power_factor = 0.90
-    cable_count = []  # To store the number of cables and corresponding cable data
-
-    for cable in scaled_cable_data:
-        voltage, resistance, capacitance, ampacity = cable[0], cable[2], cable[3], cable[4]
-        nominal_power_per_cable = voltage * ampacity
-        if polarity == "AC":  # Three phase AC
-            ac_apparent_power = required_active_power / power_factor
-            # Determine number of cables needed based on required total apparent power
-            n_cables = Ceiling(ac_apparent_power / nominal_power_per_cable)
-
-            current = ac_apparent_power / voltage
-
-        else:  # Assuming polarity == "DC"
-            # Determine number of cables needed based on required power
-            n_cables = Ceiling(required_active_power / nominal_power_per_cable)
-
-            current = required_active_power / voltage
-
-        resistive_losses = current ** 2 * resistance * length / n_cables
-        power_eff = (resistive_losses / required_active_power)
-
-        # Add the calculated data to the list
-        cable_count.append((cable, n_cables))
-
-    # Calculate the total costs for each cable combination
-    equip_costs_array = [cable[5] * length * n_cables for cable, n_cables in cable_count]
-    inst_costs_array = [cable[6] * length * n_cables for cable, n_cables in cable_count]
-
-    # Calculate total costs
-    total_costs_array = [equip + inst for equip, inst in zip(equip_costs_array, inst_costs_array)]
-
-    # Find the cable combination with the minimum total cost
-    min_cost_index = total_costs_array.index(min(total_costs_array))
-
-    # Initialize costs
-    equip_costs = equip_costs_array[min_cost_index]
-    inst_costs = inst_costs_array[min_cost_index]
-    ope_costs_yearly = 0.2 * 1e-2 * equip_costs
-    deco_costs = 0.5 * inst_costs
-
-    # Calculate present value
-    total_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
-
-    return total_costs
-
-def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacity, polarity = "AC"):
+def oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity, polarity = "AC"):
     """
     Estimate the costs associated with an offshore substation based on various parameters.
 
@@ -245,7 +106,7 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
     - float: Estimated total costs of the offshore substation.
     """
     
-    def support_structure(water_depth):
+    def supp_struct_cond(water_depth):
         """
         Determines the support structure type based on water depth.
 
@@ -253,14 +114,12 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
         - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
         """
         # Define depth ranges for different support structures
-        if water_depth < 30:
-            return "sandisland"
-        elif 30 <= water_depth < 150:
+        if water_depth < 150:
             return "jacket"
         elif 150 <= water_depth:
             return "floating"
 
-    def equip_costs(water_depth, support_structure, ice_cover, oss_capacity, polarity):
+    def equip_cost_lin(water_depth, support_structure, ice_cover, oss_capacity, polarity = "AC"):
         """
         Calculates the offshore substation equipment costs based on water depth, capacity, and export cable type.
 
@@ -269,7 +128,6 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
         """
         # Coefficients for equipment cost calculation based on the support structure and year
         support_structure_coeff = {
-            'sandisland': (3.26, 804, 0, 0),
             'jacket': (233, 47, 309, 62),
             'floating': (87, 68, 116, 91)
         }
@@ -287,18 +145,8 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
         # Define equivalent electrical power
         equiv_capacity = 0.5 * oss_capacity if polarity == "AC" else oss_capacity
 
-        if support_structure == 'sandisland':
-            # Calculate foundation costs for sand island
-            area_island = (equiv_capacity * 5)
-            slope = 0.75
-            r_hub = sqrt(area_island/np.pi)
-            r_seabed = r_hub + (water_depth + 3) / slope
-            volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
-            
-            supp_costs = c1 * volume_island + c2 * area_island
-        else:
-            # Calculate foundation costs for jacket/floating
-            supp_costs = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
+        # Calculate foundation costs for jacket/floating
+        supp_costs = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
         
         # Add support structure costs for ice cover adaptation
         supp_costs = 1.10 * supp_costs if ice_cover == 1 else supp_costs
@@ -309,9 +157,9 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
         # Calculate equipment costs
         equip_costs = supp_costs + conv_costs
         
-        return supp_costs, conv_costs, equip_costs
+        return conv_costs, equip_costs
 
-    def inst_deco_costs(water_depth, support_structure, port_distance, oss_capacity, polarity, operation):
+    def inst_deco_cost_lin(support_structure, port_distance, operation):
         """
         Calculate installation or decommissioning costs of offshore substations based on the water depth, and port distance.
 
@@ -320,7 +168,6 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
         """
         # Installation coefficients for different vehicles
         inst_coeff = {
-            ('sandisland','SUBV'): (20000, 25, 2000, 6000, 15),
             ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
             ('floating','HLCV'): (1, 22.5, 10, 0, 40),
             ('floating','AHV'): (3, 18.5, 30, 90, 40)
@@ -328,7 +175,6 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
 
         # Decommissioning coefficients for different vehicles
         deco_coeff = {
-            ('sandisland','SUBV'): (20000, 25, 2000, 6000, 15),
             ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
             ('floating','HLCV'): (1, 22.5, 10, 0, 40),
             ('floating','AHV'): (3, 18.5, 30, 30, 40)
@@ -337,22 +183,7 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
         # Choose the appropriate coefficients based on the operation type
         coeff = inst_coeff if operation == 'inst' else deco_coeff
 
-        if support_structure == 'sandisland':
-            c1, c2, c3, c4, c5 = coeff[('sandisland','SUBV')]
-            # Define equivalent electrical power
-            equiv_capacity = 0.5 * oss_capacity if polarity == "AC" else oss_capacity
-            
-            # Calculate installation costs for sand island
-            water_depth = max(0, water_depth)
-            area_island = (equiv_capacity * 5)
-            slope = 0.75
-            r_hub = sqrt(area_island/np.pi)
-            r_seabed = r_hub + (water_depth + 3) / slope
-            volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
-            
-            total_costs = ((volume_island / c1) * ((2 * port_distance) / c2) + (volume_island / c3) + (volume_island / c4)) * (c5 * 1000) / 24
-            
-        elif support_structure == 'jacket':
+        if support_structure == 'jacket':
             c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
             # Calculate installation costs for jacket
             total_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
@@ -366,34 +197,99 @@ def offshore_substation_costs(water_depth, ice_cover, port_distance, oss_capacit
                 vessel_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
                 # Add the costs for the current vessel type to the total costs
                 total_costs += vessel_costs
-        else:
-            total_costs = None
-            
+        
         return total_costs
 
-    def oper_costs(support_structure, supp_costs, conv_costs):
-        
-        ope_exp = 0.03 * conv_costs + 0.015 * supp_costs if support_structure == "sandisland" else 0.03 * conv_costs
-        
-        return ope_exp
-
     # Determine support structure
-    supp_structure = support_structure(water_depth)
+    supp_structure = supp_struct_cond(water_depth)
     
     # Calculate equipment costs
-    supp_costs, conv_costs, equip_costs =  equip_costs(water_depth, supp_structure, ice_cover, oss_capacity, polarity)
+    conv_costs, equip_costs = equip_cost_lin(water_depth, supp_structure, ice_cover, oss_capacity, polarity)
 
     # Calculate installation and decommissioning costs
-    inst_costs = inst_deco_costs(water_depth, supp_structure, port_distance, oss_capacity, polarity, "inst")
-    deco_costs = inst_deco_costs(water_depth, supp_structure, port_distance, oss_capacity, polarity, "deco")
+    inst_costs = inst_deco_cost_lin(supp_structure, port_distance, "inst")
+    deco_costs = inst_deco_cost_lin(supp_structure, port_distance, "deco")
 
     # Calculate yearly operational costs
-    ope_costs_yearly = oper_costs(support_structure, supp_costs, conv_costs)
+    ope_costs_yearly = 0.03 * conv_costs
     
     # Calculate present value of costs    
     oss_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
     
+    # Offshore substation cost in million Euros
+    oss_costs *= 1e-6
+    
     return oss_costs
+
+def iac_cost_lin(distance, capacity, polarity="AC"):
+    """
+    Calculate the costs associated with selecting export cables for a given length, desired capacity,
+    and desired voltage.
+
+    Parameters:
+        length (float): The length of the cable (in meters).
+        desired_capacity (float): The desired capacity of the cable (in watts).
+        desired_voltage (int): The desired voltage of the cable (in kilovolts).
+
+    Returns:
+        tuple: A tuple containing the equipment costs, installation costs, and total costs
+                associated with the selected HVAC cables.
+    """
+
+    cable_length = 1.1 * distance
+    cable_capacity = 348 #MW
+    cable_equip_cost = 0.860 #Meu/km
+    cable_inst_cost = 0.540 #Meu/km
+    
+    
+    parallel_cables = capacity / cable_capacity
+    
+    equip_cost = parallel_cables * cable_length * cable_equip_cost
+    inst_cost = parallel_cables * cable_length * cable_inst_cost
+    
+    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
+    
+    deco_cost = 0.5 * inst_cost
+
+    # Calculate present value
+    total_costs = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+
+    return total_costs
+
+def ec_cost_lin(distance, capacity, polarity="AC"):
+    """
+    Calculate the costs associated with selecting export cables for a given length, desired capacity,
+    and desired voltage.
+
+    Parameters:
+        length (float): The length of the cable (in meters).
+        desired_capacity (float): The desired capacity of the cable (in watts).
+        desired_voltage (int): The desired voltage of the cable (in kilovolts).
+
+    Returns:
+        tuple: A tuple containing the equipment costs, installation costs, and total costs
+                associated with the selected HVAC cables.
+    """
+
+    cable_length = 1.2 * distance
+    cable_capacity = 348 #MW
+    cable_equip_cost = 0.860 #Meu/km
+    cable_inst_cost = 0.540 #Meu/km
+    
+    
+    parallel_cables = capacity / cable_capacity
+    
+    equip_cost = parallel_cables * cable_length * cable_equip_cost
+    inst_cost = parallel_cables * cable_length * cable_inst_cost
+    
+    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
+    
+    deco_cost = 0.5 * inst_cost
+
+    # Calculate present value
+    total_costs = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+
+    return total_costs
 
 def oss_cost_plh(wdepth, icover, pdist, capacity, polarity):
     """
@@ -433,7 +329,7 @@ def onss_cost_plh(capacity, threshold):
     """
     
     # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    cost_function = (capacity - threshold) * 100
+    cost_function = (capacity - threshold) * 0.01
     
     return cost_function
 
@@ -450,7 +346,7 @@ def iac_cost_plh(distance, capacity, polarity):
     - cost (float): Total cost of the inter-array cable.
     """
     # Example cost calculation
-    cost = distance * 1500 + capacity * 100
+    cost = distance * 1500 + capacity * 1000
     
     # Polarity adjustment
     if polarity == "AC":
@@ -473,7 +369,7 @@ def ec_cost_plh(distance, capacity, polarity):
     - cost (float): Total cost of the export cable.
     """
     # Example cost calculation
-    cost = distance * 2000 + capacity * 100
+    cost = distance * 2000 + capacity * 1000
     
     # Polarity adjustment
     if polarity == "AC":
@@ -625,7 +521,7 @@ def opt_model(workspace_folder):
         wf_lon[id] = data[2]
         wf_lat[id] = data[3]
         wf_cap[id] = data[5]
-        wf_cost[id] = data[6]
+        wf_cost[id] = data[6] * 1e-3 #Meu
 
     # Offshore substation data
     oss_iso, oss_lon, oss_lat, oss_wdepth, oss_icover, oss_pdist = {}, {}, {}, {}, {}, {}
@@ -664,7 +560,7 @@ def opt_model(workspace_folder):
     model.wf_lon = Param(model.wf_ids, initialize=wf_lon, within=NonNegativeReals)
     model.wf_lat = Param(model.wf_ids, initialize=wf_lat, within=NonNegativeReals)
     model.wf_cap = Param(model.wf_ids, initialize=wf_cap, within=NonNegativeIntegers)
-    model.wf_cost = Param(model.wf_ids, initialize=wf_cost, within=NonNegativeIntegers)
+    model.wf_cost = Param(model.wf_ids, initialize=wf_cost, within=NonNegativeReals)
 
     # Offshore substation model parameters
     model.oss_iso = Param(model.oss_ids, initialize=oss_iso, within=NonNegativeIntegers)
@@ -704,7 +600,7 @@ def opt_model(workspace_folder):
     model.ec_cap_var = Var(model.viable_ec_ids, within=NonNegativeReals)
     
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
-
+    
     # Define a dictionary containing variable names and their respective lengths
     print_variables = {
         "select_wf": model.wf_bool_var,
@@ -724,7 +620,6 @@ def opt_model(workspace_folder):
     """
     print("Defining expressions...")
 
-    
     """
     Define expressions for wind farms (WF)
     """
@@ -740,7 +635,7 @@ def opt_model(workspace_folder):
     model.iac_dist_exp = Expression(model.viable_iac_ids, rule=iac_distance_rule)
 
     def iac_cost_rule(model, wf, oss):
-        return iac_cost_plh(model.iac_dist_exp[wf, oss], model.iac_cap_var[wf, oss], polarity="AC")
+        return iac_cost_lin(model.iac_dist_exp[wf, oss], model.iac_cap_var[wf, oss], polarity="AC")
     model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
 
     """
@@ -748,7 +643,7 @@ def opt_model(workspace_folder):
     """
 
     def oss_cost_rule(model, oss):
-        return oss_cost_plh(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_var[oss], polarity="AC")
+        return oss_cost_lin(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_var[oss], polarity="AC")
     model.oss_cost_exp = Expression(model.viable_oss_ids, rule=oss_cost_rule)
 
     """
@@ -759,7 +654,7 @@ def opt_model(workspace_folder):
     model.ec_dist_exp = Expression(model.viable_ec_ids, rule=ec_distance_rule)
 
     def ec_cost_rule(model, oss, onss):
-        return ec_cost_plh(model.ec_dist_exp[oss, onss], model.ec_cap_var[oss, onss], polarity="AC")
+        return ec_cost_lin(model.ec_dist_exp[oss, onss], model.ec_cap_var[oss, onss], polarity="AC")
     model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
 
     """
@@ -845,8 +740,6 @@ def opt_model(workspace_folder):
         connect_to_onss = sum(model.ec_cap_var[oss, onss] for onss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
         return connect_to_onss >= model.oss_cap_var[oss]
     model.ec_cap_connect_con = Constraint(model.viable_oss_ids, rule=ec_cap_connect_rule)
-    
-    model.slack_var = Var(model.viable_onss_ids, within=NonNegativeReals)
 
     def onss_cap_connect_rule(model, onss):
         """
@@ -857,8 +750,7 @@ def opt_model(workspace_folder):
         return model.onss_cap_var[onss] >= connect_from_oss
     model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
     
-    
-    print("Defining auxillary cost constraint...")
+    print("Defining the cost variables...")
     
     def onss_cost_rule(model, onss):
         """
@@ -871,7 +763,7 @@ def opt_model(workspace_folder):
     """
     Solve the model
     """
-    print("Solving model...")
+    print("Solving the model...")
     
     def configure_scip_solver():
         """
@@ -897,10 +789,12 @@ def opt_model(workspace_folder):
             'propagating/maxroundsroot': 15, # Propagation rounds at root node
             'limits/nodes': 1e5,             # Maximum nodes in search tree
             'limits/totalnodes': 1e5,         # Total node limit across threads
-            'emphasis/feasibility': 1,         # Emphasize feasibility
+            'emphasis/optimality': 1,   # Emphasize optimality
             'emphasis/memory': 1,           # Emphasize memory
             'separating/maxrounds': 10,  # Limit cut rounds at non-root nodes
-            'heuristics/feaspump/freq': 10  # Frequency of feasibility pump heuristic
+            'heuristics/feaspump/freq': 10,  # Frequency of feasibility pump heuristic
+            'tol': 0.01,  # Set the relative optimality gap tolerance to 1%
+            'display/verblevel': 4  # Set verbosity level to display information about the solution
         }
 
         return solver_options
@@ -916,10 +810,10 @@ def opt_model(workspace_folder):
         - workspace_folder: The path to the directory where results will be saved.
         """
         def exp_f(e):
-            return round(e.expr())
+            return round(e.expr(), 3)
         
         def var_f(v):
-            return round(v.value)
+            return round(v.value, 3)
         
         # Mapping ISO country codes of Baltic Sea countries to unique integers
         int_to_iso_mp = {
@@ -943,25 +837,25 @@ def opt_model(workspace_folder):
             'oss_ids': {
                 'data': np.array([(oss, int_to_iso_mp[model.oss_iso[oss]], model.oss_lon[oss], model.oss_lat[oss], model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], var_f(model.oss_cap_var[oss]), exp_f(model.oss_cost_exp[oss])) 
                                 for oss in model.viable_oss_ids if model.oss_cap_var[oss].value > 0], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', int), ('cost', int)]),
+                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
             },
             'onss_ids': {
                 'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), var_f(model.onss_cost_var[onss])) 
                                 for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', int), ('cost', int)]),
+                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
             },
             'iac_ids': {
                 'data': np.array([(wf, oss, model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss], var_f(model.iac_cap_var[wf, oss]), exp_f(model.iac_cost_exp[wf, oss])) 
                                 for wf, oss in model.viable_iac_ids if model.iac_cap_var[wf, oss].value > 0], 
-                                dtype=[('wf_id', int), ('oss_id', int), ('wf_lon', float), ('wf_lat', float), ('oss_lon', float), ('oss_lat', float), ('capacity', int), ('cost', int)]),
+                                dtype=[('wf_id', int), ('oss_id', int), ('wf_lon', float), ('wf_lat', float), ('oss_lon', float), ('oss_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
             },
             'ec_ids': {
                 'data': np.array([(oss, onss, model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec_cap_var[oss, onss]), exp_f(model.ec_cost_exp[oss, onss])) 
                                 for oss, onss in model.viable_ec_ids if model.ec_cap_var[oss, onss].value > 0], 
-                                dtype=[('oss_id', int), ('onss_id', int), ('oss_lon', float), ('oss_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', int), ('cost', int)]),
+                                dtype=[('oss_id', int), ('onss_id', int), ('oss_lon', float), ('oss_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
             }
         }
@@ -1025,6 +919,7 @@ def opt_model(workspace_folder):
     if results.solver.status == SolverStatus.ok:
         if results.solver.termination_condition == TerminationCondition.optimal:
             print("Solver found an optimal solution.")
+            print(f"Objective value: {model.global_cost_obj.expr()}")
             save_results(model, workspace_folder)
         elif results.solver.termination_condition == TerminationCondition.infeasible:
             print("Problem is infeasible. Check model constraints and data.")
