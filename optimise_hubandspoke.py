@@ -1,40 +1,40 @@
 """
 Wind Farm Optimization Model Setup
 
-This script sets up and solves an optimization problem for selecting wind farms, offshore substations,
-and their connections to minimize total costs while adhering to operational constraints. It considers
-the costs of selecting wind farms and substations, plus the costs associated with connecting these
+This script sets up and solves an optimization problem for selecting wind farms, energy hubs,
+and their connections to minimize total cost while adhering to operational constraints. It considers
+the cost of selecting wind farms and substations, plus the cost associated with connecting these
 entities based on distances. It ensures configurations meet specified requirements, including
 connection feasibility, capacity limitations, and distance constraints.
 
-- generate_connections_and_costs(wind_farms, offshore_ss, onshore_ss, cost_per_distance_unit): Generates
-    possible connections between entities and calculates associated costs based on distances.
+- generate_connections_and_cost(wind_farms, offshore_ss, onshore_ss, cost_per_distance_unit): Generates
+    possible connections between entities and calculates associated cost based on distances.
     Parameters:
     - wind_farms (dict): Dictionary of wind farms with 'coordinates'.
-    - offshore_ss (dict): Dictionary of offshore substations with 'coordinates'.
+    - offshore_ss (dict): Dictionary of energy hubs with 'coordinates'.
     - onshore_ss (dict): Dictionary of onshore substations with 'coordinates'.
     - cost_per_distance_unit (float): Cost factor per unit of distance (e.g., per kilometer).
     Returns:
-    - tuple of (dict, dict): Two dictionaries, one for connection costs and one for distances, 
+    - tuple of (dict, dict): Two dictionaries, one for connection cost and one for distances, 
     with tuple ids representing connections (e.g., ('WF1', 'OSS1')).
 
-- add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_costs, distances,
-        min_total_capacity, max_wf_oss_dist, max_oss_ss_dist, universal_offshore_ss_max_capacity):
+- add_constraints(model, wind_farms, offshore_ss, onshore_ss, connections_cost, distances,
+        min_total_capacity, max_wf_eh_dist, max_eh_ss_dist, universal_offshore_ss_max_capacity):
     Adds operational constraints to the optimization model, including capacity and distance limitations.
     Parameters:
     - model (ConcreteModel): The Pyomo model.
     - wind_farms (dict): Dictionary of wind farms.
-    - offshore_ss (dict): Dictionary of offshore substations.
+    - offshore_ss (dict): Dictionary of energy hubs.
     - onshore_ss (dict): Dictionary of onshore substations.
-    - connections_costs (dict): Dictionary of connection costs.
+    - connections_cost (dict): Dictionary of connection cost.
     - distances (dict): Dictionary of distances between entities.
     - min_total_capacity (float): Minimum total capacity requirement for selected wind farms.
-    - max_wf_oss_dist (float): Maximum allowed distance from wind farms to offshore substations.
-    - max_oss_ss_dist (float): Maximum allowed distance from offshore substations to onshore substations.
-    - universal_offshore_ss_max_capacity (float): Maximum capacity for any offshore substation.
+    - max_wf_eh_dist (float): Maximum allowed distance from wind farms to energy hubs.
+    - max_eh_ss_dist (float): Maximum allowed distance from energy hubs to onshore substations.
+    - universal_offshore_ss_max_capacity (float): Maximum capacity for any energy hub.
     
 The optimization model is solved using Pyomo with GLPK as the solver. The solution includes selected
-wind farms, offshore substations, and connections between them, adhering to defined constraints.
+wind farms, energy hubs, and connections between them, adhering to defined constraints.
 """
 
 from pyomo.environ import *
@@ -42,18 +42,18 @@ import numpy as np
 import os
 from itertools import product
 
-def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
+def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
     """
-    Calculate the total present value of cable costs.
+    Calculate the total present value of cable cost.
 
     Parameters:
-        equip_costs (float): Equipment costs.
-        inst_costs (float): Installation costs.
-        ope_costs_yearly (float): Yearly operational costs.
-        deco_costs (float): Decommissioning costs.
+        equip_cost (float): Equipment cost.
+        inst_cost (float): Installation cost.
+        ope_cost_yearly (float): Yearly operational cost.
+        deco_cost (float): Decommissioning cost.
 
     Returns:
-        tuple: A tuple containing the equipment costs, installation costs, and total present value of costs.
+        tuple: A tuple containing the equipment cost, installation cost, and total present value of cost.
     """
     # Define years for installation, operational, and decommissioning
     inst_year = 0  # First year
@@ -67,43 +67,43 @@ def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
     # Define the years as a function of inst_year and end_year
     years = range(inst_year, end_year + 1)
 
-    # Initialize total operational costs
-    ope_costs = 0
-    
-    # Adjust costs for each year
+    # Initialize total operational cost
+    ope_cost = 0
+
+    # Adjust cost for each year
     for year in years:
-        # Adjust installation costs
+        # Adjust installation cost
         if year == inst_year:
-            equip_costs *= (1 + discount_rate) ** -year
-            inst_costs *= (1 + discount_rate) ** -year
-        # Adjust operational costs
+            equip_cost *= (1 + discount_rate) ** -year
+            inst_cost *= (1 + discount_rate) ** -year
+        # Adjust operational cost
         if year >= inst_year and year < ope_year:
-            inst_costs *= (1 + discount_rate) ** -year
+            inst_cost *= (1 + discount_rate) ** -year
         elif year >= ope_year and year < dec_year:
-            ope_costs_yearly *= (1 + discount_rate) ** -year
-            ope_costs += ope_costs_yearly  # Accumulate yearly operational costs
-        # Adjust decommissioning costs
+            ope_cost_yearly *= (1 + discount_rate) ** -year
+            ope_cost += ope_cost_yearly  # Accumulate yearly operational cost
+        # Adjust decommissioning cost
         if year >= dec_year and year <= end_year:
-            deco_costs *= (1 + discount_rate) ** -year
+            deco_cost *= (1 + discount_rate) ** -year
 
-    # Calculate total present value of costs
-    total_costs = equip_costs + inst_costs + ope_costs + deco_costs
+    # Calculate total present value of cost
+    total_cost = equip_cost + inst_cost + ope_cost + deco_cost
 
-    return total_costs
+    return total_cost
 
-def oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity, polarity = "AC"):
+def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "AC"):
     """
-    Estimate the costs associated with an offshore substation based on various parameters.
+    Estimate the cost associated with an energy hub based on various parameters.
 
     Parameters:
-    - water_depth (float): Water depth at the location of the offshore substation.
+    - water_depth (float): Water depth at the location of the energy hub.
     - ice_cover (int): Indicator of ice cover presence (1 for presence, 0 for absence).
     - port_distance (float): Distance from the offshore location to the nearest port.
-    - oss_capacity (float): Capacity of the offshore substation.
+    - eh_capacity (float): Capacity of the energy hub.
     - polarity (str, optional): Polarity of the substation ('AC' or 'DC'). Defaults to 'AC'.
 
     Returns:
-    - float: Estimated total costs of the offshore substation.
+    - float: Estimated total cost of the energy hub.
     """
     
     def supp_struct_cond(water_depth):
@@ -119,12 +119,12 @@ def oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity, polarity =
         elif 150 <= water_depth:
             return "floating"
 
-    def equip_cost_lin(water_depth, support_structure, ice_cover, oss_capacity, polarity = "AC"):
+    def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity, polarity = "AC"):
         """
-        Calculates the offshore substation equipment costs based on water depth, capacity, and export cable type.
+        Calculates the energy hub equipment cost based on water depth, capacity, and export cable type.
 
         Returns:
-        - float: Calculated equipment costs.
+        - float: Calculated equipment cost.
         """
         # Coefficients for equipment cost calculation based on the support structure and year
         support_structure_coeff = {
@@ -143,28 +143,28 @@ def oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity, polarity =
         c5, c6 = equip_coeff[polarity]
         
         # Define equivalent electrical power
-        equiv_capacity = 0.5 * oss_capacity if polarity == "AC" else oss_capacity
+        equiv_capacity = 0.5 * eh_capacity if polarity == "AC" else eh_capacity
 
-        # Calculate foundation costs for jacket/floating
-        supp_costs = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
+        # Calculate foundation cost for jacket/floating
+        supp_cost = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
         
-        # Add support structure costs for ice cover adaptation
-        supp_costs = 1.10 * supp_costs if ice_cover == 1 else supp_costs
+        # Add support structure cost for ice cover adaptation
+        supp_cost = 1.10 * supp_cost if ice_cover == 1 else supp_cost
         
-        # Power converter costs
-        conv_costs = c5 * oss_capacity * int(1e3) + c6 * int(1e6) #* int(1e3)
+        # Power converter cost
+        conv_cost = c5 * eh_capacity * int(1e3) + c6 * int(1e6) #* int(1e3)
         
-        # Calculate equipment costs
-        equip_costs = supp_costs + conv_costs
+        # Calculate equipment cost
+        equip_cost = supp_cost + conv_cost
         
-        return conv_costs, equip_costs
+        return conv_cost, equip_cost
 
     def inst_deco_cost_lin(support_structure, port_distance, operation):
         """
-        Calculate installation or decommissioning costs of offshore substations based on the water depth, and port distance.
+        Calculate installation or decommissioning cost of energy hubs based on the water depth, and port distance.
 
         Returns:
-        - float: Calculated installation or decommissioning costs.
+        - float: Calculated installation or decommissioning cost.
         """
         # Installation coefficients for different vehicles
         inst_coeff = {
@@ -185,199 +185,128 @@ def oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity, polarity =
 
         if support_structure == 'jacket':
             c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
-            # Calculate installation costs for jacket
-            total_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
+            # Calculate installation cost for jacket
+            total_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
         elif support_structure == 'floating':
-            total_costs = 0
+            total_cost = 0
             
             # Iterate over the coefficients for floating (HLCV and AHV)
             for vessel_type in [('floating', 'HLCV'), ('floating', 'AHV')]:
                 c1, c2, c3, c4, c5 = coeff[vessel_type]
-                # Calculate installation costs for the current vessel type
-                vessel_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-                # Add the costs for the current vessel type to the total costs
-                total_costs += vessel_costs
+                # Calculate installation cost for the current vessel type
+                vessel_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
+                # Add the cost for the current vessel type to the total cost
+                total_cost += vessel_cost
         
-        return total_costs
+        return total_cost
 
     # Determine support structure
     supp_structure = supp_struct_cond(water_depth)
     
-    # Calculate equipment costs
-    conv_costs, equip_costs = equip_cost_lin(water_depth, supp_structure, ice_cover, oss_capacity, polarity)
+    # Calculate equipment cost
+    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity, polarity)
 
-    # Calculate installation and decommissioning costs
-    inst_costs = inst_deco_cost_lin(supp_structure, port_distance, "inst")
-    deco_costs = inst_deco_cost_lin(supp_structure, port_distance, "deco")
+    # Calculate installation and decommissioning cost
+    inst_cost = inst_deco_cost_lin(supp_structure, port_distance, "inst")
+    deco_cost = inst_deco_cost_lin(supp_structure, port_distance, "deco")
 
-    # Calculate yearly operational costs
-    ope_costs_yearly = 0.03 * conv_costs
+    # Calculate yearly operational cost
+    ope_cost_yearly = 0.03 * conv_cost
     
-    # Calculate present value of costs    
-    oss_costs = present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs)
+    # Calculate present value of cost    
+    eh_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
     
     # Offshore substation cost in million Euros
-    oss_costs *= 1e-6
+    eh_cost *= 1e-6
     
-    return oss_costs
+    return eh_cost
 
-def iac_cost_lin(distance, capacity, polarity="AC"):
-    """
-    Calculate the costs associated with selecting export cables for a given length, desired capacity,
-    and desired voltage.
-
-    Parameters:
-        length (float): The length of the cable (in meters).
-        desired_capacity (float): The desired capacity of the cable (in watts).
-        desired_voltage (int): The desired voltage of the cable (in kilovolts).
-
-    Returns:
-        tuple: A tuple containing the equipment costs, installation costs, and total costs
-                associated with the selected HVAC cables.
-    """
-
-    cable_length = 1.1 * distance
-    cable_capacity = 348 #MW
-    cable_equip_cost = 0.860 #Meu/km
-    cable_inst_cost = 0.540 #Meu/km
-    
-    
-    parallel_cables = capacity / cable_capacity
-    
-    equip_cost = parallel_cables * cable_length * cable_equip_cost
-    inst_cost = parallel_cables * cable_length * cable_inst_cost
-    
-    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
-    
-    deco_cost = 0.5 * inst_cost
-
-    # Calculate present value
-    total_costs = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
-
-    return total_costs
-
-def ec_cost_lin(distance, capacity, polarity="AC"):
-    """
-    Calculate the costs associated with selecting export cables for a given length, desired capacity,
-    and desired voltage.
-
-    Parameters:
-        length (float): The length of the cable (in meters).
-        desired_capacity (float): The desired capacity of the cable (in watts).
-        desired_voltage (int): The desired voltage of the cable (in kilovolts).
-
-    Returns:
-        tuple: A tuple containing the equipment costs, installation costs, and total costs
-                associated with the selected HVAC cables.
-    """
-
-    cable_length = 1.2 * distance
-    cable_capacity = 348 #MW
-    cable_equip_cost = 0.860 #Meu/km
-    cable_inst_cost = 0.540 #Meu/km
-    
-    
-    parallel_cables = capacity / cable_capacity
-    
-    equip_cost = parallel_cables * cable_length * cable_equip_cost
-    inst_cost = parallel_cables * cable_length * cable_inst_cost
-    
-    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
-    
-    deco_cost = 0.5 * inst_cost
-
-    # Calculate present value
-    total_costs = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
-
-    return total_costs
-
-def oss_cost_plh(wdepth, icover, pdist, capacity, polarity):
-    """
-    Placeholder function to calculate offshore substation costs.
-
-    Parameters:
-    - wdepth (float): Water depth.
-    - icover (int): Ice cover (binary: 0 for no ice, 1 for ice).
-    - pdist (float): Distance to port.
-    - capacity (float): Capacity of the offshore substation.
-    - polarity (str): Polarity of the cost calculation.
-
-    Returns:
-    - cost (float): Total cost of the offshore substation.
-    """
-    # Example cost calculation
-    cost = wdepth * 1000 + icover * 5000 + pdist * 2000 + capacity * 1000
-    
-    # Polarity adjustment
-    if polarity == "AC":
-        cost *= 1.1  # Example adjustment for AC costs
-    elif polarity == "DC":
-        cost *= 1.2  # Example adjustment for DC costs
-    
-    return cost
-
-def onss_cost_plh(capacity, threshold):
+def onss_cost_lin(capacity, threshold):
     """
     Calculate the cost for ONSS expansion above a certain capacity.
 
     Parameters:
     - capacity (float): The total capacity for which the cost is to be calculated.
-    - threshold (float): The capacity threshold specific to the ONSS above which costs are incurred.
+    - threshold (float): The capacity threshold specific to the ONSS above which cost are incurred.
     
     Returns:
     - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
     """
     
+    overcap_cost = 0.1 # Million EU/ MW
+    
     # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    cost_function = (capacity - threshold) * 0.01
+    cost_function = (capacity - threshold) * overcap_cost
     
     return cost_function
 
-def iac_cost_plh(distance, capacity, polarity):
+def ec1_cost_lin(distance, capacity, polarity="AC"):
     """
-    Calculate inter-array cable costs.
+    Calculate the cost associated with selecting export cables for a given length, desired capacity,
+    and desired voltage.
 
     Parameters:
-    - distance (float): Distance of the inter-array cable.
-    - capacity (float): Capacity of the inter-array cable.
-    - polarity (str): Polarity of the cost calculation.
+        length (float): The length of the cable (in meters).
+        desired_capacity (float): The desired capacity of the cable (in watts).
+        desired_voltage (int): The desired voltage of the cable (in kilovolts).
 
     Returns:
-    - cost (float): Total cost of the inter-array cable.
+        tuple: A tuple containing the equipment cost, installation cost, and total cost
+                associated with the selected HVAC cables.
     """
-    # Example cost calculation
-    cost = distance * 1500 + capacity * 1000
-    
-    # Polarity adjustment
-    if polarity == "AC":
-        cost *= 1.1  # Example adjustment for AC costs
-    elif polarity == "DC":
-        cost *= 1.2  # Example adjustment for DC costs
-    
-    return cost
 
-def ec_cost_plh(distance, capacity, polarity):
+    cable_length = 1.1 * distance
+    cable_capacity = 348 # MW
+    cable_equip_cost = 0.860 #Meu/km
+    cable_inst_cost = 0.540 #Meu/km
+    
+    parallel_cables = capacity / cable_capacity
+    
+    equip_cost = parallel_cables * cable_length * cable_equip_cost
+    inst_cost = parallel_cables * cable_length * cable_inst_cost
+    
+    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
+    
+    deco_cost = 0.5 * inst_cost
+
+    # Calculate present value
+    total_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+
+    return total_cost
+
+def ec2_cost_lin(distance, capacity, polarity="AC"):
     """
-    Placeholder function to calculate export cable costs.
+    Calculate the cost associated with selecting export cables for a given length, desired capacity,
+    and desired voltage.
 
     Parameters:
-    - distance (float): Distance of the export cable.
-    - capacity (float): Capacity of the export cable.
-    - polarity (str): Polarity of the cost calculation.
+        length (float): The length of the cable (in meters).
+        desired_capacity (float): The desired capacity of the cable (in watts).
+        desired_voltage (int): The desired voltage of the cable (in kilovolts).
 
     Returns:
-    - cost (float): Total cost of the export cable.
+        tuple: A tuple containing the equipment cost, installation cost, and total cost
+                associated with the selected HVAC cables.
     """
-    # Example cost calculation
-    cost = distance * 2000 + capacity * 1000
+
+    cable_length = 1.2 * distance
+    cable_capacity = 348 # MW
+    cable_equip_cost = 0.860 # Million EU/km
+    cable_inst_cost = 0.540 # Million EU/km
     
-    # Polarity adjustment
-    if polarity == "AC":
-        cost *= 1.1  # Example adjustment for AC costs
-    elif polarity == "DC":
-        cost *= 1.2  # Example adjustment for DC costs
+    parallel_cables = capacity / cable_capacity
     
-    return cost
+    equip_cost = parallel_cables * cable_length * cable_equip_cost
+    inst_cost = parallel_cables * cable_length * cable_inst_cost
+    
+    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
+    
+    deco_cost = 0.5 * inst_cost
+
+    # Calculate present value
+    total_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+
+    return total_cost
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -395,24 +324,24 @@ def haversine(lon1, lat1, lon2, lat2):
     r = 6371  # Radius of Earth in kilometers
     return c * r
 
-def find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat, wf_iso, oss_iso):
+def find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso):
     """
-    Find all pairs of offshore wind farms and offshore substations within 150km,
+    Find all pairs of offshore wind farms and energy hubs within 150km,
     ensuring that they belong to the same country based on their ISO codes.
     
     Parameters are dictionaries indexed by IDs with longitude, latitude, and ISO codes.
     """
     connections = []
-    for wf_id, oss_id in product(wf_lon.keys(), oss_lon.keys()):
+    for wf_id, eh_id in product(wf_lon.keys(), eh_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
-        distance = haversine(wf_lon[wf_id], wf_lat[wf_id], oss_lon[oss_id], oss_lat[oss_id])
+        distance = haversine(wf_lon[wf_id], wf_lat[wf_id], eh_lon[eh_id], eh_lat[eh_id])
         if distance <= 150:  # Check if the distance is within 150 km
-            # Then check if the ISO codes match for the current wind farm and offshore substation pair
-            if wf_iso[wf_id] == oss_iso[oss_id]:
-                connections.append((int(wf_id), int(oss_id)))
+            # Then check if the ISO codes match for the current wind farm and energy hub pair
+            if wf_iso[wf_id] == eh_iso[eh_id]:
+                connections.append((int(wf_id), int(eh_id)))
     return connections
 
-def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat, oss_iso, onss_iso):
+def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso):
     """
     Find all pairs of offshore and onshore substations within 300km,
     ensuring that they belong to the same country based on their ISO codes.
@@ -420,47 +349,47 @@ def find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat, oss_iso, onss_iso):
     Parameters are dictionaries indexed by substation IDs with longitude, latitude, and ISO codes.
     """
     connections = []
-    for oss_id, onss_id in product(oss_lon.keys(), onss_lon.keys()):
+    for eh_id, onss_id in product(eh_lon.keys(), onss_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
-        distance = haversine(oss_lon[oss_id], oss_lat[oss_id], onss_lon[onss_id], onss_lat[onss_id])
+        distance = haversine(eh_lon[eh_id], eh_lat[eh_id], onss_lon[onss_id], onss_lat[onss_id])
         if distance <= 300:  # Check if the distance is within 300 km
             # Then check if the ISO codes match for the current offshore and onshore substation pair
-            if oss_iso[oss_id] == onss_iso[onss_id]:
-                connections.append((int(oss_id), int(onss_id)))
+            if eh_iso[eh_id] == onss_iso[onss_id]:
+                connections.append((int(eh_id), int(onss_id)))
     return connections
 
-def get_viable_entities(viable_iac, viable_ec):
+def get_viable_entities(viable_ec1, viable_ec2):
     """
-    Identifies unique wind farm, offshore substation, and onshore substation IDs
-    based on their involvement in viable inter-array and export cable connections.
+    Identifies unique wind farm, energy hub, and onshore substation IDs
+    based on their involvement in viable export and export cable connections.
 
     Parameters:
-    - viable_iac (list of tuples): List of tuples, each representing a viable connection
-        between a wind farm and an offshore substation (wf_id, oss_id).
-    - viable_ec (list of tuples): List of tuples, each representing a viable connection
-        between an offshore substation and an onshore substation (oss_id, onss_id).
+    - viable_ec1 (list of tuples): List of tuples, each representing a viable connection
+        between a wind farm and an energy hub (wf_id, eh_id).
+    - viable_ec2 (list of tuples): List of tuples, each representing a viable connection
+        between an energy hub and an onshore substation (eh_id, onss_id).
 
     Returns:
-    - viable_wf (set): Set of wind farm IDs with at least one viable connection to an offshore substation.
-    - viable_oss (set): Set of offshore substation IDs involved in at least one viable connection
+    - viable_wf (set): Set of wind farm IDs with at least one viable connection to an energy hub.
+    - viable_eh (set): Set of energy hub IDs involved in at least one viable connection
         either to a wind farm or an onshore substation.
-    - viable_onss (set): Set of onshore substation IDs with at least one viable connection to an offshore substation.
+    - viable_onss (set): Set of onshore substation IDs with at least one viable connection to an energy hub.
     """
     viable_wf = set()
-    viable_oss = set()
+    viable_eh = set()
     viable_onss = set()
 
-    # Extract unique wind farm and offshore substation IDs from inter-array connections
-    for wf_id, oss_id in viable_iac:
+    # Extract unique wind farm and energy hub IDs from export connections
+    for wf_id, eh_id in viable_ec1:
         viable_wf.add(int(wf_id))
-        viable_oss.add(int(oss_id))
+        viable_eh.add(int(eh_id))
 
     # Extract unique offshore and onshore substation IDs from export cable connections
-    for oss_id, onss_id in viable_ec:
-        viable_oss.add(int(oss_id))
+    for eh_id, onss_id in viable_ec2:
+        viable_eh.add(int(eh_id))
         viable_onss.add(int(onss_id))
 
-    return viable_wf, viable_oss, viable_onss
+    return viable_wf, viable_eh, viable_onss
 
 def opt_model(workspace_folder):
     """
@@ -500,16 +429,16 @@ def opt_model(workspace_folder):
 
     # Load datasets
     wf_dataset_file = os.path.join(workspace_folder, 'wf_data.npy')
-    oss_dataset_file = os.path.join(workspace_folder, 'oss_data.npy')
+    eh_dataset_file = os.path.join(workspace_folder, 'eh_data.npy')
     onss_dataset_file = os.path.join(workspace_folder, 'onss_data.npy')
     
     wf_dataset = np.load(wf_dataset_file, allow_pickle=True)
-    oss_dataset = np.load(oss_dataset_file, allow_pickle=True)
+    eh_dataset = np.load(eh_dataset_file, allow_pickle=True)
     onss_dataset = np.load(onss_dataset_file, allow_pickle=True)
 
     # Component identifiers
     wf_ids = [int(data[0]) for data in wf_dataset]
-    oss_ids = [int(data[0]) for data in oss_dataset]
+    eh_ids = [int(data[0]) for data in eh_dataset]
     onss_ids = [int(data[0]) for data in onss_dataset]
 
     # Wind farm data
@@ -524,16 +453,16 @@ def opt_model(workspace_folder):
         wf_cost[id] = data[6] * 1e-3 #Meu
 
     # Offshore substation data
-    oss_iso, oss_lon, oss_lat, oss_wdepth, oss_icover, oss_pdist = {}, {}, {}, {}, {}, {}
+    eh_iso, eh_lon, eh_lat, eh_wdepth, eh_icover, eh_pdist = {}, {}, {}, {}, {}, {}
 
-    for data in oss_dataset:
+    for data in eh_dataset:
         id = int(data[0])
-        oss_iso[id] = iso_to_int_mp[data[1]]
-        oss_lon[id] = data[2]
-        oss_lat[id] = data[3]
-        oss_wdepth[id] = data[4]
-        oss_icover[id] = data[5]
-        oss_pdist[id] = data[6]
+        eh_iso[id] = iso_to_int_mp[data[1]]
+        eh_lon[id] = data[2]
+        eh_lat[id] = data[3]
+        eh_wdepth[id] = data[4]
+        eh_icover[id] = data[5]
+        eh_pdist[id] = data[6]
     
     # Onshore substation data
     onss_iso, onss_lon, onss_lat, onss_thold = {}, {}, {}, {}
@@ -552,7 +481,7 @@ def opt_model(workspace_folder):
     
     # Identifiers model components
     model.wf_ids = Set(initialize=wf_ids)
-    model.oss_ids = Set(initialize=oss_ids)
+    model.eh_ids = Set(initialize=eh_ids)
     model.onss_ids = Set(initialize=onss_ids)
     
     # Wind farm model parameters
@@ -563,12 +492,12 @@ def opt_model(workspace_folder):
     model.wf_cost = Param(model.wf_ids, initialize=wf_cost, within=NonNegativeReals)
 
     # Offshore substation model parameters
-    model.oss_iso = Param(model.oss_ids, initialize=oss_iso, within=NonNegativeIntegers)
-    model.oss_lon = Param(model.oss_ids, initialize=oss_lon, within=NonNegativeReals)
-    model.oss_lat = Param(model.oss_ids, initialize=oss_lat, within=NonNegativeReals)
-    model.oss_wdepth = Param(model.oss_ids, initialize=oss_wdepth, within=NonNegativeIntegers)
-    model.oss_icover = Param(model.oss_ids, initialize=oss_icover, within=Binary)
-    model.oss_pdist = Param(model.oss_ids, initialize=oss_pdist, within=NonNegativeIntegers)
+    model.eh_iso = Param(model.eh_ids, initialize=eh_iso, within=NonNegativeIntegers)
+    model.eh_lon = Param(model.eh_ids, initialize=eh_lon, within=NonNegativeReals)
+    model.eh_lat = Param(model.eh_ids, initialize=eh_lat, within=NonNegativeReals)
+    model.eh_wdepth = Param(model.eh_ids, initialize=eh_wdepth, within=NonNegativeIntegers)
+    model.eh_icover = Param(model.eh_ids, initialize=eh_icover, within=Binary)
+    model.eh_pdist = Param(model.eh_ids, initialize=eh_pdist, within=NonNegativeIntegers)
 
     # Onshore substation model parameters
     model.onss_iso = Param(model.onss_ids, initialize=onss_iso, within=NonNegativeIntegers)
@@ -582,32 +511,32 @@ def opt_model(workspace_folder):
     print("Defining decision parameters...")
     
     # Calculate viable connections
-    viable_iac = find_viable_iac(wf_lon, wf_lat, oss_lon, oss_lat, wf_iso, oss_iso)
-    viable_ec = find_viable_ec(oss_lon, oss_lat, onss_lon, onss_lat, oss_iso, onss_iso)
+    viable_ec1 = find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso)
+    viable_ec2 = find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso)
 
-    model.viable_iac_ids = Set(initialize= viable_iac, dimen=2)
-    model.viable_ec_ids = Set(initialize= viable_ec, dimen=2)
+    model.viable_ec1_ids = Set(initialize= viable_ec1, dimen=2)
+    model.viable_ec2_ids = Set(initialize= viable_ec2, dimen=2)
     
     # Calculate viable entities based on the viable connections
-    model.viable_wf_ids, model.viable_oss_ids, model.viable_onss_ids = get_viable_entities(viable_iac, viable_ec)
+    model.viable_wf_ids, model.viable_eh_ids, model.viable_onss_ids = get_viable_entities(viable_ec1, viable_ec2)
     
     # Initialize variables
     model.wf_bool_var = Var(model.viable_wf_ids, within=Binary)
     
-    model.oss_cap_var = Var(model.viable_oss_ids, within=NonNegativeReals)
+    model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals)
     model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
-    model.iac_cap_var = Var(model.viable_iac_ids, within=NonNegativeReals)
-    model.ec_cap_var = Var(model.viable_ec_ids, within=NonNegativeReals)
+    model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
+    model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
     
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     
     # Define a dictionary containing variable names and their respective lengths
     print_variables = {
         "select_wf": model.wf_bool_var,
-        "select_oss": model.oss_cap_var,
+        "select_eh": model.eh_cap_var,
         "select_onss": model.onss_cap_var,
-        "select_iac": model.iac_cap_var,
-        "select_ec": model.ec_cap_var
+        "select_ec1": model.ec1_cap_var,
+        "select_ec2": model.ec2_cap_var
     }
 
     # Iterate over the dictionary and print variable ids and their lengths
@@ -630,39 +559,39 @@ def opt_model(workspace_folder):
     """
     Define distance and capacity expressions for Inter-Array Cables (IAC)
     """
-    def iac_distance_rule(model, wf, oss):
-        return haversine(model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss])
-    model.iac_dist_exp = Expression(model.viable_iac_ids, rule=iac_distance_rule)
+    def ec1_distance_rule(model, wf, eh):
+        return haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh])
+    model.ec1_dist_exp = Expression(model.viable_ec1_ids, rule=ec1_distance_rule)
 
-    def iac_cost_rule(model, wf, oss):
-        return iac_cost_lin(model.iac_dist_exp[wf, oss], model.iac_cap_var[wf, oss], polarity="AC")
-    model.iac_cost_exp = Expression(model.viable_iac_ids, rule=iac_cost_rule)
+    def ec1_cost_rule(model, wf, eh):
+        return ec1_cost_lin(model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh], polarity="AC")
+    model.ec1_cost_exp = Expression(model.viable_ec1_ids, rule=ec1_cost_rule)
 
     """
     Define expressions for Offshore Substation (OSS) capacity
     """
 
-    def oss_cost_rule(model, oss):
-        return oss_cost_lin(model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], model.oss_cap_var[oss], polarity="AC")
-    model.oss_cost_exp = Expression(model.viable_oss_ids, rule=oss_cost_rule)
+    def eh_cost_rule(model, eh):
+        return eh_cost_lin(model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh], polarity="AC")
+    model.eh_cost_exp = Expression(model.viable_eh_ids, rule=eh_cost_rule)
 
     """
     Define distance and capacity expressions for Export Cables (EC)
     """
-    def ec_distance_rule(model, oss, onss):
-        return haversine(model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss])
-    model.ec_dist_exp = Expression(model.viable_ec_ids, rule=ec_distance_rule)
+    def ec2_distance_rule(model, eh, onss):
+        return haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss])
+    model.ec2_dist_exp = Expression(model.viable_ec2_ids, rule=ec2_distance_rule)
 
-    def ec_cost_rule(model, oss, onss):
-        return ec_cost_lin(model.ec_dist_exp[oss, onss], model.ec_cap_var[oss, onss], polarity="AC")
-    model.ec_cost_exp = Expression(model.viable_ec_ids, rule=ec_cost_rule)
+    def ec2_cost_rule(model, eh, onss):
+        return ec2_cost_lin(model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss], polarity="AC")
+    model.ec2_cost_exp = Expression(model.viable_ec2_ids, rule=ec2_cost_rule)
 
     """
     Define expressions for Onshore Substation (ONSS) capacity
     """
 
     def onss_cost_rule(model, onss):
-        return onss_cost_plh(model.onss_cap_var[onss], model.onss_thold[onss])
+        return onss_cost_lin(model.onss_cap_var[onss], model.onss_thold[onss])
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
     """
@@ -672,14 +601,14 @@ def opt_model(workspace_folder):
 
     def global_cost_rule(model):
         """
-        Calculate the total cost of the energy system. This includes the costs of selecting
-        and connecting wind farms, offshore substations, and onshore substations. The objective is to minimize this total cost.
+        Calculate the total cost of the energy system. This includes the cost of selecting
+        and connecting wind farms, energy hubs, and onshore substations. The objective is to minimize this total cost.
 
         The total cost is computed by summing:
-        - The costs of selected wind farms.
-        - The operational costs of selected offshore substations.
-        - The costs associated with inter-array cables connecting wind farms to offshore substations.
-        - The costs associated with export cables connecting offshore substations to onshore substations.
+        - The cost of selected wind farms.
+        - The operational cost of selected energy hubs.
+        - The cost associated with export cables connecting wind farms to energy hubs.
+        - The cost associated with export cables connecting energy hubs to onshore substations.
 
         Parameters:
         - model: The Pyomo model object containing all necessary decision variables and parameters.
@@ -688,12 +617,12 @@ def opt_model(workspace_folder):
         - The computed total cost of the network configuration, which the optimization process seeks to minimize.
         """
         wf_total_cost = sum(model.wf_cost_exp[wf] for wf in model.viable_wf_ids)
-        oss_total_cost = sum(model.oss_cost_exp[oss] for oss in model.viable_oss_ids)
-        onss_total_costs = sum(model.onss_cost_var[onss] for onss in model.viable_onss_ids)
-        iac_total_cost = sum(model.iac_cost_exp[wf, oss] for (wf, oss) in model.viable_iac_ids)
-        ec_total_cost = sum(model.ec_cost_exp[oss, onss] for (oss, onss) in model.viable_ec_ids)
+        eh_total_cost = sum(model.eh_cost_exp[eh] for eh in model.viable_eh_ids)
+        onss_total_cost = sum(model.onss_cost_var[onss] for onss in model.viable_onss_ids)
+        ec1_total_cost = sum(model.ec1_cost_exp[wf, eh] for (wf, eh) in model.viable_ec1_ids)
+        ec2_total_cost = sum(model.ec2_cost_exp[eh, onss] for (eh, onss) in model.viable_ec2_ids)
         
-        return wf_total_cost + oss_total_cost + iac_total_cost + ec_total_cost + onss_total_costs
+        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + onss_total_cost
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
@@ -714,40 +643,40 @@ def opt_model(workspace_folder):
     
     print("Defining capacity constraints...")
     
-    def iac_cap_connect_rule(model, wf):
+    def ec1_cap_connect_rule(model, wf):
         """
-        Ensure each selected wind farm is connected to exactly one offshore substation.
+        Ensure each selected wind farm is connected to exactly one energy hub.
         The connection capacity must match the selected wind farm's capacity.
         """
-        connect_to_oss = sum(model.iac_cap_var[wf, oss] for oss in model.viable_oss_ids if (wf, oss) in model.viable_iac_ids)
-        return connect_to_oss >= model.wf_bool_var[wf] * model.wf_cap[wf]
-    model.iac_cap_connect_con = Constraint(model.viable_wf_ids, rule=iac_cap_connect_rule)
+        connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids)
+        return connect_to_eh >= model.wf_bool_var[wf] * model.wf_cap[wf]
+    model.ec1_cap_connect_con = Constraint(model.viable_wf_ids, rule=ec1_cap_connect_rule)
 
-    def oss_cap_connect_rule(model, oss):
+    def eh_cap_connect_rule(model, eh):
         """
-        Ensure the capacity of each offshore substation matches or exceeds the total capacity of the connected wind farms.
+        Ensure the capacity of each energy hub matches or exceeds the total capacity of the connected wind farms.
         This ensures that the substation can handle all incoming power from the connected farms.
         """
-        connect_from_wf = sum(model.iac_cap_var[wf, oss] for wf in model.viable_wf_ids if (wf, oss) in model.viable_iac_ids)
-        return model.oss_cap_var[oss] >= connect_from_wf
-    model.oss_cap_connect_con = Constraint(model.viable_oss_ids, rule=oss_cap_connect_rule)
+        connect_from_wf = sum(model.ec1_cap_var[wf, eh] for wf in model.viable_wf_ids if (wf, eh) in model.viable_ec1_ids)
+        return model.eh_cap_var[eh] >= connect_from_wf
+    model.eh_cap_connect_con = Constraint(model.viable_eh_ids, rule=eh_cap_connect_rule)
 
-    def ec_cap_connect_rule(model, oss):
+    def ec2_cap_connect_rule(model, eh):
         """
-        Ensure the connection capacity from each offshore substation to onshore substations matches the substation's capacity.
-        This links the offshore substation's output directly to the export cables.
+        Ensure the connection capacity from each energy hub to onshore substations matches the substation's capacity.
+        This links the energy hub's output directly to the export cables.
         """
-        connect_to_onss = sum(model.ec_cap_var[oss, onss] for onss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
-        return connect_to_onss >= model.oss_cap_var[oss]
-    model.ec_cap_connect_con = Constraint(model.viable_oss_ids, rule=ec_cap_connect_rule)
+        connect_to_onss = sum(model.ec2_cap_var[eh, onss] for onss in model.viable_eh_ids if (eh, onss) in model.viable_ec2_ids)
+        return connect_to_onss >= model.eh_cap_var[eh]
+    model.ec2_cap_connect_con = Constraint(model.viable_eh_ids, rule=ec2_cap_connect_rule)
 
     def onss_cap_connect_rule(model, onss):
         """
-        Ensure the capacity of each onshore substation is at least the total incoming capacity from the connected offshore substations.
+        Ensure the capacity of each onshore substation is at least the total incoming capacity from the connected energy hubs.
         This ensures that the onshore substation can handle all incoming power.
         """
-        connect_from_oss = sum(model.ec_cap_var[oss, onss] for oss in model.viable_oss_ids if (oss, onss) in model.viable_ec_ids)
-        return model.onss_cap_var[onss] >= connect_from_oss
+        connect_from_eh = sum(model.ec2_cap_var[eh, onss] for eh in model.viable_eh_ids if (eh, onss) in model.viable_ec2_ids)
+        return model.onss_cap_var[onss] >= connect_from_eh
     model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
     
     print("Defining the cost variables...")
@@ -759,7 +688,6 @@ def opt_model(workspace_folder):
         return model.onss_cost_var[onss] >= model.onss_cost_exp[onss]
     model.onss_cost_con = Constraint(model.viable_onss_ids, rule=onss_cost_rule)
     
-
     """
     Solve the model
     """
@@ -834,9 +762,9 @@ def opt_model(workspace_folder):
                             dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
             'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
             },
-            'oss_ids': {
-                'data': np.array([(oss, int_to_iso_mp[model.oss_iso[oss]], model.oss_lon[oss], model.oss_lat[oss], model.oss_wdepth[oss], model.oss_icover[oss], model.oss_pdist[oss], var_f(model.oss_cap_var[oss]), exp_f(model.oss_cost_exp[oss])) 
-                                for oss in model.viable_oss_ids if model.oss_cap_var[oss].value > 0], 
+            'eh_ids': {
+                'data': np.array([(eh, int_to_iso_mp[model.eh_iso[eh]], model.eh_lon[eh], model.eh_lat[eh], model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], var_f(model.eh_cap_var[eh]), exp_f(model.eh_cost_exp[eh])) 
+                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
             },
@@ -846,16 +774,16 @@ def opt_model(workspace_folder):
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
             },
-            'iac_ids': {
-                'data': np.array([(wf, oss, model.wf_lon[wf], model.wf_lat[wf], model.oss_lon[oss], model.oss_lat[oss], var_f(model.iac_cap_var[wf, oss]), exp_f(model.iac_cost_exp[wf, oss])) 
-                                for wf, oss in model.viable_iac_ids if model.iac_cap_var[wf, oss].value > 0], 
-                                dtype=[('wf_id', int), ('oss_id', int), ('wf_lon', float), ('wf_lat', float), ('oss_lon', float), ('oss_lat', float), ('capacity', float), ('cost', float)]),
+            'ec1_ids': {
+                'data': np.array([(wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])) 
+                                for wf, eh in model.viable_ec1_ids if model.ec1_cap_var[wf, eh].value > 0], 
+                                dtype=[('wf_id', int), ('eh_id', int), ('wf_lon', float), ('wf_lat', float), ('eh_lon', float), ('eh_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
             },
-            'ec_ids': {
-                'data': np.array([(oss, onss, model.oss_lon[oss], model.oss_lat[oss], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec_cap_var[oss, onss]), exp_f(model.ec_cost_exp[oss, onss])) 
-                                for oss, onss in model.viable_ec_ids if model.ec_cap_var[oss, onss].value > 0], 
-                                dtype=[('oss_id', int), ('onss_id', int), ('oss_lon', float), ('oss_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', float), ('cost', float)]),
+            'ec2_ids': {
+                'data': np.array([(eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])) 
+                                for eh, onss in model.viable_ec2_ids if model.ec2_cap_var[eh, onss].value > 0], 
+                                dtype=[('eh_id', int), ('onss_id', int), ('eh_lon', float), ('eh_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
             }
         }
