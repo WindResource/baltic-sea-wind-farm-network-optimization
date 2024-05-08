@@ -757,32 +757,32 @@ def opt_model(workspace_folder):
         
         selected_components = {
             'wf_ids': {
-            'data': np.array([(wf, int_to_iso_mp[model.wf_iso[wf]], model.wf_lon[wf], model.wf_lat[wf], model.wf_cap[wf], model.wf_cost[wf]) 
-                            for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0], 
-                            dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
-            'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
+                'data': np.array([(wf, int_to_iso_mp[model.wf_iso[wf]], model.wf_lon[wf], model.wf_lat[wf], model.wf_cap[wf], model.wf_cost[wf]) 
+                                for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0], 
+                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
+                'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
             },
             'eh_ids': {
                 'data': np.array([(eh, int_to_iso_mp[model.eh_iso[eh]], model.eh_lon[eh], model.eh_lat[eh], model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], var_f(model.eh_cap_var[eh]), exp_f(model.eh_cost_exp[eh])) 
-                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0], 
+                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0],
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
             },
             'onss_ids': {
                 'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), var_f(model.onss_cost_var[onss])) 
-                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
+                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0],
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
             },
             'ec1_ids': {
                 'data': np.array([(wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])) 
-                                for wf, eh in model.viable_ec1_ids if model.ec1_cap_var[wf, eh].value > 0], 
+                                for wf, eh in model.viable_ec1_ids if model.ec1_cap_var[wf, eh].value > 0],
                                 dtype=[('wf_id', int), ('eh_id', int), ('wf_lon', float), ('wf_lat', float), ('eh_lon', float), ('eh_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
             },
             'ec2_ids': {
                 'data': np.array([(eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])) 
-                                for eh, onss in model.viable_ec2_ids if model.ec2_cap_var[eh, onss].value > 0], 
+                                for eh, onss in model.viable_ec2_ids if model.ec2_cap_var[eh, onss].value > 0],
                                 dtype=[('eh_id', int), ('onss_id', int), ('eh_lon', float), ('eh_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
             }
@@ -793,25 +793,7 @@ def opt_model(workspace_folder):
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
 
-        for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'{key}_hs.npy')
-            txt_file_path = os.path.join(results_dir, f'{key}_hs.txt')
-
-            # Save as .npy file
-            np.save(npy_file_path, info['data'])
-
-            # Save as .txt file for easier viewing
-            with open(txt_file_path, 'w') as file:
-                file.write(info['headers'] + '\n')  # Write the headers
-                for entry in info['data']:
-                    file.write(', '.join(map(str, entry)) + '\n')
-
-            print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
-
-        # Ensure the results directory exists
-        results_dir = os.path.join(workspace_folder, "results", "hubspoke")
-        if not os.path.exists(results_dir):
-            os.makedirs(results_dir)
+        total_capacity_cost = []
 
         for key, info in selected_components.items():
             npy_file_path = os.path.join(results_dir, f'{key}_hs.npy')
@@ -825,8 +807,28 @@ def opt_model(workspace_folder):
                 file.write(info['headers'] + '\n')  # Write the headers
                 for entry in info['data']:
                     file.write(', '.join(map(str, entry)) + '\n')
-
+            
             print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
+
+            # Calculate total capacity and cost for this component type
+            total_capacity = round(sum(info['data']['capacity']), 3)
+            total_cost = round(sum(info['data']['cost']), 3)
+            total_capacity_cost.append((key, total_capacity, total_cost))
+
+        # Calculate overall totals
+        overall_capacity = round(sum(item[1] for item in total_capacity_cost), 3)
+        overall_cost = round(sum(item[2] for item in total_capacity_cost), 3)
+        total_capacity_cost.append(("overall", overall_capacity, overall_cost))
+
+        # Save the total capacities and costs in a new .txt file
+        total_txt_file_path = os.path.join(results_dir, 'total_hs.txt')
+        with open(total_txt_file_path, 'w') as file:
+            file.write("Component, Total Capacity, Total Cost\n")
+            for entry in total_capacity_cost:
+                file.write(f'{entry[0]}, {entry[1]}, {entry[2]}\n')
+
+        print(f'Saved total capacities and costs in {total_txt_file_path}')
+
 
     # Set the path to the Scip solver executable
     scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
@@ -836,7 +838,7 @@ def opt_model(workspace_folder):
     solver.options['executable'] = scip_path
 
     # Define the path for the solver log
-    solver_log_path = os.path.join(workspace_folder, "results", "hubspoke", "solver_log_hs.txt")
+    solver_log_path = os.path.join(workspace_folder, "results", "hubspoke", "solverlog_hs.txt")
 
     # Retrieve solver options with the configured settings
     solver_options = configure_scip_solver()
