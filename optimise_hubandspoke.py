@@ -693,39 +693,30 @@ def opt_model(workspace_folder):
     """
     print("Solving the model...")
     
-    def configure_scip_solver():
-        """
-        Configure SCIP solver options to optimize performance for NLP problems with many binary variables.
-
-        Returns:
-        - A dictionary with configured solver options suitable for SCIP when solving NLP problems with binary variables.
-        """
-        solver_options = {
-            'numerics/scaling': 1,  # Enable scaling
-            'tolerances/feasibility': 1e-5,  # Tolerance for feasibility checks
-            'tolerances/optimality': 1e-5,   # Tolerance for optimality conditions
-            'tolerances/integrality': 1e-5,  # Tolerance for integer variable constraints
-            'presolving/maxrounds': -1,      # Max presolve iterations to simplify the model
-            'propagating/maxrounds': -1,     # Max constraint propagation rounds
-            'parallel/threads': -1,          # Use all CPU cores for parallel processing
-            'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
-            'branching/varsel': 'pscost',    # Pseudocost variable selection in branching
-            'separating/aggressive': 1,   # Enable aggressive separation
-            'conflict/enable': 1,         # Activate conflict analysis
-            'heuristics/rens/freq': 10,      # Frequency of RENS heuristic
-            'heuristics/diving/freq': 10,    # Frequency of diving heuristic
-            'propagating/maxroundsroot': 15, # Propagation rounds at root node
-            'limits/nodes': 1e5,             # Maximum nodes in search tree
-            'limits/totalnodes': 1e5,         # Total node limit across threads
-            'emphasis/optimality': 1,   # Emphasize optimality
-            'emphasis/memory': 1,           # Emphasize memory
-            'separating/maxrounds': 10,  # Limit cut rounds at non-root nodes
-            'heuristics/feaspump/freq': 10,  # Frequency of feasibility pump heuristic
-            'tol': 0.01,  # Set the relative optimality gap tolerance to 1%
-            'display/verblevel': 4  # Set verbosity level to display information about the solution
-        }
-
-        return solver_options
+    solver_options = {
+        'numerics/scaling': 1,  # Enable scaling
+        'tolerances/feasibility': 1e-5,  # Tolerance for feasibility checks
+        'tolerances/optimality': 1e-5,   # Tolerance for optimality conditions
+        'tolerances/integrality': 1e-5,  # Tolerance for integer variable constraints
+        'presolving/maxrounds': -1,      # Max presolve iterations to simplify the model
+        'propagating/maxrounds': -1,     # Max constraint propagation rounds
+        'parallel/threads': -1,          # Use all CPU cores for parallel processing
+        'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
+        'branching/varsel': 'pscost',    # Pseudocost variable selection in branching
+        'separating/aggressive': 1,   # Enable aggressive separation
+        'conflict/enable': 1,         # Activate conflict analysis
+        'heuristics/rens/freq': 10,      # Frequency of RENS heuristic
+        'heuristics/diving/freq': 10,    # Frequency of diving heuristic
+        'propagating/maxroundsroot': 15, # Propagation rounds at root node
+        'limits/nodes': 1e5,             # Maximum nodes in search tree
+        'limits/totalnodes': 1e5,         # Total node limit across threads
+        'emphasis/optimality': 1,   # Emphasize optimality
+        'emphasis/memory': 1,           # Emphasize memory
+        'separating/maxrounds': 10,  # Limit cut rounds at non-root nodes
+        'heuristics/feaspump/freq': 10,  # Frequency of feasibility pump heuristic
+        'tol': 0.01,  # Set the relative optimality gap tolerance to 1%
+        'display/verblevel': 4  # Set verbosity level to display information about the solution
+    }
 
     def save_results(model, workspace_folder):
         """
@@ -764,25 +755,25 @@ def opt_model(workspace_folder):
             },
             'eh_ids': {
                 'data': np.array([(eh, int_to_iso_mp[model.eh_iso[eh]], model.eh_lon[eh], model.eh_lat[eh], model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], var_f(model.eh_cap_var[eh]), exp_f(model.eh_cost_exp[eh])) 
-                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0],
+                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
             },
             'onss_ids': {
                 'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), var_f(model.onss_cost_var[onss])) 
-                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0],
+                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
             },
             'ec1_ids': {
                 'data': np.array([(wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])) 
-                                for wf, eh in model.viable_ec1_ids if model.ec1_cap_var[wf, eh].value > 0],
+                                for wf, eh in model.viable_ec1_ids if model.ec1_cap_var[wf, eh].value > 0], 
                                 dtype=[('wf_id', int), ('eh_id', int), ('wf_lon', float), ('wf_lat', float), ('eh_lon', float), ('eh_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
             },
             'ec2_ids': {
                 'data': np.array([(eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])) 
-                                for eh, onss in model.viable_ec2_ids if model.ec2_cap_var[eh, onss].value > 0],
+                                for eh, onss in model.viable_ec2_ids if model.ec2_cap_var[eh, onss].value > 0], 
                                 dtype=[('eh_id', int), ('onss_id', int), ('eh_lon', float), ('eh_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', float), ('cost', float)]),
                 'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
             }
@@ -811,24 +802,32 @@ def opt_model(workspace_folder):
             print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
 
             # Calculate total capacity and cost for this component type
-            total_capacity = round(sum(info['data']['capacity']), 3)
-            total_cost = round(sum(info['data']['cost']), 3)
-            total_capacity_cost.append((key, total_capacity, total_cost))
+            total_capacity = sum(info['data']['capacity'])
+            total_cost = sum(info['data']['cost'])
+            total_capacity_cost.append((key, round(total_capacity), round(total_cost, 3)))
 
         # Calculate overall totals
-        overall_capacity = round(sum(item[1] for item in total_capacity_cost), 3)
-        overall_cost = round(sum(item[2] for item in total_capacity_cost), 3)
-        total_capacity_cost.append(("overall", overall_capacity, overall_cost))
+        overall_capacity = sum(item[1] for item in total_capacity_cost)
+        overall_cost = sum(item[2] for item in total_capacity_cost)
+        total_capacity_cost.append(("overall", round(overall_capacity), round(overall_cost, 3)))
 
-        # Save the total capacities and costs in a new .txt file
+        # Create a structured array for total capacities and costs
+        total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
+
+        # Save the total capacities and costs in .npy and .txt files
+        total_npy_file_path = os.path.join(results_dir, 'total_hs.npy')
         total_txt_file_path = os.path.join(results_dir, 'total_hs.txt')
+
+        # Save as .npy file
+        np.save(total_npy_file_path, total_capacity_cost_array)
+
+        # Save as .txt file for easier viewing
         with open(total_txt_file_path, 'w') as file:
             file.write("Component, Total Capacity, Total Cost\n")
-            for entry in total_capacity_cost:
+            for entry in total_capacity_cost_array:
                 file.write(f'{entry[0]}, {entry[1]}, {entry[2]}\n')
 
-        print(f'Saved total capacities and costs in {total_txt_file_path}')
-
+        print(f'Saved total capacities and costs in {total_npy_file_path} and {total_txt_file_path}')
 
     # Set the path to the Scip solver executable
     scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
@@ -840,16 +839,14 @@ def opt_model(workspace_folder):
     # Define the path for the solver log
     solver_log_path = os.path.join(workspace_folder, "results", "hubspoke", "solverlog_hs.txt")
 
-    # Retrieve solver options with the configured settings
-    solver_options = configure_scip_solver()
-
+    # Solve the optimisation model
     results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
 
     # Detailed checking of solver results
     if results.solver.status == SolverStatus.ok:
         if results.solver.termination_condition == TerminationCondition.optimal:
             print("Solver found an optimal solution.")
-            print(f"Objective value: {model.global_cost_obj.expr()}")
+            print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
             save_results(model, workspace_folder)
         elif results.solver.termination_condition == TerminationCondition.infeasible:
             print("Problem is infeasible. Check model constraints and data.")
