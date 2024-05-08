@@ -259,8 +259,9 @@ def ec1_cost_lin(distance, capacity, polarity="AC"):
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 #Meu/km
     cable_inst_cost = 0.540 #Meu/km
+    capacity_factor = 0.95
     
-    parallel_cables = capacity / cable_capacity
+    parallel_cables = capacity / (cable_capacity * capacity_factor)
     
     equip_cost = parallel_cables * cable_length * cable_equip_cost
     inst_cost = parallel_cables * cable_length * cable_inst_cost
@@ -293,8 +294,9 @@ def ec2_cost_lin(distance, capacity, polarity="AC"):
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 # Million EU/km
     cable_inst_cost = 0.540 # Million EU/km
+    capacity_factor = 0.90
     
-    parallel_cables = capacity / cable_capacity
+    parallel_cables = capacity / (cable_capacity * capacity_factor)
     
     equip_cost = parallel_cables * cable_length * cable_equip_cost
     inst_cost = parallel_cables * cable_length * cable_inst_cost
