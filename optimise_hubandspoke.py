@@ -806,8 +806,10 @@ def opt_model(workspace_folder):
         ec1_data = []
         for wf, eh in model.viable_ec1_ids:
             if model.ec1_cap_var[wf, eh].value > 0:
-                ec1_data.append((ec_id_counter, wf, model.wf_lon[wf], model.wf_lat[wf], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])))
-                ec1_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])))
+                ec1_cap = var_f(model.ec1_cap_var[wf, eh])
+                ec1_cost = exp_f(model.ec1_cost_exp[wf, eh])
+                ec1_data.append((ec_id_counter, wf, model.wf_lon[wf], model.wf_lat[wf], ec1_cap, ec1_cost))
+                ec1_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], ec1_cap, ec1_cost))
                 ec_id_counter += 1
 
         selected_components['ec1_ids'] = {
@@ -819,8 +821,10 @@ def opt_model(workspace_folder):
         ec2_data = []
         for eh, onss in model.viable_ec2_ids:
             if model.ec2_cap_var[eh, onss].value > 0:
-                ec2_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])))
-                ec2_data.append((ec_id_counter, onss, model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])))
+                ec2_cap = var_f(model.ec2_cap_var[eh, onss])
+                ec2_cost = exp_f(model.ec2_cost_exp[eh, onss])
+                ec2_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], ec2_cap, ec2_cost))
+                ec2_data.append((ec_id_counter, onss, model.onss_lon[onss], model.onss_lat[onss], ec2_cap, ec2_cost))
                 ec_id_counter += 1
 
         selected_components['ec2_ids'] = {
@@ -851,8 +855,13 @@ def opt_model(workspace_folder):
             print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
 
             # Calculate total capacity and cost for this component type
-            total_capacity = sum(info['data']['capacity'])
-            total_cost = sum(info['data']['cost'])
+            if key in ['ec1_ids', 'ec2_ids']:
+                # Sum the capacities and costs only from the first row of each export cable
+                total_capacity = sum(info['data']['capacity'][i] for i in range(0, len(info['data']), 2))
+                total_cost = sum(info['data']['cost'][i] for i in range(0, len(info['data']), 2))
+            else:
+                total_capacity = sum(info['data']['capacity'])
+                total_cost = sum(info['data']['cost'])
             total_capacity_cost.append((key, round(total_capacity), round(total_cost, 3)))
 
         # Calculate overall totals
