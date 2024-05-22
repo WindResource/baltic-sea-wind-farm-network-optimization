@@ -462,13 +462,25 @@ def opt_model(workspace_folder):
                                 for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
-            },
-            'ec_ids': {
-                'data': np.array([(wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec_cap_var[wf, onss]), exp_f(model.ec_cost_exp[wf, onss])) 
-                                for wf, onss in model.viable_ec_ids if model.ec_cap_var[wf, onss].value > 0], 
-                                dtype=[('wf_id', int), ('onss_id', int), ('wf_lon', float), ('wf_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', float), ('cost', float)]),
-                'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
             }
+        }
+
+        # Export cable ID counter
+        ec_id_counter = 1
+
+        # Create ec_ids with export cable ID, split into two rows
+        ec_data = []
+        for wf, onss in model.viable_ec_ids:
+            if model.ec_cap_var[wf, onss].value > 0:
+                ec_cap = var_f(model.ec_cap_var[wf, onss])
+                ec_cost = exp_f(model.ec_cost_exp[wf, onss])
+                ec_data.append((ec_id_counter, wf, model.wf_lon[wf], model.wf_lat[wf], ec_cap, ec_cost))
+                ec_data.append((ec_id_counter, onss, model.onss_lon[onss], model.onss_lat[onss], ec_cap, ec_cost))
+                ec_id_counter += 1
+
+        selected_components['ec_ids'] = {
+            'data': np.array(ec_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, Component_ID, Longitude, Latitude, Capacity, Cost"
         }
 
         # Ensure the results directory exists
@@ -494,8 +506,13 @@ def opt_model(workspace_folder):
             print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
 
             # Calculate total capacity and cost for this component type
-            total_capacity = sum(info['data']['capacity'])
-            total_cost = sum(info['data']['cost'])
+            if key == 'ec_ids':
+                # Sum the capacities and costs only from the first row of each export cable
+                total_capacity = sum(info['data']['capacity'][i] for i in range(0, len(info['data']), 2))
+                total_cost = sum(info['data']['cost'][i] for i in range(0, len(info['data']), 2))
+            else:
+                total_capacity = sum(info['data']['capacity'])
+                total_cost = sum(info['data']['cost'])
             total_capacity_cost.append((key, round(total_capacity), round(total_cost, 3)))
 
         # Calculate overall totals
