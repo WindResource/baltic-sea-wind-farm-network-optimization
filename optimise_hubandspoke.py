@@ -796,19 +796,36 @@ def opt_model(workspace_folder):
                                 for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
-            },
-            'ec1_ids': {
-                'data': np.array([(wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])) 
-                                for wf, eh in model.viable_ec1_ids if model.ec1_cap_var[wf, eh].value > 0], 
-                                dtype=[('wf_id', int), ('eh_id', int), ('wf_lon', float), ('wf_lat', float), ('eh_lon', float), ('eh_lat', float), ('capacity', float), ('cost', float)]),
-                'headers': "WF_ID, OSS_ID, WFLongitude, WFLatitude, OSSLongitude, OSSLatitude, Capacity, Cost"
-            },
-            'ec2_ids': {
-                'data': np.array([(eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])) 
-                                for eh, onss in model.viable_ec2_ids if model.ec2_cap_var[eh, onss].value > 0], 
-                                dtype=[('eh_id', int), ('onss_id', int), ('eh_lon', float), ('eh_lat', float), ('onss_lon', float), ('onss_lat', float), ('capacity', float), ('cost', float)]),
-                'headers': "OSS_ID, ONSS_ID, OSSLongitude, OSSLatitude, ONSSLongitude, ONSSLatitude, Capacity, Cost"
             }
+        }
+
+        # Export cable ID counter
+        ec_id_counter = 1
+
+        # Create ec1_ids with export cable ID, split into two rows
+        ec1_data = []
+        for wf, eh in model.viable_ec1_ids:
+            if model.ec1_cap_var[wf, eh].value > 0:
+                ec1_data.append((ec_id_counter, wf, model.wf_lon[wf], model.wf_lat[wf], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])))
+                ec1_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec1_cap_var[wf, eh]), exp_f(model.ec1_cost_exp[wf, eh])))
+                ec_id_counter += 1
+
+        selected_components['ec1_ids'] = {
+            'data': np.array(ec1_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, Component_ID, Longitude, Latitude, Capacity, Cost"
+        }
+
+        # Create ec2_ids with export cable ID, split into two rows
+        ec2_data = []
+        for eh, onss in model.viable_ec2_ids:
+            if model.ec2_cap_var[eh, onss].value > 0:
+                ec2_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])))
+                ec2_data.append((ec_id_counter, onss, model.onss_lon[onss], model.onss_lat[onss], var_f(model.ec2_cap_var[eh, onss]), exp_f(model.ec2_cost_exp[eh, onss])))
+                ec_id_counter += 1
+
+        selected_components['ec2_ids'] = {
+            'data': np.array(ec2_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, Component_ID, Longitude, Latitude, Capacity, Cost"
         }
 
         # Ensure the results directory exists
