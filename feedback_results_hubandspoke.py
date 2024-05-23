@@ -20,31 +20,37 @@ def create_export_cable_feature_layer(npy_file_path, workspace_folder, layer_nam
     if arcpy.Exists(lines_path):
         arcpy.Delete_management(lines_path)
     arcpy.management.CreateFeatureclass(workspace_folder, layer_name, 'POLYLINE', spatial_reference=4326)
-    arcpy.management.AddField(lines_path, 'EC_ID', 'LONG')
-    arcpy.management.AddField(lines_path, 'Distance', 'DOUBLE')
-    arcpy.management.AddField(lines_path, 'Capacity', 'LONG')
-    arcpy.management.AddField(lines_path, 'Cost', 'DOUBLE')
-    
-    # Create polylines by connecting points with the same EC_ID
-    points_dict = {}
-    for row in ec_data:
-        ec_id = int(row['ec_id'])
-        point = (float(row['lon']), float(row['lat']))
-        distance = float(row['distance'])
-        capacity = float(row['capacity'])
-        cost = float(row['cost'])
-        
-        if ec_id not in points_dict:
-            points_dict[ec_id] = []
-        points_dict[ec_id].append((point, distance, capacity, cost))
-    
+    arcpy.management.AddFields(lines_path, [
+        ['EC_ID', 'LONG'],
+        ['Comp_1_ID', 'LONG'],
+        ['Comp_2_ID', 'LONG'],
+        ['Lon_1', 'DOUBLE'],
+        ['Lat_1', 'DOUBLE'],
+        ['Lon_2', 'DOUBLE'],
+        ['Lat_2', 'DOUBLE'],
+        ['Distance', 'DOUBLE'],
+        ['Capacity', 'DOUBLE'],
+        ['Cost', 'DOUBLE']
+    ])
+
     # Insert the polylines into the feature class
-    with arcpy.da.InsertCursor(lines_path, ['EC_ID', 'SHAPE@', 'Distance', 'Capacity', 'Cost']) as insert_cursor:
-        for ec_id, points in points_dict.items():
-            if len(points) == 2:
-                array = arcpy.Array([arcpy.Point(*points[0][0]), arcpy.Point(*points[1][0])])
-                polyline = arcpy.Polyline(array)
-                insert_cursor.insertRow((ec_id, polyline, points[0][1], points[0][2], points[0][3]))
+    with arcpy.da.InsertCursor(lines_path, ['EC_ID', 'Comp_1_ID', 'Comp_2_ID', 'SHAPE@', 'Lon_1', 'Lat_1', 'Lon_2', 'Lat_2', 'Distance', 'Capacity', 'Cost']) as insert_cursor:
+        for row in ec_data:
+            ec_id = int(row['ec_id'])
+            comp_1_id = int(row['comp_1_id'])
+            comp_2_id = int(row['comp_2_id'])
+            lon_1 = float(row['lon_1'])
+            lat_1 = float(row['lat_1'])
+            lon_2 = float(row['lon_2'])
+            lat_2 = float(row['lat_2'])
+            distance = float(row['distance'])
+            capacity = float(row['capacity'])
+            cost = float(row['cost'])
+            point_1 = arcpy.Point(lon_1, lat_1)
+            point_2 = arcpy.Point(lon_2, lat_2)
+            array = arcpy.Array([point_1, point_2])
+            polyline = arcpy.Polyline(array)
+            insert_cursor.insertRow((ec_id, comp_1_id, comp_2_id, polyline, lon_1, lat_1, lon_2, lat_2, distance, capacity, cost))
 
     # Add the feature class to the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -70,10 +76,12 @@ def create_point_feature_layer(npy_file_path, workspace_folder, layer_name):
     if arcpy.Exists(points_path):
         arcpy.Delete_management(points_path)
     arcpy.management.CreateFeatureclass(workspace_folder, layer_name, 'POINT', spatial_reference=4326)
-    arcpy.management.AddField(points_path, 'ID', 'LONG')
-    arcpy.management.AddField(points_path, 'ISO', 'TEXT')
-    arcpy.management.AddField(points_path, 'Capacity', 'DOUBLE')
-    arcpy.management.AddField(points_path, 'Cost', 'DOUBLE')
+    arcpy.management.AddFields(points_path, [
+        ['ID', 'LONG'],
+        ['ISO', 'TEXT'],
+        ['Capacity', 'DOUBLE'],
+        ['Cost', 'DOUBLE']
+    ])
 
     # Insert the points into the feature class
     with arcpy.da.InsertCursor(points_path, ['SHAPE@', 'ID', 'ISO', 'Capacity', 'Cost']) as insert_cursor:
