@@ -367,7 +367,7 @@ def find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso):
     for wf_id, eh_id in product(wf_lon.keys(), eh_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], eh_lon[eh_id], eh_lat[eh_id])
-        if distance <= 150:  # Check if the distance is within 150 km
+        if distance <= 80:  # Check if the distance is within 150 km
             # Then check if the ISO codes match for the current wind farm and energy hub pair
             if wf_iso[wf_id] == eh_iso[eh_id]:
                 connections.append((int(wf_id), int(eh_id)))
@@ -384,7 +384,7 @@ def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso):
     for eh_id, onss_id in product(eh_lon.keys(), onss_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(eh_lon[eh_id], eh_lat[eh_id], onss_lon[onss_id], onss_lat[onss_id])
-        if distance <= 300:  # Check if the distance is within 300 km
+        if distance <= 320:  # Check if the distance is within 300 km
             # Then check if the ISO codes match for the current offshore and onshore substation pair
             if eh_iso[eh_id] == onss_iso[onss_id]:
                 connections.append((int(eh_id), int(onss_id)))
@@ -766,6 +766,9 @@ def opt_model(workspace_folder):
         def var_f(v):
             return round(v.value, 3)
         
+        def par_f(p):
+            return round(p, 3)
+        
         # Mapping ISO country codes of Baltic Sea countries to unique integers
         int_to_iso_mp = {
             1 : 'DE',  # Germany
@@ -808,13 +811,14 @@ def opt_model(workspace_folder):
             if model.ec1_cap_var[wf, eh].value > 0:
                 ec1_cap = var_f(model.ec1_cap_var[wf, eh])
                 ec1_cost = exp_f(model.ec1_cost_exp[wf, eh])
-                ec1_data.append((ec_id_counter, wf, model.wf_lon[wf], model.wf_lat[wf], ec1_cap, ec1_cost))
-                ec1_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], ec1_cap, ec1_cost))
+                dist1 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
+                ec1_data.append((ec_id_counter, wf, model.wf_lon[wf], model.wf_lat[wf], dist1, ec1_cap, ec1_cost))
+                ec1_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost))
                 ec_id_counter += 1
 
         selected_components['ec1_ids'] = {
-            'data': np.array(ec1_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('capacity', float), ('cost', float)]),
-            'headers': "EC_ID, Component_ID, Longitude, Latitude, Capacity, Cost"
+            'data': np.array(ec1_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('distance', float), ('capacity', int), ('cost', float)]),
+            'headers': "EC_ID, Component_ID, Longitude, Latitude, Distance, Capacity, Cost"
         }
 
         # Create ec2_ids with export cable ID, split into two rows
@@ -823,13 +827,14 @@ def opt_model(workspace_folder):
             if model.ec2_cap_var[eh, onss].value > 0:
                 ec2_cap = var_f(model.ec2_cap_var[eh, onss])
                 ec2_cost = exp_f(model.ec2_cost_exp[eh, onss])
-                ec2_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], ec2_cap, ec2_cost))
-                ec2_data.append((ec_id_counter, onss, model.onss_lon[onss], model.onss_lat[onss], ec2_cap, ec2_cost))
+                dist2 = par_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
+                ec2_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], dist2, ec2_cap, ec2_cost))
+                ec2_data.append((ec_id_counter, onss, model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost))
                 ec_id_counter += 1
 
         selected_components['ec2_ids'] = {
-            'data': np.array(ec2_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('capacity', float), ('cost', float)]),
-            'headers': "EC_ID, Component_ID, Longitude, Latitude, Capacity, Cost"
+            'data': np.array(ec2_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('distance', float), ('capacity', int), ('cost', float)]),
+            'headers': "EC_ID, Component_ID, Longitude, Latitude, Distance, Capacity, Cost"
         }
 
         # Ensure the results directory exists
