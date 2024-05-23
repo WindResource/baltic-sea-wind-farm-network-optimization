@@ -805,36 +805,35 @@ def opt_model(workspace_folder):
         # Export cable ID counter
         ec_id_counter = 1
 
-        # Create ec1_ids with export cable ID, split into two rows
+        # Create ec1_ids with export cable ID, single row for each cable
         ec1_data = []
         for wf, eh in model.viable_ec1_ids:
             if model.ec1_cap_var[wf, eh].value > 0:
                 ec1_cap = var_f(model.ec1_cap_var[wf, eh])
                 ec1_cost = exp_f(model.ec1_cost_exp[wf, eh])
                 dist1 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
-                ec1_data.append((ec_id_counter, wf, model.wf_lon[wf], model.wf_lat[wf], dist1, ec1_cap, ec1_cost))
-                ec1_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost))
+                ec1_data.append((ec_id_counter, wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost))
                 ec_id_counter += 1
 
         selected_components['ec1_ids'] = {
-            'data': np.array(ec1_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('distance', float), ('capacity', int), ('cost', float)]),
-            'headers': "EC_ID, Component_ID, Longitude, Latitude, Distance, Capacity, Cost"
+            'data': np.array(ec1_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
-        # Create ec2_ids with export cable ID, split into two rows
+        # Create ec2_ids with export cable ID, single row for each cable
         ec2_data = []
+        ec_id_counter = 1
         for eh, onss in model.viable_ec2_ids:
             if model.ec2_cap_var[eh, onss].value > 0:
                 ec2_cap = var_f(model.ec2_cap_var[eh, onss])
                 ec2_cost = exp_f(model.ec2_cost_exp[eh, onss])
                 dist2 = par_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
-                ec2_data.append((ec_id_counter, eh, model.eh_lon[eh], model.eh_lat[eh], dist2, ec2_cap, ec2_cost))
-                ec2_data.append((ec_id_counter, onss, model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost))
+                ec2_data.append((ec_id_counter, eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost))
                 ec_id_counter += 1
 
         selected_components['ec2_ids'] = {
-            'data': np.array(ec2_data, dtype=[('ec_id', int), ('component_id', int), ('lon', float), ('lat', float), ('distance', float), ('capacity', int), ('cost', float)]),
-            'headers': "EC_ID, Component_ID, Longitude, Latitude, Distance, Capacity, Cost"
+            'data': np.array(ec2_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
         # Ensure the results directory exists
@@ -860,13 +859,8 @@ def opt_model(workspace_folder):
             print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
 
             # Calculate total capacity and cost for this component type
-            if key in ['ec1_ids', 'ec2_ids']:
-                # Sum the capacities and costs only from the first row of each export cable
-                total_capacity = sum(info['data']['capacity'][i] for i in range(0, len(info['data']), 2))
-                total_cost = sum(info['data']['cost'][i] for i in range(0, len(info['data']), 2))
-            else:
-                total_capacity = sum(info['data']['capacity'])
-                total_cost = sum(info['data']['cost'])
+            total_capacity = sum(info['data']['capacity'])
+            total_cost = sum(info['data']['cost'])
             total_capacity_cost.append((key, round(total_capacity), round(total_cost, 3)))
 
         # Calculate overall totals
