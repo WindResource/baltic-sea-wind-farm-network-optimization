@@ -1,26 +1,20 @@
 import arcpy
 import os
 
-def generate_turbine_areas(output_folder: str, countries_input: str = None, status: str = "Planned") -> str:
+def generate_turbine_areas(windfarm_folder: str):
     """
     Create a single shapefile for selected countries and status based on the input shapefile, utilizing in-memory workspaces.
     The created shapefile is added to the current map in ArcGIS Pro.
 
     Parameters:
-    - output_folder (str): Path to the output folder where the shapefile will be saved.
-    - countries_input (str): Semicolon-separated string of selected countries. If None or empty, all 8 Baltic Sea countries will be selected.
-    - status (str): The selected status to filter by. Default is 'Planned'.
+    - windfarm_folder (str): Path to the output folder where the shapefile will be saved.
 
     Returns:
     - str: Path to the created shapefile.
     """
     # Default to all Baltic Sea countries if countries_input is None or empty
-    if not countries_input:
-        countries = ['Denmark', 'Estonia', 'Finland', 'Germany', 'Latvia', 'Lithuania', 'Poland', 'Sweden']
-    else:
-        countries = countries_input.split(';')
-
-    wkid = 4326  # WGS 1984
+    countries = ['Denmark', 'Estonia', 'Finland', 'Germany', 'Latvia', 'Lithuania', 'Poland', 'Sweden']
+    status = "Planned"
 
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -45,10 +39,45 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
                 cursor.deleteRow()
 
     # Define the output shapefile path
-    output_shapefile = os.path.join(output_folder, f"WFA_BalticSea_{status}.shp")
+    output_shapefile = os.path.join(windfarm_folder, f"WFA_BalticSea_{status}.shp")
 
     # Copy the selected features to a new shapefile
-    arcpy.management.CopyFeatures("in_memory\\selected_wf_layer", output_shapefile)
+    arcpy.management.CopyFeatures("in_memory\\selected_wf_layer", "in_memory\\non_overlapping_wf_layer")
+
+    # Add an area field and calculate the area for each feature
+    arcpy.management.AddField("in_memory\\non_overlapping_wf_layer", "AREA", "DOUBLE")
+    arcpy.management.CalculateGeometryAttributes("in_memory\\non_overlapping_wf_layer", [["AREA", "AREA_GEODESIC"]])
+
+    # Make a feature layer for selection
+    arcpy.management.MakeFeatureLayer("in_memory\\non_overlapping_wf_layer", "layer_to_check")
+
+    delete_oids = set()
+    all_polygons = [row for row in arcpy.da.SearchCursor("layer_to_check", ['OID@', 'SHAPE@', 'AREA'])]
+
+    for i, (oid1, shape1, area1) in enumerate(all_polygons):
+        arcpy.AddMessage(f"Checking polygon with OID {oid1} and area {area1}")
+        for oid2, shape2, area2 in all_polygons[i+1:]:
+            if shape1.overlaps(shape2) or shape1.contains(shape2) or shape1.within(shape2):
+                arcpy.AddMessage(f"Comparing with polygon OID {oid2} and area {area2}")
+                if area1 < area2:
+                    arcpy.AddMessage(f"Marking polygon with OID {oid1} for deletion (smaller than polygon with OID {oid2})")
+                    delete_oids.add(oid1)
+                    break
+                elif area2 < area1:
+                    arcpy.AddMessage(f"Marking polygon with OID {oid2} for deletion (smaller than polygon with OID {oid1})")
+                    delete_oids.add(oid2)
+
+    arcpy.AddMessage(f"Total polygons marked for deletion: {len(delete_oids)}")
+
+    # Delete marked polygons
+    with arcpy.da.UpdateCursor("in_memory\\non_overlapping_wf_layer", ['OID@']) as cursor:
+        for row in cursor:
+            if row[0] in delete_oids:
+                arcpy.AddMessage(f"Deleting polygon with OID {row[0]}")
+                cursor.deleteRow()
+
+    # Copy the filtered features to the final output shapefile
+    arcpy.management.CopyFeatures("in_memory\\non_overlapping_wf_layer", output_shapefile)
 
     # Add the shapefile to the current map in ArcGIS Pro
     map.addDataFromPath(output_shapefile)
@@ -57,11 +86,10 @@ def generate_turbine_areas(output_folder: str, countries_input: str = None, stat
     return output_shapefile
 
 if __name__ == "__main__":
-    windfarm_folder = arcpy.GetParameterAsText(0)   # The path to the output folder
-    countries = arcpy.GetParameterAsText(1)  # The selected countries (as a semicolon-separated string)
+    windfarm_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\windfarm_folder"
 
     # Call the function with default status as 'Planned'
-    output_shapefile = generate_turbine_areas(windfarm_folder, countries)
+    output_shapefile = generate_turbine_areas(windfarm_folder)
 
     if output_shapefile:
         arcpy.AddMessage(f"Shapefile created and saved to: {output_shapefile}")
