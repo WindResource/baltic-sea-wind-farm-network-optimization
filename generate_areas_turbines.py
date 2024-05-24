@@ -12,9 +12,10 @@ def generate_turbine_areas(windfarm_folder: str):
     Returns:
     - str: Path to the created shapefile.
     """
-    # Default to all Baltic Sea countries if countries_input is None or empty
+    # Default to all Baltic Sea countries
     countries = ['Denmark', 'Estonia', 'Finland', 'Germany', 'Latvia', 'Lithuania', 'Poland', 'Sweden']
-    status = "Planned"
+    planned_status = "Planned"
+    other_statuses = ["Production", "Approved", "Construction"]
 
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -28,34 +29,48 @@ def generate_turbine_areas(windfarm_folder: str):
 
     arcpy.AddMessage(f"Processing layer: {wf_layer.name}")
 
-    # Processing for EEZ
-    arcpy.management.SelectLayerByAttribute(wf_layer, "NEW_SELECTION", f"country IN {tuple(countries)} AND status = '{status}'")
-    arcpy.management.CopyFeatures(wf_layer, "in_memory\\selected_wf_layer")
+    # Processing for selected countries and planned status
+    arcpy.management.SelectLayerByAttribute(wf_layer, "NEW_SELECTION", f"country IN {tuple(countries)} AND status = '{planned_status}'")
+    arcpy.management.CopyFeatures(wf_layer, "in_memory\\planned_wf_layer")
 
-    # Iterate through features and select those that meet the longitude condition
-    with arcpy.da.UpdateCursor("in_memory\\selected_wf_layer", ['SHAPE@X']) as cursor:
-        for row in cursor:
-            if row[0] < 9:  # Check if longitude is greater than 9
-                cursor.deleteRow()
+    # Select other statuses (Production, Approved, Construction)
+    arcpy.management.SelectLayerByAttribute(wf_layer, "NEW_SELECTION", f"country IN {tuple(countries)} AND status IN {tuple(other_statuses)}")
+    arcpy.management.CopyFeatures(wf_layer, "in_memory\\other_wf_layer")
+
+    # Split multipart polygons into singlepart polygons
+    arcpy.management.MultipartToSinglepart("in_memory\\planned_wf_layer", "in_memory\\planned_singlepart")
+    arcpy.management.MultipartToSinglepart("in_memory\\other_wf_layer", "in_memory\\other_singlepart")
 
     # Define the output shapefile path
-    output_shapefile = os.path.join(windfarm_folder, f"WFA_BalticSea_{status}.shp")
+    output_shapefile = os.path.join(windfarm_folder, f"WFA_BalticSea_{planned_status}.shp")
 
-    # Copy the selected features to a new shapefile
-    arcpy.management.CopyFeatures("in_memory\\selected_wf_layer", "in_memory\\non_overlapping_wf_layer")
+    # Copy the selected planned features to a new shapefile
+    arcpy.management.CopyFeatures("in_memory\\planned_singlepart", "in_memory\\non_overlapping_wf_layer")
 
-    # Add an area field and calculate the area for each feature
+    # Add an area field and calculate the area for each feature in the planned layer
     arcpy.management.AddField("in_memory\\non_overlapping_wf_layer", "AREA", "DOUBLE")
     arcpy.management.CalculateGeometryAttributes("in_memory\\non_overlapping_wf_layer", [["AREA", "AREA_GEODESIC"]])
 
-    # Make a feature layer for selection
+    # Make feature layers for selection
     arcpy.management.MakeFeatureLayer("in_memory\\non_overlapping_wf_layer", "layer_to_check")
+    arcpy.management.MakeFeatureLayer("in_memory\\other_singlepart", "other_layer")
 
     delete_oids = set()
     all_polygons = [row for row in arcpy.da.SearchCursor("layer_to_check", ['OID@', 'SHAPE@', 'AREA'])]
 
     for i, (oid1, shape1, area1) in enumerate(all_polygons):
         arcpy.AddMessage(f"Checking polygon with OID {oid1} and area {area1}")
+
+        # Check for overlaps with other statuses
+        arcpy.management.SelectLayerByLocation("other_layer", "INTERSECT", shape1, selection_type="NEW_SELECTION")
+        intersect_count = int(arcpy.management.GetCount("other_layer").getOutput(0))
+        arcpy.AddMessage(f"Found {intersect_count} intersecting polygons in other statuses for OID {oid1}")
+        if intersect_count > 0:
+            delete_oids.add(oid1)
+            arcpy.AddMessage(f"Marking polygon with OID {oid1} for deletion due to overlap with other statuses")
+            continue
+
+        # Compare with other polygons in the planned layer
         for oid2, shape2, area2 in all_polygons[i+1:]:
             if shape1.overlaps(shape2) or shape1.contains(shape2) or shape1.within(shape2):
                 arcpy.AddMessage(f"Comparing with polygon OID {oid2} and area {area2}")
