@@ -2,7 +2,7 @@ import arcpy
 import os
 import numpy as np
 
-def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, turbine_diameter: float, turbine_spacing: float) -> None:
+def create_wind_turbine_shapefile(output_folder: str) -> None:
     """
     Generates a point feature class for wind turbines based on the feature class in the current map.
     Each point represents a wind turbine, placed according to specified spacing, and includes attributes for identification and characteristics.
@@ -14,6 +14,10 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
     - turbine_spacing: Desired spacing between turbines, in terms of turbine diameters.
     """
 
+    turbine_capacity = 15 # MW
+    turbine_diameter = 240 # m
+    turbine_spacing = 7 # turbine diameters
+    
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
     utm33 = arcpy.SpatialReference(32633)  # Example: UTM Zone 33N
     wgs84 = arcpy.SpatialReference(4326)
@@ -149,16 +153,14 @@ def create_wind_turbine_shapefile(output_folder: str, turbine_capacity: float, t
 
 if __name__ == "__main__":
     # Example user inputs
-    turbine_folder = arcpy.GetParameterAsText(0)  # The folder where the output shapefile will be saved
-    turbine_capacity = float(arcpy.GetParameterAsText(1))  # Capacity of each wind turbine in MW
-    turbine_diameter = float(arcpy.GetParameterAsText(2))  # Diameter of each wind turbine in meters
-    turbine_spacing = float(arcpy.GetParameterAsText(3))  # Desired spacing between turbines, in terms of turbine diameters
+    turbine_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\turbine_folder"
+
 
     # Ensure the output directory exists, create it if not
     if not os.path.exists(turbine_folder):
         os.makedirs(turbine_folder)
 
     # Call the main function with the parameters collected from the user
-    create_wind_turbine_shapefile(turbine_folder, turbine_capacity, turbine_diameter, turbine_spacing)
-
+    create_wind_turbine_shapefile(turbine_folder)
+    
     arcpy.AddMessage("Wind turbine point features creation complete.")
