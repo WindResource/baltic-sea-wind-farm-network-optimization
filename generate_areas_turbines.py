@@ -42,7 +42,7 @@ def generate_turbine_areas(windfarm_folder: str):
     arcpy.management.MultipartToSinglepart("in_memory\\other_wf_layer", "in_memory\\other_singlepart")
 
     # Iterate through features and select those that meet the longitude condition
-    with arcpy.da.UpdateCursor("in_memory\\planned_singlepart", ['SHAPE@X']) as cursor:
+    with arcpy.da.UpdateCursor("in_memory\\planned_singlepart", ['SHAPE@X', 'country']) as cursor:
         for row in cursor:
             if row[0] < 9:  # Check if longitude is greater than 9
                 cursor.deleteRow()
@@ -62,13 +62,14 @@ def generate_turbine_areas(windfarm_folder: str):
     arcpy.management.MakeFeatureLayer("in_memory\\other_singlepart", "other_layer")
 
     delete_oids = set()
-    all_polygons = [row for row in arcpy.da.SearchCursor("layer_to_check", ['OID@', 'SHAPE@', 'AREA'])]
+    all_polygons = [row for row in arcpy.da.SearchCursor("layer_to_check", ['OID@', 'SHAPE@', 'AREA', 'country'])]
 
-    for i, (oid1, shape1, area1) in enumerate(all_polygons):
-        arcpy.AddMessage(f"Checking polygon with OID {oid1} and area {area1}")
+    for i, (oid1, shape1, area1, country1) in enumerate(all_polygons):
+        arcpy.AddMessage(f"Checking polygon with OID {oid1}, area {area1}, and country {country1}")
 
-        # Check for overlaps with other statuses
-        arcpy.management.SelectLayerByLocation("other_layer", "INTERSECT", shape1, selection_type="NEW_SELECTION")
+        # Check for overlaps with other statuses in the same country
+        arcpy.management.SelectLayerByAttribute("other_layer", "NEW_SELECTION", f"country = '{country1}'")
+        arcpy.management.SelectLayerByLocation("other_layer", "INTERSECT", shape1, selection_type="SUBSET_SELECTION")
         intersect_count = int(arcpy.management.GetCount("other_layer").getOutput(0))
         arcpy.AddMessage(f"Found {intersect_count} intersecting polygons in other statuses for OID {oid1}")
         if intersect_count > 0:
@@ -76,10 +77,10 @@ def generate_turbine_areas(windfarm_folder: str):
             arcpy.AddMessage(f"Marking polygon with OID {oid1} for deletion due to overlap with other statuses")
             continue
 
-        # Compare with other polygons in the planned layer
-        for oid2, shape2, area2 in all_polygons[i+1:]:
-            if shape1.overlaps(shape2) or shape1.contains(shape2) or shape1.within(shape2):
-                arcpy.AddMessage(f"Comparing with polygon OID {oid2} and area {area2}")
+        # Compare with other polygons in the planned layer in the same country
+        for oid2, shape2, area2, country2 in all_polygons[i+1:]:
+            if country1 == country2 and (shape1.overlaps(shape2) or shape1.contains(shape2) or shape1.within(shape2)):
+                arcpy.AddMessage(f"Comparing with polygon OID {oid2}, area {area2}, and country {country2}")
                 if area1 < area2:
                     arcpy.AddMessage(f"Marking polygon with OID {oid1} for deletion (smaller than polygon with OID {oid2})")
                     delete_oids.add(oid1)
