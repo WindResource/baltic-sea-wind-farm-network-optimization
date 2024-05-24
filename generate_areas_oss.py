@@ -1,35 +1,25 @@
 import arcpy
+import os
 
-def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, output_folder, buffer_distance = 5):
+def generate_offshore_substation_areas(output_folder):
     """
     Creates a new EEZ shapefile for selected countries, erases the part of the polygon features that are west of the 9-degree longitude,
     erases the pairwise buffered areas of the selected countries and HELCOM Marine Protected Areas (MPA) from the EEZ shapefile,
     and adds the generated shapefile to the current ArcGIS map.
 
     Parameters:
-    iso_country_code (list): The list of ISO country codes for which to generate the offshore substation areas.
-    iso_eez_country_code (list): The list of ISO country codes representing EEZs.
     output_folder (str): The folder path where the new EEZ shapefile will be saved.
-    buffer_distance (float): The buffer distance in kilometers.
     """
+    buffer_distance = 5
+    
     # Define ISO 2 char and ISO 3 char for Baltic Sea countries
-    baltic_sea_iso_2 = ['DK', 'EE', 'FI', 'DE', 'LV', 'LT', 'PL', 'SE']
-    baltic_sea_iso_3 = ['DNK', 'EST', 'FIN', 'DEU', 'LVA', 'LTU', 'POL', 'SWE']
+    iso_country_code = ['DK', 'EE', 'FI', 'DE', 'LV', 'LT', 'PL', 'SE']
+    iso_eez_country_code = ['DNK', 'EST', 'FIN', 'DEU', 'LVA', 'LTU', 'POL', 'SWE']
 
     # URLs for feature layers
     countries_feature_layer_url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World_Countries_(Generalized)/FeatureServer/0"
-    helcom_mpa_feature_layer_url = "https://maps.helcom.fi/arcgis/rest/services/MADS/Biodiversity/MapServer/54"
+    helcom_mpa_feature_layer_url = "https://maps.helcom.fi/arcgis/rest/services/MADS/Custom_webapps/MapServer/2"
     wkid = 4326  # WGS 1984
-
-    # Set default buffer distance
-    if not buffer_distance:
-        buffer_distance = 5
-    
-    # Check if ISO country codes are not provided by the user
-    if not iso_country_code:
-        iso_country_code = baltic_sea_iso_2
-    if not iso_eez_country_code:
-        iso_eez_country_code = baltic_sea_iso_3
 
     # Ensure iso_country_code and iso_eez_country_code are lists
     if isinstance(iso_country_code, str):
@@ -37,9 +27,11 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
     if isinstance(iso_eez_country_code, str):
         iso_eez_country_code = [iso_eez_country_code]
 
-    # Ensure the EEZ layer is available in the current map
+    # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
     map = aprx.activeMap
+
+    # Find the EEZ layer in the current map
     eez_layer = None
     for layer in map.listLayers():
         if layer.name.startswith('eez_v12'):
@@ -49,45 +41,67 @@ def generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, o
         arcpy.AddError("No EEZ layer found. Ensure a layer starting with 'eez_v12' is loaded in the map.")
         return
 
-    # Processing for country selection and buffering
+    # Find the first WFA layer in the current map
+    wfa_layer = None
+    for layer in map.listLayers():
+        if layer.name.startswith('WFA'):
+            wfa_layer = layer
+            break
+    if wfa_layer is None:
+        arcpy.AddError("No layer starting with 'WFA' found in the current map.")
+        return
+    
+    # Select the countries for the specified ISO codes
     countries_layer = arcpy.management.MakeFeatureLayer(countries_feature_layer_url, "countries_layer").getOutput(0)
     arcpy.management.SelectLayerByAttribute(countries_layer, "NEW_SELECTION", f"ISO IN {tuple(iso_country_code)}")
     
-    # Processing for HELCOM MPA
+    # Create a feature layer for HELCOM MPA
     helcom_mpa_layer = arcpy.management.MakeFeatureLayer(helcom_mpa_feature_layer_url, "helcom_mpa_layer").getOutput(0)
     
-    # Processing for EEZ
+    # Select the EEZ features for the specified ISO codes
     arcpy.management.SelectLayerByAttribute(eez_layer, "NEW_SELECTION", f"ISO_TER1 IN {tuple(iso_eez_country_code)}")
 
-    # Create a polygon covering the area west of 9 degrees longitude for Europe
-    # The polygon is drawn to cover Europe west of 9 degrees longitude
-    europe_west_of_9_deg_polygon = arcpy.Polygon(arcpy.Array([arcpy.Point(x, y) for x, y in [(-10, 90), (-10, -90), (9, -90), (9, 90), (-10, 90)]]), wkid)
+    # Create a polygon representing the area west of 9 degrees longitude
+    west_of_9_deg_polygon = arcpy.Polygon(arcpy.Array([arcpy.Point(-10, 90), arcpy.Point(-10, -90), arcpy.Point(9, -90), arcpy.Point(9, 90), arcpy.Point(-10, 90)]), arcpy.SpatialReference(wkid))
 
-    # Erase the part of the EEZ features that are west of the 9-degree longitude polygon
-    east_eez_layer = arcpy.analysis.PairwiseErase(eez_layer, europe_west_of_9_deg_polygon, None)
-
-    # Create buffer for the selected country
-    buffer_layer = arcpy.analysis.PairwiseBuffer(countries_layer, "in_memory\\buffered_country", f"{float(buffer_distance)} Kilometers").getOutput(0)
-
-    # Pairwise erase for the buffered country from EEZ
-    temp_erased_eez = arcpy.analysis.PairwiseErase(east_eez_layer, buffer_layer, None)
-
-    # Pairwise erase for HELCOM MPA from previously erased EEZ
-    final_erased_eez = arcpy.analysis.PairwiseErase(temp_erased_eez, helcom_mpa_layer, None)
+    # Save the west of 9 degrees polygon to a shapefile
+    west_of_9_deg_layer_path = os.path.join(output_folder, "west_of_9_deg_layer.shp")
+    arcpy.management.CopyFeatures(west_of_9_deg_polygon, west_of_9_deg_layer_path)
     
-    # Save the output to a new shapefile
-    output_feature_class = f"{output_folder}\\OSSA_All_Baltic_Countries.shp"
-    arcpy.management.CopyFeatures(final_erased_eez, output_feature_class)
+    # Erase the part of the EEZ layer that is west of 9 degrees longitude
+    east_eez_layer_path = os.path.join(output_folder, "east_eez_layer.shp")
+    arcpy.AddMessage("Erasing west of 9 degrees from EEZ...")
+    arcpy.analysis.Erase(eez_layer, west_of_9_deg_layer_path, east_eez_layer_path)
 
+    # Create a buffer around the selected countries
+    buffer_layer_path = os.path.join(output_folder, "buffered_country.shp")
+    arcpy.AddMessage("Buffering selected country...")
+    arcpy.analysis.PairwiseBuffer(countries_layer, buffer_layer_path, f"{float(buffer_distance)} Kilometers")
+
+    # Erase the buffered areas from the EEZ layer
+    temp_erased_eez_path = os.path.join(output_folder, "temp_erased_eez.shp")
+    arcpy.AddMessage("Erasing buffered country from EEZ...")
+    arcpy.analysis.PairwiseErase(east_eez_layer_path, buffer_layer_path, temp_erased_eez_path)
+
+    # Erase the HELCOM MPA areas from the EEZ layer
+    final_erased_eez_path = os.path.join(output_folder, "final_erased_eez.shp")
+    arcpy.AddMessage("Erasing HELCOM MPA from EEZ...")
+    arcpy.analysis.PairwiseErase(temp_erased_eez_path, helcom_mpa_layer, final_erased_eez_path)
+
+    # Erase the WFA areas from the EEZ layer
+    final_erased_eez_with_wfa_path = os.path.join(output_folder, "final_erased_eez_with_wfa.shp")
+    arcpy.AddMessage("Erasing WFA layer from EEZ...")
+    arcpy.analysis.PairwiseErase(final_erased_eez_path, wfa_layer, final_erased_eez_with_wfa_path)
+    
+    # Save the final output shapefile
+    output_feature_class = os.path.join(output_folder, "OSSA_All_Baltic_Countries.shp")
+    arcpy.AddMessage("Saving final output shapefile...")
+    arcpy.management.CopyFeatures(final_erased_eez_with_wfa_path, output_feature_class)
     arcpy.AddMessage(f"Successfully processed and saved new EEZ shapefile for all selected Baltic Sea countries at {output_feature_class}.")
 
     # Add the generated shapefile to the current map
     map.addDataFromPath(output_feature_class)
 
 if __name__ == "__main__":
-    iso_country_code = arcpy.GetParameterAsText(0)  # ISO 2 char
-    iso_eez_country_code = arcpy.GetParameterAsText(1)  # ISO 3 char
-    output_folder = arcpy.GetParameterAsText(2)
-    buffer_distance = arcpy.GetParameterAsText(3)
-    
-    generate_offshore_substation_areas(iso_country_code, iso_eez_country_code, output_folder, buffer_distance)
+    output_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\offshore_substation_folder"
+    generate_offshore_substation_areas(output_folder)
