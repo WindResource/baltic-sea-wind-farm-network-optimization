@@ -41,6 +41,12 @@ def generate_turbine_areas(windfarm_folder: str):
     arcpy.management.MultipartToSinglepart("in_memory\\planned_wf_layer", "in_memory\\planned_singlepart")
     arcpy.management.MultipartToSinglepart("in_memory\\other_wf_layer", "in_memory\\other_singlepart")
 
+    # Iterate through features and select those that meet the longitude condition
+    with arcpy.da.UpdateCursor("in_memory\\planned_singlepart", ['SHAPE@X']) as cursor:
+        for row in cursor:
+            if row[0] < 9:  # Check if longitude is greater than 9
+                cursor.deleteRow()
+
     # Define the output shapefile path
     output_shapefile = os.path.join(windfarm_folder, f"WFA_BalticSea_{planned_status}.shp")
 
