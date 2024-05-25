@@ -10,22 +10,15 @@ def generate_offshore_substation_areas(output_folder):
     Parameters:
     output_folder (str): The folder path where the new EEZ shapefile will be saved.
     """
-    buffer_distance = 5
+    buffer_distance = 10 # km
     
     # Define ISO 2 char and ISO 3 char for Baltic Sea countries
-    iso_country_code = ['DK', 'EE', 'FI', 'DE', 'LV', 'LT', 'PL', 'SE']
     iso_eez_country_code = ['DNK', 'EST', 'FIN', 'DEU', 'LVA', 'LTU', 'POL', 'SWE']
 
     # URLs for feature layers
-    countries_feature_layer_url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World_Countries_(Generalized)/FeatureServer/0"
+    countries_feature_layer_url = "https://services2.arcgis.com/VNo0ht0YPXJoI4oE/ArcGIS/rest/services/World_Countries_Specifically_Europe/FeatureServer/0"
     helcom_mpa_feature_layer_url = "https://maps.helcom.fi/arcgis/rest/services/MADS/Custom_webapps/MapServer/2"
     wkid = 4326  # WGS 1984
-
-    # Ensure iso_country_code and iso_eez_country_code are lists
-    if isinstance(iso_country_code, str):
-        iso_country_code = [iso_country_code]
-    if isinstance(iso_eez_country_code, str):
-        iso_eez_country_code = [iso_eez_country_code]
 
     # Get the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -50,10 +43,13 @@ def generate_offshore_substation_areas(output_folder):
     if wfa_layer is None:
         arcpy.AddError("No layer starting with 'WFA' found in the current map.")
         return
+
+    # Create a feature layer from the WFA layer
+    wfa_feature_layer = arcpy.management.MakeFeatureLayer(wfa_layer, "wfa_feature_layer").getOutput(0)
     
     # Select the countries for the specified ISO codes
     countries_layer = arcpy.management.MakeFeatureLayer(countries_feature_layer_url, "countries_layer").getOutput(0)
-    arcpy.management.SelectLayerByAttribute(countries_layer, "NEW_SELECTION", f"ISO IN {tuple(iso_country_code)}")
+    arcpy.management.SelectLayerByAttribute(countries_layer, "NEW_SELECTION", f"ISO_CC IN {tuple(iso_eez_country_code)}")
     
     # Create a feature layer for HELCOM MPA
     helcom_mpa_layer = arcpy.management.MakeFeatureLayer(helcom_mpa_feature_layer_url, "helcom_mpa_layer").getOutput(0)
@@ -81,17 +77,17 @@ def generate_offshore_substation_areas(output_folder):
     # Erase the buffered areas from the EEZ layer
     temp_erased_eez_path = os.path.join(output_folder, "temp_erased_eez.shp")
     arcpy.AddMessage("Erasing buffered country from EEZ...")
-    arcpy.analysis.PairwiseErase(east_eez_layer_path, buffer_layer_path, temp_erased_eez_path)
+    arcpy.analysis.Erase(east_eez_layer_path, buffer_layer_path, temp_erased_eez_path)
 
     # Erase the HELCOM MPA areas from the EEZ layer
     final_erased_eez_path = os.path.join(output_folder, "final_erased_eez.shp")
     arcpy.AddMessage("Erasing HELCOM MPA from EEZ...")
-    arcpy.analysis.PairwiseErase(temp_erased_eez_path, helcom_mpa_layer, final_erased_eez_path)
+    arcpy.analysis.Erase(temp_erased_eez_path, helcom_mpa_layer, final_erased_eez_path)
 
     # Erase the WFA areas from the EEZ layer
     final_erased_eez_with_wfa_path = os.path.join(output_folder, "final_erased_eez_with_wfa.shp")
     arcpy.AddMessage("Erasing WFA layer from EEZ...")
-    arcpy.analysis.PairwiseErase(final_erased_eez_path, wfa_layer, final_erased_eez_with_wfa_path)
+    arcpy.analysis.Erase(final_erased_eez_path, wfa_feature_layer, final_erased_eez_with_wfa_path)
     
     # Save the final output shapefile
     output_feature_class = os.path.join(output_folder, "OSSA_All_Baltic_Countries.shp")
