@@ -2,7 +2,7 @@ import arcpy
 import os
 import numpy as np
 
-def generate_offshore_substation_coordinates(output_folder: str, spacing: float) -> None:
+def generate_offshore_substation_coordinates(output_folder: str) -> None:
     """
     Generates a point feature class for offshore substations based on the feature class in the current map.
     Each point represents a substation, placed according to specified spacing.
@@ -11,6 +11,7 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     - output_folder: Path where the output shapefile will be saved.
     - spacing: Desired spacing between substations, in kilometers.
     """
+    spacing = 5 #km
     
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
     utm33 = arcpy.SpatialReference(32633)
@@ -129,12 +130,12 @@ def generate_offshore_substation_coordinates(output_folder: str, spacing: float)
     map.addDataFromPath(output_feature_class)
         
 if __name__ == "__main__":
-    output_folder = arcpy.GetParameterAsText(0)  # Output folder path
-    spacing = float(arcpy.GetParameterAsText(1))  # Spacing in kilometers
+    # Output folder path
+    output_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\offshore_substation_coord_folder"
 
     # Ensure the output directory exists, create it if not
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     # Call the function with user inputs
-    generate_offshore_substation_coordinates(output_folder, spacing)
+    generate_offshore_substation_coordinates(output_folder)
