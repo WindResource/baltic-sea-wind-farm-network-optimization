@@ -50,18 +50,18 @@ def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
 
     return total_cost
 
-def iac_cost_lin(length, capacity):
+def iac_cost_lin(distance, capacity):
     """
-    Calculate the total cost of an inter array cable section for a given length and desired capacity.
+    Calculate the total cost of an inter array cable section for a given distance and desired capacity.
 
     Parameters:
-        length (float): The length of the cable (in meters).
+        distance (float): The distance of the cable (in meters).
         capacity (float): Cable capacity (in MW).
 
     Returns:
         float: Total cost associated with the selected HVAC cables in millions of euros.
     """
-    cable_length = 1.05 * length
+    cable_length = 1.05 * distance
     cable_capacity = 80 # MW
     cable_equip_cost = 152 # eu/m
     cable_inst_cost = 114 # eu/m
@@ -79,7 +79,7 @@ def iac_cost_lin(length, capacity):
     # Calculate present value
     total_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
-    return total_cost * 10e-6 # total cost in millions of euros
+    return round(total_cost * 10e-6, 3) # total cost in millions of euros
 
 def update_inter_array_cable_costs():
     """
@@ -102,11 +102,11 @@ def update_inter_array_cable_costs():
         arcpy.AddField_management(iac_layer, "TotalCost", "DOUBLE")
 
     # Update the attribute table with the calculated costs
-    with arcpy.da.UpdateCursor(iac_layer, ["Length", "Capacity", "TotalCost"]) as cursor:
+    with arcpy.da.UpdateCursor(iac_layer, ["Distance", "Capacity", "TotalCost"]) as cursor:
         for row in cursor:
-            length = row[0]
+            distance = row[0]
             capacity = row[1]
-            total_cost = iac_cost_lin(length, capacity)
+            total_cost = iac_cost_lin(distance, capacity)
             row[2] = total_cost
             cursor.updateRow(row)
 
