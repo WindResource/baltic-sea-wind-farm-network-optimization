@@ -1,6 +1,24 @@
 import arcpy
 import networkx as nx
 import os
+from math import radians, sin, cos, sqrt, atan2
+
+def haversine(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great-circle distance between two points on the Earth surface.
+    """
+    # Convert latitude and longitude from degrees to radians
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+
+    # Haversine formula
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    r = 6371 * 1e3 # Radius of Earth in meters
+    distance = r * c  
+
+    return round(distance)
 
 def create_and_add_inter_array_cables():
     """
@@ -63,10 +81,10 @@ def create_and_add_inter_array_cables():
         for i, point in enumerate(turbine_points):
             G.add_node(i, pos=point)
 
-        # Add edges with weights (distances) between all turbines
+        # Add edges with weights (Haversine distances) between all turbines
         for i in range(len(turbine_points)):
             for j in range(i + 1, len(turbine_points)):
-                dist = ((turbine_points[i][0] - turbine_points[j][0]) ** 2 + (turbine_points[i][1] - turbine_points[j][1]) ** 2) ** 0.5
+                dist = haversine(turbine_points[i][1], turbine_points[i][0], turbine_points[j][1], turbine_points[j][0])
                 G.add_edge(i, j, weight=dist)
 
         # Compute the Minimum Spanning Tree
@@ -76,15 +94,18 @@ def create_and_add_inter_array_cables():
         min_dist = float('inf')
         closest_turbine = None
         for i, point in enumerate(turbine_points):
-            dist = ((substation_point[0] - point[0]) ** 2 + (substation_point[1] - point[1]) ** 2) ** 0.5
+            dist = haversine(substation_point[1], substation_point[0], point[1], point[0])
             if dist < min_dist:
                 min_dist = dist
                 closest_turbine = i
 
-        # Add the connection from the substation to the closest turbine
+        # Calculate total wind farm capacity
+        total_wind_farm_capacity = turbine_capacity * len(turbine_points)
+
+        # Add the connection from the substation to the closest turbine with total capacity
         array = arcpy.Array([arcpy.Point(*substation_point), arcpy.Point(*turbine_points[closest_turbine])])
         polyline = arcpy.Polyline(array, spatial_ref)
-        cursor.insertRow([polyline, wf_id, min_dist, turbine_capacity])
+        cursor.insertRow([polyline, wf_id, min_dist, total_wind_farm_capacity])
 
         # Traverse the MST to sum capacities correctly
         def accumulate_capacity(G, node, parent=None):
