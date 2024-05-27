@@ -152,9 +152,7 @@ def create_wind_turbine_shapefile(output_folder: str) -> None:
     
 
 if __name__ == "__main__":
-    # Example user inputs
     turbine_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\turbine_folder"
-
 
     # Ensure the output directory exists, create it if not
     if not os.path.exists(turbine_folder):
