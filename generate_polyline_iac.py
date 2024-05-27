@@ -18,7 +18,7 @@ def haversine(lat1, lon1, lat2, lon2):
     r = 6371 * 1e3 # Radius of Earth in meters
     distance = r * c  
 
-    return distance
+    return round(distance)
 
 def create_and_add_inter_array_cables():
     """
@@ -28,7 +28,7 @@ def create_and_add_inter_array_cables():
     """
 
     # Example user inputs
-    output_fc = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\inter_array_cables.shp"
+    output_fc = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\IAC_BalticSea.shp"
     turbine_capacity = 15  # Capacity of each wind turbine in megawatts (MW)
     spatial_ref = arcpy.SpatialReference(4326)  # WGS 1984
 
@@ -61,7 +61,7 @@ def create_and_add_inter_array_cables():
     # Create an empty feature class for the cables
     arcpy.CreateFeatureclass_management(os.path.dirname(output_fc), os.path.basename(output_fc), "POLYLINE", spatial_reference=spatial_ref)
 
-    # Add necessary fields for cable length, connected capacity, and WF_ID
+    # Add necessary fields for cable distance, connected capacity, and WF_ID
     arcpy.AddFields_management(output_fc, [
         ["WF_ID", "TEXT", "", 10],
         ["Distance", "DOUBLE"],
@@ -80,11 +80,17 @@ def create_and_add_inter_array_cables():
     for wf_id in wf_ids:
         # Get turbine and substation coordinates for the current WF_ID
         turbine_points = [row[0] for row in arcpy.da.SearchCursor(turbine_layer, ["SHAPE@XY"], f"WF_ID = '{wf_id}'")]
-        substation_point = [row[0] for row in arcpy.da.SearchCursor(substation_layer, ["SHAPE@XY"], f"WF_ID = '{wf_id}'")][0]
+        substation_points = [row[0] for row in arcpy.da.SearchCursor(substation_layer, ["SHAPE@XY"], f"WF_ID = '{wf_id}'")]
 
-        if not turbine_points or not substation_point:
-            arcpy.AddWarning(f"No turbines or substation found for WF_ID '{wf_id}'. Skipping...")
+        if not turbine_points:
+            arcpy.AddWarning(f"No turbines found for WF_ID '{wf_id}'. Skipping...")
             continue
+
+        if not substation_points:
+            arcpy.AddWarning(f"No substation found for WF_ID '{wf_id}'. Skipping...")
+            continue
+
+        substation_point = substation_points[0]
 
         # Create a graph and add nodes for each turbine
         G = nx.Graph()
@@ -100,27 +106,13 @@ def create_and_add_inter_array_cables():
         # Compute the Minimum Spanning Tree
         mst = nx.minimum_spanning_tree(G)
 
-        # Find the connection to the substation
-        min_dist = float('inf')
-        closest_turbine = None
-        for i, point in enumerate(turbine_points):
-            dist = haversine(substation_point[1], substation_point[0], point[1], point[0])
-            if dist < min_dist:
-                min_dist = dist
-                closest_turbine = i
-
         # Calculate total wind farm capacity
         total_wind_farm_capacity = turbine_capacity * len(turbine_points)
         
         # Store the total capacity for the substation
         substation_capacities[wf_id] = total_wind_farm_capacity
 
-        # Add the connection from the substation to the closest turbine with total capacity
-        array = arcpy.Array([arcpy.Point(*substation_point), arcpy.Point(*turbine_points[closest_turbine])])
-        polyline = arcpy.Polyline(array, spatial_ref)
-        cursor.insertRow([polyline, wf_id, min_dist, total_wind_farm_capacity])
-
-        # Traverse the MST to sum capacities correctly
+        # Traverse the MST to add cable sections and sum capacities correctly
         def accumulate_capacity(G, node, parent=None):
             total_capacity = turbine_capacity
             for neighbor in G.neighbors(node):
@@ -135,6 +127,20 @@ def create_and_add_inter_array_cables():
                 total_capacity += child_capacity
             return total_capacity
 
+        # Find the closest turbine to the substation and add the connection
+        min_dist = float('inf')
+        closest_turbine = None
+        for i, point in enumerate(turbine_points):
+            dist = haversine(substation_point[1], substation_point[0], point[1], point[0])
+            if dist < min_dist:
+                min_dist = dist
+                closest_turbine = i
+
+        array = arcpy.Array([arcpy.Point(*substation_point), arcpy.Point(*turbine_points[closest_turbine])])
+        polyline = arcpy.Polyline(array, spatial_ref)
+        cursor.insertRow([polyline, wf_id, min_dist, total_wind_farm_capacity])
+
+        # Accumulate capacity for the rest of the MST
         accumulate_capacity(mst, closest_turbine)
 
     # Cleanup
