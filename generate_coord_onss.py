@@ -14,12 +14,12 @@ def identify_countries(point_features):
         str: Path to the modified point features shapefile.
     """
     # Define ISO 2 char and ISO 3 char for Baltic Sea countries
-    iso_country_code = ['DK', 'EE', 'FI', 'DE', 'LV', 'LT', 'PL', 'SE']
     iso_eez_country_code = ['DNK', 'EST', 'FIN', 'DEU', 'LVA', 'LTU', 'POL', 'SWE']
+
     # Mapping between 3-letter and 2-letter ISO country codes
     iso_mp = { "DNK": "DK", "EST": "EE", "FIN": "FI", "DEU": "DE", "LVA": "LV", "LTU": "LT", "POL": "PL", "SWE": "SE" }
 
-    feature_layer_url = "https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World_Countries_(Generalized)/FeatureServer/0"
+    feature_layer_url = "https://services2.arcgis.com/VNo0ht0YPXJoI4oE/ArcGIS/rest/services/World_Countries_Specifically_Europe/FeatureServer/0"
     wgs84 = arcpy.SpatialReference(4326)
     
     # Ensure the EEZ layer is available in the current map
@@ -37,14 +37,10 @@ def identify_countries(point_features):
     # Select EEZ countries
     arcpy.analysis.Select(eez_layer, "in_memory\\eez_layer", f"ISO_TER1 IN {tuple(iso_eez_country_code)}")
 
-    # Ensure iso_country_code and iso_eez_country_code are lists
-    if isinstance(iso_country_code, str):
-        iso_country_code = [iso_country_code]
-
     # Create feature layer from URL
     countries_layer = arcpy.management.MakeFeatureLayer(feature_layer_url, "countries_layer").getOutput(0)
     # Select countries
-    arcpy.analysis.Select(countries_layer, "in_memory\\countries_polygon", f"ISO IN {tuple(iso_country_code)}")
+    arcpy.analysis.Select(countries_layer, "in_memory\\countries_polygon", f"ISO_CC IN {tuple(iso_eez_country_code)}")
     # Project the feature layer to the specified UTM Zone
     arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", wgs84)
 
