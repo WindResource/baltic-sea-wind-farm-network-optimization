@@ -27,7 +27,7 @@ def create_and_add_inter_array_cables():
     """
 
     # Example user inputs
-    output_fc = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\inter_array_cables.shp"
+    output_fc = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\IAC_BalticSea.shp"
     turbine_capacity = 15  # Capacity of each wind turbine in megawatts (MW)
     spatial_ref = arcpy.SpatialReference(4326)  # WGS 1984
 
