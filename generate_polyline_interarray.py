@@ -72,15 +72,7 @@ def create_and_add_inter_array_cables():
         # Compute the Minimum Spanning Tree
         mst = nx.minimum_spanning_tree(G)
 
-        # Add the MST edges to the feature class
-        for edge in mst.edges(data=True):
-            i, j, data = edge
-            dist = data['weight']
-            array = arcpy.Array([arcpy.Point(*turbine_points[i]), arcpy.Point(*turbine_points[j])])
-            polyline = arcpy.Polyline(array, spatial_ref)
-            cursor.insertRow([polyline, wf_id, dist, turbine_capacity])
-
-        # Connect the MST to the substation
+        # Find the connection to the substation
         min_dist = float('inf')
         closest_turbine = None
         for i, point in enumerate(turbine_points):
@@ -93,6 +85,23 @@ def create_and_add_inter_array_cables():
         array = arcpy.Array([arcpy.Point(*substation_point), arcpy.Point(*turbine_points[closest_turbine])])
         polyline = arcpy.Polyline(array, spatial_ref)
         cursor.insertRow([polyline, wf_id, min_dist, turbine_capacity])
+
+        # Traverse the MST to sum capacities correctly
+        def accumulate_capacity(G, node, parent=None):
+            total_capacity = turbine_capacity
+            for neighbor in G.neighbors(node):
+                if neighbor == parent:
+                    continue
+                edge_data = G.get_edge_data(node, neighbor)
+                dist = edge_data['weight']
+                array = arcpy.Array([arcpy.Point(*G.nodes[node]['pos']), arcpy.Point(*G.nodes[neighbor]['pos'])])
+                polyline = arcpy.Polyline(array, spatial_ref)
+                child_capacity = accumulate_capacity(G, neighbor, node)
+                cursor.insertRow([polyline, wf_id, dist, child_capacity])
+                total_capacity += child_capacity
+            return total_capacity
+
+        accumulate_capacity(mst, closest_turbine)
 
     # Cleanup
     del cursor
