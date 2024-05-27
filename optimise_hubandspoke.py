@@ -128,7 +128,6 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
         """
         # Coefficients for equipment cost calculation based on the support structure and year
         support_structure_coeff = {
-            'sandisland': (3.26, 804, 0, 0),
             'jacket': (233, 47, 309, 62),
             'floating': (87, 68, 116, 91)
         }
@@ -146,19 +145,8 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
         # Define equivalent electrical power
         equiv_capacity = 0.5 * eh_capacity if polarity == "AC" else eh_capacity
 
-        if support_structure == 'sandisland':
-            # This section still has to be linearized
-            # Calculate foundation cost for sand island
-            area_island = (equiv_capacity * 5)
-            slope = 0.75
-            r_hub = sqrt(area_island/np.pi)
-            r_seabed = r_hub + (water_depth + 3) / slope
-            volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
-            
-            supp_cost = c1 * volume_island + c2 * area_island
-        else:
-            # Calculate foundation cost for jacket/floating
-            supp_cost = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
+        # Calculate foundation cost for jacket/floating
+        supp_cost = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
         
         # Add support structure cost for ice cover adaptation
         supp_cost = 1.10 * supp_cost if ice_cover == 1 else supp_cost
@@ -180,7 +168,6 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
         """
         # Installation coefficients for different vehicles
         inst_coeff = {
-            ('sandisland','SUBV'): (20000, 25, 2000, 6000, 15),
             ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
             ('floating','HLCV'): (1, 22.5, 10, 0, 40),
             ('floating','AHV'): (3, 18.5, 30, 90, 40)
@@ -188,7 +175,6 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
 
         # Decommissioning coefficients for different vehicles
         deco_coeff = {
-            ('sandisland','SUBV'): (20000, 25, 2000, 6000, 15),
             ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
             ('floating','HLCV'): (1, 22.5, 10, 0, 40),
             ('floating','AHV'): (3, 18.5, 30, 30, 40)
@@ -196,24 +182,8 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
 
         # Choose the appropriate coefficients based on the operation type
         coeff = inst_coeff if operation == 'inst' else deco_coeff
-
-        if support_structure == 'sandisland':
-            # This section still has to be linearized
-            c1, c2, c3, c4, c5 = coeff[('sandisland','SUBV')]
-            # Define equivalent electrical power
-            equiv_capacity = 0.5 * eh_capacity if polarity == "AC" else eh_capacity
             
-            # Calculate installation cost for sand island
-            water_depth = max(0, water_depth)
-            area_island = (equiv_capacity * 5)
-            slope = 0.75
-            r_hub = sqrt(area_island/np.pi)
-            r_seabed = r_hub + (water_depth + 3) / slope
-            volume_island = (1/3) * slope * np.pi * (r_seabed ** 3 - r_hub ** 3)
-            
-            total_cost = ((volume_island / c1) * ((2 * port_distance) / c2) + (volume_island / c3) + (volume_island / c4)) * (c5 * 1000) / 24
-            
-        elif support_structure == 'jacket':
+        if support_structure == 'jacket':
             c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
             # Calculate installation cost for jacket
             total_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
