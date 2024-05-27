@@ -18,16 +18,17 @@ def haversine(lat1, lon1, lat2, lon2):
     r = 6371 * 1e3 # Radius of Earth in meters
     distance = r * c  
 
-    return round(distance)
+    return distance
 
 def create_and_add_inter_array_cables():
     """
     Creates an inter-array cable layout connecting wind turbines to a substation,
     and adds the resulting feature layer with polyline features and corresponding attributes to the current project map.
+    Also, updates the substation layer with the total capacity of each wind farm.
     """
 
     # Example user inputs
-    output_fc = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\IAC_BalticSea.shp"
+    output_fc = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\inter_array_cables.shp"
     turbine_capacity = 15  # Capacity of each wind turbine in megawatts (MW)
     spatial_ref = arcpy.SpatialReference(4326)  # WGS 1984
 
@@ -51,18 +52,27 @@ def create_and_add_inter_array_cables():
         arcpy.AddError("No layer starting with 'WFC' found in the current map.")
         return
 
+    # Check if the Capacity field exists in the substation layer, add it if not
+    field_names = [field.name for field in arcpy.ListFields(substation_layer)]
+    if "Capacity" not in field_names:
+        arcpy.AddField_management(substation_layer, "Capacity", "DOUBLE")
+        print("Added 'Capacity' field to substation layer.")
+
     # Create an empty feature class for the cables
     arcpy.CreateFeatureclass_management(os.path.dirname(output_fc), os.path.basename(output_fc), "POLYLINE", spatial_reference=spatial_ref)
 
     # Add necessary fields for cable length, connected capacity, and WF_ID
     arcpy.AddFields_management(output_fc, [
         ["WF_ID", "TEXT", "", 10],
-        ["Length", "DOUBLE"],
+        ["Distance", "DOUBLE"],
         ["Capacity", "DOUBLE"]
     ])
 
     # Insert cursor for the new feature class
-    cursor = arcpy.da.InsertCursor(output_fc, ["SHAPE@", "WF_ID", "Length", "Capacity"])
+    cursor = arcpy.da.InsertCursor(output_fc, ["SHAPE@", "WF_ID", "Distance", "Capacity"])
+
+    # Create a dictionary to store total capacities for each substation
+    substation_capacities = {}
 
     # Get unique WF_IDs from the turbine layer
     wf_ids = set(row[0] for row in arcpy.da.SearchCursor(turbine_layer, ["WF_ID"]))
@@ -101,6 +111,9 @@ def create_and_add_inter_array_cables():
 
         # Calculate total wind farm capacity
         total_wind_farm_capacity = turbine_capacity * len(turbine_points)
+        
+        # Store the total capacity for the substation
+        substation_capacities[wf_id] = total_wind_farm_capacity
 
         # Add the connection from the substation to the closest turbine with total capacity
         array = arcpy.Array([arcpy.Point(*substation_point), arcpy.Point(*turbine_points[closest_turbine])])
@@ -132,6 +145,16 @@ def create_and_add_inter_array_cables():
     # Add the inter-array cables layer to the map
     map.addDataFromPath(output_fc)
     print(f"Added layer to map: {output_fc}")
+
+    # Update the substation layer with the total capacities
+    with arcpy.da.UpdateCursor(substation_layer, ["WF_ID", "Capacity"]) as cursor:
+        for row in cursor:
+            wf_id = row[0]
+            if wf_id in substation_capacities:
+                row[1] = substation_capacities[wf_id]
+                cursor.updateRow(row)
+
+    print("Substation capacities updated.")
 
 if __name__ == "__main__":
     create_and_add_inter_array_cables()
