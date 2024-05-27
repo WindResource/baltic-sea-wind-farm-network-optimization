@@ -182,7 +182,7 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
 
 def wt_cost():
     
-    def determine_support_structure(water_depth):
+    def supp_struct_cond(water_depth):
         """
         Determines the support structure type based on water depth.
 
@@ -201,12 +201,12 @@ def wt_cost():
             arcpy.AddWarning(f"Water depth {water_depth} does not fall within specified ranges for support structures. Assigning default support structure.")
             return "default"
 
-    def calc_equip_costs(water_depth, support_structure, turbine_capacity):
+    def calc_equip_cost(water_depth, support_structure, turbine_capacity):
         """
-        Calculates the equipment costs based on water depth values and turbine capacity for the year 2030.
+        Calculates the equipment cost based on water depth values and turbine capacity for the year 2030.
 
         Returns:
-        - float: Calculated equipment costs.
+        - float: Calculated equipment cost.
         """
         # Coefficients for equipment cost calculation based on the support structure for the year 2030
         support_structure_coeff = {
@@ -218,18 +218,16 @@ def wt_cost():
         # Coefficients for wind turbine rated cost for the year 2030
         turbine_coeff = 1200
 
-        # Calculate equipment costs using the provided formula
+        # Calculate equipment cost using the provided formula
         c1, c2, c3 = support_structure_coeff[support_structure]
-        support_structure_costs = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
-        turbine_costs = turbine_capacity * turbine_coeff
-
-        equip_costs = support_structure_costs + turbine_costs
+        supp_cost = turbine_capacity * (c1 * (water_depth ** 2)) + (c2 * water_depth) + (c3 * 1000)
+        turbine_cost = turbine_capacity * turbine_coeff
         
-        return equip_costs
+        return supp_cost, equip_cost
 
-    def calc_costs(water_depth, support_structure, port_distance, turbine_capacity, operation):
+    def calc_cost(water_depth, support_structure, port_distance, turbine_capacity, operation):
         """
-        Calculate installation or decommissioning costs based on the water depth, port distance,
+        Calculate installation or decommissioning cost based on the water depth, port distance,
         and rated power of the wind turbines.
 
         Coefficients:
@@ -245,7 +243,7 @@ def wt_cost():
             - Tug (Tug Boat)
 
         Returns:
-        - tuple: Calculated hours and costs in Euros.
+        - tuple: Calculated hours and cost in Euros.
         """
         # Installation coefficients for different vehicles
         inst_coeff = {
@@ -269,30 +267,50 @@ def wt_cost():
 
         if support_structure == 'monopile' or 'jacket':
             c1, c2, c3, c4, c5 = coeff['PSIV']
-            # Calculate installation costs for jacket
-            total_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
+            # Calculate installation cost for jacket
+            total_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
         elif support_structure == 'floating':
-            total_costs = 0
+            total_cost = 0
             
             # Iterate over the coefficients for floating (Tug and AHV)
             for vessel_type in ['Tug', 'AHV']:
                 c1, c2, c3, c4, c5 = coeff[vessel_type]
                 
-                # Calculate installation costs for the current vessel type
-                vessel_costs = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
+                # Calculate installation cost for the current vessel type
+                vessel_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
                 
-                # Add the costs for the current vessel type to the total costs
-                total_costs += vessel_costs
+                # Add the cost for the current vessel type to the total cost
+                total_cost += vessel_cost
         else:
-            total_costs = None
+            total_cost = None
             
-        return total_costs
+        return total_cost
 
+    # Determine support structure
+    supp_structure = supp_struct_cond(water_depth)
+    
+    # Calculate equipment cost
+    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity, polarity)
+
+    # Calculate installation and decommissioning cost
+    inst_cost = inst_deco_cost_lin(supp_structure, port_distance, "inst")
+    deco_cost = inst_deco_cost_lin(supp_structure, port_distance, "deco")
+
+    # Calculate yearly operational cost
+    ope_cost_yearly = 0.03 * conv_cost
+    
+    # Calculate present value of cost    
+    eh_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    
+    # Offshore substation cost in million Euros
+    wf_cost *= 1e-6
+
+    return wf_cost
 
 def update_fields():
     """
     Update the attribute table of the wind turbine coordinates shapefile (WTC) with calculated equipment, installation,
-    decommissioning, logistics costs, logistics time, and Opex.
+    decommissioning, logistics cost, logistics time, and Opex.
 
     Returns:
     - None
