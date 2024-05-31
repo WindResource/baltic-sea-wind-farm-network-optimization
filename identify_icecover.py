@@ -14,18 +14,24 @@ def identify_icecover() -> None:
     map = aprx.activeMap
 
     # Get the layers starting with each prefix
-    prefixes = ['WTC', 'OSSC', 'Ice']
-    wt_layer, oss_layer, ic_layer = (next((layer for layer in map.listLayers() if layer.name.startswith(prefix)), None) for prefix in prefixes)
+    prefixes = ['WTC', 'OSSC', 'EH', 'Ice']
+    wt_layer, oss_layer, eh_layer, ic_layer = (next((layer for layer in map.listLayers() if layer.name.startswith(prefix)), None) for prefix in prefixes)
 
     if wt_layer is None:
         arcpy.AddError("No layer starting with 'WTC' found in the current map.")
+        return
+    if oss_layer is None:
+        arcpy.AddError("No layer starting with 'OSSC' found in the current map.")
+        return
+    if eh_layer is None:
+        arcpy.AddError("No layer starting with 'EH' found in the current map.")
         return
     if ic_layer is None:
         arcpy.AddError("No layer starting with 'Ice' found in the current map.")
         return
 
     # Deselect all currently selected features
-    for layer in [wt_layer, oss_layer, ic_layer]:
+    for layer in [wt_layer, oss_layer, eh_layer, ic_layer]:
         arcpy.SelectLayerByAttribute_management(layer, "CLEAR_SELECTION")
     
     arcpy.AddMessage(f"Processing layer: {wt_layer.name}")
@@ -34,10 +40,10 @@ def identify_icecover() -> None:
     field_names = [field.name for field in arcpy.ListFields(wt_layer)]
     if "IceCover" not in field_names:
         # Add new field to store ice cover information
-        for layer in [wt_layer, oss_layer]:
+        for layer in [wt_layer, oss_layer, eh_layer]:
             arcpy.AddField_management(layer, "IceCover", "TEXT", field_length = 5)
 
-    for layer in [wt_layer, oss_layer]:
+    for layer in [wt_layer, oss_layer, eh_layer]:
         # Set "IceCover" field to "No" for all features
         arcpy.CalculateField_management(layer, "IceCover", "'No'", "PYTHON3")
 

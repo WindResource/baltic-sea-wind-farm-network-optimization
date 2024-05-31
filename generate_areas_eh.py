@@ -90,7 +90,7 @@ def generate_offshore_substation_areas(output_folder):
     arcpy.analysis.Erase(final_erased_eez_path, wfa_feature_layer, final_erased_eez_with_wfa_path)
     
     # Save the final output shapefile
-    output_feature_class = os.path.join(output_folder, "OSSA_All_Baltic_Countries.shp")
+    output_feature_class = os.path.join(output_folder, "EHA_BalticSea.shp")
     arcpy.AddMessage("Saving final output shapefile...")
     arcpy.management.CopyFeatures(final_erased_eez_with_wfa_path, output_feature_class)
     arcpy.AddMessage(f"Successfully processed and saved new EEZ shapefile for all selected Baltic Sea countries at {output_feature_class}.")
