@@ -1,5 +1,13 @@
-import arcpy
-import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define font parameters
+font = {'family': 'serif',
+        'weight': 'normal',
+        'size': 12}
+
+# Set font
+plt.rc('font', **font)
 
 def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
     """
@@ -40,7 +48,7 @@ def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
     # Calculate total present value of cost
     total_cost = equip_cost + inst_cost + total_ope_cost + deco_cost
 
-    return total_cost
+    return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
 
 def supp_struct_cond(water_depth):
     """
@@ -156,63 +164,96 @@ def calculate_costs(water_depth, ice_cover, port_distance, turbine_capacity):
 
     ope_cost_yearly = 0.025 * turbine_cost  # Calculate yearly operational cost
 
-    total_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)  # Calculate present value of cost
+    total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)  # Calculate present value of cost
 
     total_cost *= 1e-6  # Convert cost to millions of Euros
+    equip_cost *= 1e-6
+    inst_cost *= 1e-6
+    total_ope_cost *= 1e-6
+    deco_cost *= 1e-6
 
-    return total_cost
+    return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
 
-def update_fields():
-    """
-    Function to update the fields in the wind turbine layer with calculated total cost.
-    """
-    # Get the current map
-    aprx = arcpy.mp.ArcGISProject("CURRENT")
-    map = aprx.activeMap
+def plot_equip_costs_vs_water_depth():
+    water_depths = np.linspace(0, 120, 500)
+    ice_cover = 0  # Assuming no ice cover for simplicity
+    turbine_capacity = 15  # Assuming a constant turbine capacity of 5 MW
+
+    supp_costs, turbine_costs, equip_costs = [], [], []
+
+    for wd in water_depths:
+        support_structure = supp_struct_cond(wd)
+        supp_cost, turbine_cost = calc_equip_cost(wd, support_structure, ice_cover, turbine_capacity)
+        equip_cost = supp_cost + turbine_cost
+        supp_costs.append(supp_cost * 1e-6)  # Convert to millions of Euros
+        turbine_costs.append(turbine_cost * 1e-6)  # Convert to millions of Euros
+        equip_costs.append(equip_cost * 1e-6)  # Convert to millions of Euros
+
+    plt.figure(figsize=(9, 6))
+    plt.plot(water_depths, supp_costs, label='Support Structure Cost')
+    plt.plot(water_depths, turbine_costs, label='Turbine Equipment Cost')
+    plt.plot(water_depths, equip_costs, label='Total Equipment Cost')
+    plt.xlabel('Water Depth (m)')
+    plt.ylabel('Cost (M\u20AC)')
+
+    # Set domain and range
+    plt.xlim(0, 120)
+    plt.ylim(0, max(max(supp_costs), max(turbine_costs), max(equip_costs)) * 1.1)
+
+    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    plt.minorticks_on()
     
-    # Find the wind turbine layer in the map
-    turbine_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WTC')), None)
+    # Add vertical lines for support structure domains
+    plt.axvline(x=25, color='grey', linewidth='1.5', linestyle='--')
+    plt.axvline(x=55, color='grey', linewidth='1.5', linestyle='--')
     
-    # Check if the turbine layer exists
-    if not turbine_layer:
-        arcpy.AddError("No layer starting with 'WTC' found in the current map.")
-        return
+    # Add vertical text annotations
+    plt.text(1, plt.ylim()[1] * 0.05, 'Monopile', rotation=90)
+    plt.text(26, plt.ylim()[1] * 0.05, 'Jacket', rotation=90)
+    plt.text(56, plt.ylim()[1] * 0.05, 'Floating', rotation=90)
 
-    # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(turbine_layer, "CLEAR_SELECTION")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(r'C:\\Users\\cflde\\Downloads\\plot_equip_costs_vs_water_depth.png', dpi=400)
+    plt.show()
+
+def plot_inst_deco_cost_vs_port_distance():
+    port_distances = np.linspace(0, 200, 100)
+    water_depth = 50  # Assuming a constant water depth
+    turbine_capacity = 5  # Assuming a constant turbine capacity of 5 MW
+
+    inst_costs, deco_costs = [], []
+
+    for pd in port_distances:
+        inst_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "installation")
+        deco_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "decommissioning")
+        inst_costs.append(inst_cost * 1e-6)  # Convert to millions of Euros
+        deco_costs.append(deco_cost * 1e-6)  # Convert to millions of Euros
+
+    plt.figure(figsize=(9, 6))
+    plt.plot(port_distances, inst_costs, label='Installation Cost')
+    plt.plot(port_distances, deco_costs, label='Decommissioning Cost')
     
-    arcpy.AddMessage(f"Processing layer: {turbine_layer.name}")
+    # Set domain and range
+    plt.xlim(0, 200)
+    plt.ylim(0, max(max(inst_costs), max(deco_costs)) * 1.5)
 
-    # Check if required fields exist in the attribute table using a search cursor
-    required_fields = ['WaterDepth', 'Capacity', 'Distance', 'IceCover']
-    existing_fields = []
+    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    plt.minorticks_on()
+
+    supp_struct_str = 'Monopile/Jacket' if water_depth < 55 else 'Floating'
     
-    with arcpy.da.SearchCursor(turbine_layer, ["*"]) as cursor:
-        existing_fields = cursor.fields
-    
-    for field in required_fields:
-        if field not in existing_fields:
-            arcpy.AddError(f"Required field '{field}' is missing in the attribute table.")
-            return
+    # Add vertical text annotations
+    plt.text(1, plt.ylim()[1] * 0.05, supp_struct_str, rotation=90)
 
-    # Check if TotalCost field exists, create it if it doesn't
-    total_cost_field = 'TotalCost'
-    if total_cost_field not in existing_fields:
-        arcpy.AddField_management(turbine_layer, total_cost_field, "DOUBLE")
-        arcpy.AddMessage(f"Field '{total_cost_field}' added to the attribute table.")
+    plt.xlabel('Distance to Closest Port (km)')
+    plt.ylabel('Cost (M\u20AC)')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(r'C:\\Users\\cflde\\Downloads\\plot_inst_deco_cost_vs_port_distance.png', dpi=400)
+    plt.show()
 
-    # Calculate the total cost for each feature and update the attribute table
-    with arcpy.da.UpdateCursor(turbine_layer, ['WaterDepth', 'Capacity', 'Distance', 'IceCover', total_cost_field]) as cursor:
-        for row in cursor:
-            water_depth = row[0]
-            turbine_capacity = row[1]
-            port_distance = row[2] * 1e-3 # port distance in km
-            ice_cover = 1 if row[3] == 'Yes' else 0
-
-            total_cost = calculate_costs(water_depth, ice_cover, port_distance, turbine_capacity)
-            row[4] = round(total_cost, 3)
-
-            cursor.updateRow(row)
-
-if __name__ == "__main__":
-    update_fields()
+plot_equip_costs_vs_water_depth()
+plot_inst_deco_cost_vs_port_distance()

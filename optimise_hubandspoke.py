@@ -53,45 +53,37 @@ def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
         deco_cost (float): Decommissioning cost.
 
     Returns:
-        tuple: A tuple containing the equipment cost, installation cost, and total present value of cost.
+        float: Total present value of cost.
     """
     # Define years for installation, operational, and decommissioning
-    inst_year = 0  # First year
-    ope_year = inst_year + 5
-    dec_year = ope_year + 25  
+    inst_year = 0  # First year (installation year)
+    ope_year = inst_year + 5  # Operational costs start year
+    dec_year = ope_year + 25  # Decommissioning year
     end_year = dec_year + 2  # End year
 
     # Discount rate
     discount_rate = 0.05
 
-    # Define the years as a function of inst_year and end_year
-    years = range(inst_year, end_year + 1)
-
     # Initialize total operational cost
-    ope_cost = 0
+    total_ope_cost = 0
 
     # Adjust cost for each year
-    for year in years:
-        # Adjust installation cost
+    for year in range(inst_year, end_year + 1):
+        discount_factor = (1 + discount_rate) ** -year  # Calculate the discount factor for the year
         if year == inst_year:
-            equip_cost *= (1 + discount_rate) ** -year
-            inst_cost *= (1 + discount_rate) ** -year
-        # Adjust operational cost
-        if year >= inst_year and year < ope_year:
-            inst_cost *= (1 + discount_rate) ** -year
-        elif year >= ope_year and year < dec_year:
-            ope_cost_yearly *= (1 + discount_rate) ** -year
-            ope_cost += ope_cost_yearly  # Accumulate yearly operational cost
-        # Adjust decommissioning cost
-        if year >= dec_year and year <= end_year:
-            deco_cost *= (1 + discount_rate) ** -year
+            equip_cost *= discount_factor  # Discount equipment cost for the installation year
+            inst_cost *= discount_factor  # Discount installation cost for the installation year
+        elif ope_year <= year < dec_year:
+            total_ope_cost += ope_cost_yearly * discount_factor  # Accumulate discounted operational cost for each year
+        elif year == dec_year:
+            deco_cost *= discount_factor  # Discount decommissioning cost for the decommissioning year
 
     # Calculate total present value of cost
-    total_cost = equip_cost + inst_cost + ope_cost + deco_cost
+    total_cost = equip_cost + inst_cost + total_ope_cost + deco_cost
 
     return total_cost
 
-def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "AC"):
+def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     """
     Estimate the cost associated with an energy hub based on various parameters.
 
@@ -119,7 +111,7 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
         elif 150 <= water_depth:
             return "floating"
 
-    def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity, polarity = "AC"):
+    def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity):
         """
         Calculates the energy hub equipment cost based on water depth, capacity, and export cable type.
 
@@ -132,18 +124,15 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
             'floating': (87, 68, 116, 91)
         }
 
-        equip_coeff = {
-            'AC': (22.87, 7.06),
-            'DC': (102.93, 31.75)
-        }
+        equip_coeff = (22.87, 7.06)
         
         # Define parameters
         c1, c2, c3, c4 = support_structure_coeff[support_structure]
         
-        c5, c6 = equip_coeff[polarity]
+        c5, c6 = equip_coeff
         
         # Define equivalent electrical power
-        equiv_capacity = 0.5 * eh_capacity if polarity == "AC" else eh_capacity
+        equiv_capacity = 0.5 * eh_capacity
 
         # Calculate foundation cost for jacket/floating
         supp_cost = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
@@ -204,7 +193,7 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity, polarity = "
     supp_structure = supp_struct_cond(water_depth)
     
     # Calculate equipment cost
-    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity, polarity)
+    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity)
 
     # Calculate installation and decommissioning cost
     inst_cost = inst_deco_cost_lin(supp_structure, port_distance, "inst")
