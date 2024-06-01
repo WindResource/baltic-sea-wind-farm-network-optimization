@@ -260,7 +260,7 @@ def update_fields():
 
             # Update the TotalCapacity and TotalCost fields
             row[4] = oss_capacity
-            row[5] = total_cost
+            row[5] = round(total_cost, 3)
             cursor.updateRow(row)
 
     arcpy.AddMessage("TotalCapacity and TotalCost fields updated successfully.")
