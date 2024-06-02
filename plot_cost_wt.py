@@ -124,7 +124,7 @@ def calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, operation)
         'AHV': (7, 18.5, 30, 30, 40)
     }
 
-    coeff = inst_coeff if operation == 'installation' else deco_coeff  # Choose coefficients based on operation type
+    coeff = inst_coeff if operation == 'inst' else deco_coeff  # Choose coefficients based on operation type
 
     support_structure = supp_struct_cond(water_depth)
 
@@ -159,8 +159,8 @@ def calculate_costs(water_depth, ice_cover, port_distance, turbine_capacity):
 
     equip_cost = supp_cost + turbine_cost
     
-    inst_cost = calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, "installation")  # Calculate installation cost
-    deco_cost = calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, "decommissioning")  # Calculate decommissioning cost
+    inst_cost = calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, "inst")  # Calculate installation cost
+    deco_cost = calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, "deco")  # Calculate decommissioning cost
 
     ope_cost_yearly = 0.025 * turbine_cost  # Calculate yearly operational cost
 
@@ -226,8 +226,8 @@ def plot_inst_deco_cost_vs_port_distance():
     inst_costs, deco_costs = [], []
 
     for pd in port_distances:
-        inst_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "installation")
-        deco_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "decommissioning")
+        inst_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "inst")
+        deco_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "deco")
         inst_costs.append(inst_cost * 1e-6)  # Convert to millions of Euros
         deco_costs.append(deco_cost * 1e-6)  # Convert to millions of Euros
 
