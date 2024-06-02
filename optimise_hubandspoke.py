@@ -326,7 +326,7 @@ def find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso):
     for wf_id, eh_id in product(wf_lon.keys(), eh_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], eh_lon[eh_id], eh_lat[eh_id])
-        if distance <= 80:  # Check if the distance is within 150 km
+        if distance <= 150:  # Check if the distance is within 150 km
             # Then check if the ISO codes match for the current wind farm and energy hub pair
             if wf_iso[wf_id] == eh_iso[eh_id]:
                 connections.append((int(wf_id), int(eh_id)))
@@ -343,7 +343,7 @@ def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso):
     for eh_id, onss_id in product(eh_lon.keys(), onss_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(eh_lon[eh_id], eh_lat[eh_id], onss_lon[onss_id], onss_lat[onss_id])
-        if distance <= 320:  # Check if the distance is within 300 km
+        if distance <= 300:  # Check if the distance is within 300 km
             # Then check if the ISO codes match for the current offshore and onshore substation pair
             if eh_iso[eh_id] == onss_iso[onss_id]:
                 connections.append((int(eh_id), int(onss_id)))

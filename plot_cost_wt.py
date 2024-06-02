@@ -86,10 +86,10 @@ def calc_equip_cost(water_depth, support_structure, ice_cover, turbine_capacity)
         'floating': (0, 697, 1223)
     }
 
-    turbine_coeff = 1200 * 1e3  # Coefficient for turbine cost (eu/MW)
+    turbine_coeff = 1200 * 1e3  # Coefficient for turbine cost (EU/MW)
 
     c1, c2, c3 = support_structure_coeff[support_structure]  # Get coefficients for the support structure
-    supp_cost = turbine_capacity * (c1 * (water_depth ** 2) + c2 * water_depth + c3 * 1000)
+    supp_cost = turbine_capacity * (c1 * (water_depth ** 2) + c2 * water_depth + c3 * 1e3)
     
     if ice_cover == 1:
         supp_cost *= 1.10  # Increase cost by 10% if ice cover is present
