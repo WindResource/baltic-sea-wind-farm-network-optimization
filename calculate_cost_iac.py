@@ -71,7 +71,7 @@ def iac_cost_lin(distance, capacity):
     # Calculate present value
     total_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
-    return round(total_cost * 10e-6, 3) # total cost in millions of euros
+    return total_cost
 
 def update_inter_array_cable_costs():
     """
@@ -99,7 +99,7 @@ def update_inter_array_cable_costs():
             distance = row[0]
             capacity = row[1]
             total_cost = iac_cost_lin(distance, capacity)
-            row[2] = total_cost
+            row[2] = round(total_cost * 1e-6, 3) # Cost in millions of EU
             cursor.updateRow(row)
 
 if __name__ == "__main__":
