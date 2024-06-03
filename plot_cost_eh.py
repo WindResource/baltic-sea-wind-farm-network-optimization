@@ -2,6 +2,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
+# Define font parameters
+font = {'family': 'serif',
+        'weight': 'normal',
+        'size': 12}
+
+# Set font
+plt.rc('font', **font)
+
 def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
     """
     Calculate the total present value of cable cost.
@@ -161,29 +169,32 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     
     return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
 
-def plot_equip_cost_vs_water_depth():
+def plot_total_cost_vs_water_depth():
     water_depths = np.linspace(0, 300, 500)
     ice_cover = 0  # Assuming no ice cover for simplicity
+    port_distance = 50  # Assuming a constant port distance
     eh_capacity = 1000  # Assuming a constant energy hub capacity of 1GW
 
-    supp_costs, conv_costs, equip_costs = [], [], []
+    total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
 
     for wd in water_depths:
-        support_structure = supp_struct_cond(wd)
-        supp_cost, conv_cost = equip_cost_lin(wd, support_structure, ice_cover, eh_capacity)
-        equip_cost = supp_cost + conv_cost
-        supp_costs.append(supp_cost * 1e-6)  # Convert to millions of Euros
-        conv_costs.append(conv_cost * 1e-6)  # Convert to millions of Euros
-        equip_costs.append(equip_cost * 1e-6)  # Convert to millions of Euros
+        total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = eh_cost_lin(wd, ice_cover, port_distance, eh_capacity)
+        total_costs.append(total_cost)
+        equip_costs.append(equip_cost)
+        inst_costs.append(inst_cost)
+        total_ope_costs.append(total_ope_cost)
+        deco_costs.append(deco_cost)
 
     plt.figure(figsize=(7, 5))
-    plt.plot(water_depths, supp_costs, label='Support Structure Cost')
-    plt.plot(water_depths, conv_costs, label='Converter Cost')
-    plt.plot(water_depths, equip_costs, label='Total Equipment Cost')
-    
+    plt.plot(water_depths, total_costs, label='Total PV')
+    plt.plot(water_depths, equip_costs, label='Equipment PV')
+    plt.plot(water_depths, inst_costs, label='Installation PV')
+    plt.plot(water_depths, total_ope_costs, label='Total Operating PV')
+    plt.plot(water_depths, deco_costs, label='Decommissioning PV')
+
     # Set domain and range
     plt.xlim(0, 300)
-    plt.ylim(0, 100)
+    plt.ylim(-1, 100)
 
     # Set the number of major ticks and minor ticks
     x_major_locator = MultipleLocator(50)
@@ -198,47 +209,50 @@ def plot_equip_cost_vs_water_depth():
     plt.gca().yaxis.set_minor_locator(y_minor_locator)
 
     # Add vertical lines for support structure domains
-    plt.axvline(x=145, color='grey', linewidth=1.5, linestyle='--')
-    
+    plt.axvline(x=120, color='grey', linewidth=1.5, linestyle='--')
+
     # Add vertical text annotations
-    plt.text(2, plt.ylim()[1] * 0.05, 'Jacket', rotation=90, verticalalignment='bottom')
-    plt.text(147, plt.ylim()[1] * 0.05, 'Floating', rotation=90, verticalalignment='bottom')
-    
+    plt.text(4, plt.ylim()[1] * 0.05, 'Jacket', rotation=90, verticalalignment='bottom')
+    plt.text(124, plt.ylim()[1] * 0.05, 'Floating', rotation=90, verticalalignment='bottom')
+
     plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
     plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
     plt.minorticks_on()
-    
+
     plt.xlabel('Water Depth (m)')
     plt.ylabel('Cost (M\u20AC)')
-    
+
     # Position the legend above the figure
-    plt.legend(bbox_to_anchor=(0, 1.3), loc='upper left', ncol=1, frameon=False)
-    
+    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_total_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.grid(True)
     plt.show()
-    
-def plot_equip_cost_vs_eh_capacity(water_depth):
+
+def plot_total_cost_vs_capacity(water_depth):
     eh_capacities = np.linspace(250, 2000, 500)  # Energy hub capacities in MW
     ice_cover = 0  # Assuming no ice cover for simplicity
-    
-    supp_costs, conv_costs, equip_costs = [], [], []
+    port_distance = 50  # Assuming a constant port distance
+
+    total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
 
     for eh_capacity in eh_capacities:
-        support_structure = supp_struct_cond(water_depth)
-        supp_cost, conv_cost = equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity)
-        equip_cost = supp_cost + conv_cost
-        supp_costs.append(supp_cost * 1e-6)  # Convert to millions of Euros
-        conv_costs.append(conv_cost * 1e-6)  # Convert to millions of Euros
-        equip_costs.append(equip_cost * 1e-6)  # Convert to millions of Euros
+        total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity)
+        total_costs.append(total_cost)
+        equip_costs.append(equip_cost)
+        inst_costs.append(inst_cost)
+        total_ope_costs.append(total_ope_cost)
+        deco_costs.append(deco_cost)
 
     plt.figure(figsize=(7, 5))
-    plt.plot(eh_capacities, supp_costs, label='Support Structure Cost')
-    plt.plot(eh_capacities, conv_costs, label='Converter Cost')
-    plt.plot(eh_capacities, equip_costs, label='Total Equipment Cost')
-    
+    plt.plot(eh_capacities, total_costs, label='Total PV')
+    plt.plot(eh_capacities, equip_costs, label='Equipment PV')
+    plt.plot(eh_capacities, inst_costs, label='Installation PV')
+    plt.plot(eh_capacities, total_ope_costs, label='Total Operating PV')
+    plt.plot(eh_capacities, deco_costs, label='Decommissioning PV')
+
     # Set domain and range
     plt.xlim(250, 2000)
-    plt.ylim(0, 150)
+    plt.ylim(0, 175)
 
     # Set the number of major ticks and minor ticks
     x_major_locator = MultipleLocator(250)
@@ -258,22 +272,79 @@ def plot_equip_cost_vs_eh_capacity(water_depth):
     plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
     plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
 
+    # Add vertical text annotations
+    supp_struct_str = 'Jacket' if water_depth < 120 else 'Floating'
+    plt.text(275, plt.ylim()[1] * 0.05, supp_struct_str, rotation=90)
+
+    plt.xlabel('Capacity (MW)')
+    plt.ylabel('Cost (M\u20AC)')
+
+    # Position the legend above the figure
+    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
+
+    plt.grid(True)
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_total_cost_vs_capacity_{supp_struct_str}.png', dpi=400, bbox_inches='tight')
+    plt.show()
+
+def plot_equip_cost_vs_water_depth():
+    water_depths = np.linspace(0, 300, 500)
+    ice_cover = 0  # Assuming no ice cover for simplicity
+    eh_capacity = 1000  # Assuming a constant energy hub capacity of 1GW
+
+    supp_costs, conv_costs, equip_costs = [], [], []
+
+    for wd in water_depths:
+        support_structure = supp_struct_cond(wd)
+        supp_cost, conv_cost = equip_cost_lin(wd, support_structure, ice_cover, eh_capacity)
+        equip_cost = supp_cost + conv_cost
+        supp_costs.append(supp_cost * 1e-6)  # Convert to millions of Euros
+        conv_costs.append(conv_cost * 1e-6)  # Convert to millions of Euros
+        equip_costs.append(equip_cost * 1e-6)  # Convert to millions of Euros
+
+    plt.figure(figsize=(7, 5))
+    plt.plot(water_depths, supp_costs, label='Support Structure Cost')
+    plt.plot(water_depths, conv_costs, label='Transformer Cost')
+    plt.plot(water_depths, equip_costs, label='Total Equipment Cost')
+    
+    # Set domain and range
+    plt.xlim(0, 300)
+    plt.ylim(0, 100)
+
+    # Set the number of major ticks and minor ticks
+    x_major_locator = MultipleLocator(50)
+    x_minor_locator = MultipleLocator(5)
+    y_major_locator = MultipleLocator(25)
+    y_minor_locator = MultipleLocator(5)
+
+    # Apply the major and minor tick locators
+    plt.gca().xaxis.set_major_locator(x_major_locator)
+    plt.gca().xaxis.set_minor_locator(x_minor_locator)
+    plt.gca().yaxis.set_major_locator(y_major_locator)
+    plt.gca().yaxis.set_minor_locator(y_minor_locator)
+
+    # Add vertical lines for support structure domains
+    plt.axvline(x=120, color='grey', linewidth=1.5, linestyle='--')
     
     # Add vertical text annotations
-    supp_struct_str = 'Jacket' if water_depth < 145 else 'Floating'
-    plt.text(260, plt.ylim()[1] * 0.05, supp_struct_str, rotation=90)
+    plt.text(4, plt.ylim()[1] * 0.05, 'Jacket', rotation=90, verticalalignment='bottom')
+    plt.text(124, plt.ylim()[1] * 0.05, 'Floating', rotation=90, verticalalignment='bottom')
     
-    plt.xlabel('Energy Hub Capacity (MW)')
+    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    plt.minorticks_on()
+    
+    plt.xlabel('Water Depth (m)')
     plt.ylabel('Cost (M\u20AC)')
     
     # Position the legend above the figure
-    plt.legend(bbox_to_anchor=(0, 1.3), loc='upper left', ncol=1, frameon=False)
+    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=1, frameon=False)
     
     plt.grid(True)
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_equip_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
 
-def plot_inst_and_deco_cost_vs_port_distance(water_depth):
-    port_distances = np.linspace(0, 250, 500)
+def plot_inst_deco_cost_vs_port_distance(water_depth):
+    port_distances = np.linspace(0, 300, 500)
 
     inst_costs, deco_costs = [], []
 
@@ -289,7 +360,7 @@ def plot_inst_and_deco_cost_vs_port_distance(water_depth):
     plt.plot(port_distances, deco_costs, label='Decommissioning Cost')
     
     # Set domain and range
-    plt.xlim(0, 250)
+    plt.xlim(0, 300)
     plt.ylim(0, 1.5)
 
     # Set the number of major ticks and minor ticks
@@ -310,7 +381,7 @@ def plot_inst_and_deco_cost_vs_port_distance(water_depth):
     plt.minorticks_on()
 
     # Add vertical text annotations
-    supp_struct_str = 'Monopile/Jacket' if water_depth < 145 else 'Floating'
+    supp_struct_str = 'Jacket' if water_depth < 120 else 'Floating'
     plt.text(2, plt.ylim()[1] * 0.05, supp_struct_str, rotation=90)
     
     plt.xlabel('Port Distance (km)')
@@ -320,141 +391,23 @@ def plot_inst_and_deco_cost_vs_port_distance(water_depth):
     plt.legend(bbox_to_anchor=(0, 1.2), loc='upper left', ncol=1, frameon=False)
     
     plt.grid(True)
-    plt.show()
-
-def plot_all_costs_vs_water_depth():
-    water_depths = np.linspace(0, 300, 500)
-    ice_cover = 0  # Assuming no ice cover for simplicity
-    port_distance = 50  # Assuming a constant port distance
-    eh_capacity = 1000  # Assuming a constant energy hub capacity of 1GW
-
-    total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
-
-    for wd in water_depths:
-        total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = eh_cost_lin(wd, ice_cover, port_distance, eh_capacity)
-        total_costs.append(total_cost)
-        equip_costs.append(equip_cost)
-        inst_costs.append(inst_cost)
-        total_ope_costs.append(total_ope_cost)
-        deco_costs.append(deco_cost)
-
-    plt.figure(figsize=(7, 5))
-    plt.plot(water_depths, total_costs, label='Total Cost')
-    plt.plot(water_depths, equip_costs, label='Equipment Cost')
-    plt.plot(water_depths, inst_costs, label='Installation Cost')
-    plt.plot(water_depths, total_ope_costs, label='Total Operational Cost')
-    plt.plot(water_depths, deco_costs, label='Decommissioning Cost')
-
-    # Set domain and range
-    plt.xlim(0, 300)
-    plt.ylim(0, max(total_costs) * 1.1)
-
-    # Set the number of major ticks and minor ticks
-    x_major_locator = MultipleLocator(50)
-    x_minor_locator = MultipleLocator(5)
-    y_major_locator = MultipleLocator(25)
-    y_minor_locator = MultipleLocator(5)
-
-    # Apply the major and minor tick locators
-    plt.gca().xaxis.set_major_locator(x_major_locator)
-    plt.gca().xaxis.set_minor_locator(x_minor_locator)
-    plt.gca().yaxis.set_major_locator(y_major_locator)
-    plt.gca().yaxis.set_minor_locator(y_minor_locator)
-
-    # Add vertical lines for support structure domains
-    plt.axvline(x=145, color='grey', linewidth=1.5, linestyle='--')
-
-    # Add vertical text annotations
-    plt.text(2, plt.ylim()[1] * 0.05, 'Jacket', rotation=90, verticalalignment='bottom')
-    plt.text(147, plt.ylim()[1] * 0.05, 'Floating', rotation=90, verticalalignment='bottom')
-
-    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
-    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
-    plt.minorticks_on()
-
-    plt.xlabel('Water Depth (m)')
-    plt.ylabel('Cost (M\u20AC)')
-
-    # Position the legend above the figure
-    plt.legend(bbox_to_anchor=(0, 1.5), loc='upper left', ncol=1, frameon=False)
-
-    plt.grid(True)
-    plt.show()
-
-def plot_all_costs_vs_eh_capacity(water_depth):
-    eh_capacities = np.linspace(250, 2000, 500)  # Energy hub capacities in MW
-    ice_cover = 0  # Assuming no ice cover for simplicity
-    port_distance = 50  # Assuming a constant port distance
-
-    total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
-
-    for eh_capacity in eh_capacities:
-        total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity)
-        total_costs.append(total_cost)
-        equip_costs.append(equip_cost)
-        inst_costs.append(inst_cost)
-        total_ope_costs.append(total_ope_cost)
-        deco_costs.append(deco_cost)
-
-    plt.figure(figsize=(7, 5))
-    plt.plot(eh_capacities, total_costs, label='Total Cost')
-    plt.plot(eh_capacities, equip_costs, label='Equipment Cost')
-    plt.plot(eh_capacities, inst_costs, label='Installation Cost')
-    plt.plot(eh_capacities, total_ope_costs, label='Total Operational Cost')
-    plt.plot(eh_capacities, deco_costs, label='Decommissioning Cost')
-
-    # Set domain and range
-    plt.xlim(250, 2000)
-    plt.ylim(0, max(total_costs) * 1.1)
-
-    # Set the number of major ticks and minor ticks
-    x_major_locator = MultipleLocator(250)
-    x_minor_locator = MultipleLocator(25)
-    y_major_locator = MultipleLocator(25)
-    y_minor_locator = MultipleLocator(5)
-
-    # Apply the major and minor tick locators
-    plt.gca().xaxis.set_major_locator(x_major_locator)
-    plt.gca().xaxis.set_minor_locator(x_minor_locator)
-    plt.gca().yaxis.set_major_locator(y_major_locator)
-    plt.gca().yaxis.set_minor_locator(y_minor_locator)
-
-    # Turn on minor ticks
-    plt.minorticks_on()
-
-    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
-    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
-
-    # Add vertical text annotations
-    supp_struct_str = 'Jacket' if water_depth < 145 else 'Floating'
-    plt.text(260, plt.ylim()[1] * 0.05, supp_struct_str, rotation=90)
-
-    plt.xlabel('Energy Hub Capacity (MW)')
-    plt.ylabel('Cost (M\u20AC)')
-
-    # Position the legend above the figure
-    plt.legend(bbox_to_anchor=(0, 1.5), loc='upper left', ncol=1, frameon=False)
-
-    plt.grid(True)
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_inst_deco_cost_vs_port_distance_{supp_struct_str}.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 if __name__ == "__main__":
     wd_jacket = 50
-    wd_floating = 200
+    wd_floating = 150
 
     # Call the function to plot the costs
 
+    plot_total_cost_vs_water_depth()
+
+    for wd in (wd_jacket, wd_floating):
+        plot_total_cost_vs_capacity(wd)
+    
     plot_equip_cost_vs_water_depth()
 
     for wd in (wd_jacket, wd_floating):
-        plot_equip_cost_vs_eh_capacity(wd)
-    
-    for wd in (wd_jacket, wd_floating):
-        plot_inst_and_deco_cost_vs_port_distance(wd)
-        
-    plot_all_costs_vs_water_depth()
-    
-    for wd in (wd_jacket, wd_floating):
-        plot_all_costs_vs_eh_capacity(wd)
+        plot_inst_deco_cost_vs_port_distance(wd)
     
 

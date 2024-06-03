@@ -231,7 +231,7 @@ def plot_costs_vs_water_depth():
 
     plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
     plt.grid(True)
-    plt.savefig(r'C:\\Users\\cflde\\Downloads\\total_cost_vs_water_depth.png', dpi=400 , bbox_inches='tight')
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_total_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 def plot_equip_costs_vs_water_depth():
@@ -285,7 +285,7 @@ def plot_equip_costs_vs_water_depth():
 
     plt.legend(bbox_to_anchor=(0, 1.2), loc='upper left', ncol=2, frameon=False)
     plt.grid(True)
-    plt.savefig(f'C:\\Users\\cflde\\Downloads\\equip_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_equip_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 def plot_inst_deco_cost_vs_port_distance(water_depth):
@@ -332,7 +332,7 @@ def plot_inst_deco_cost_vs_port_distance(water_depth):
     plt.ylabel('Cost (M\u20AC)')
     plt.legend(bbox_to_anchor=(0, 1.1), loc='upper left', ncol=2, frameon=False)
     plt.grid(True)
-    plt.savefig(f'C:\\Users\\cflde\\Downloads\\cost_vs_port_distance_{supp_struct_str.replace("/","-")}.png', dpi=400, bbox_inches='tight')
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_cost_vs_port_distance_{supp_struct_str.replace("/","-")}.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 plot_costs_vs_water_depth()
