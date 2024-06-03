@@ -114,14 +114,14 @@ def calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, operation)
         float: Calculated cost in Euros.
     """
     inst_coeff = {
-        'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
-        'Tug': (0.3, 7.5, 5, 0, 2.5),
+        'PSIV': ((40 / turbine_capacity), 18.5, 24, 144, 200),
+        'Tug': ((1/3), 7.5, 5, 0, 2.5),
         'AHV': (7, 18.5, 30, 90, 40)
     }
 
     deco_coeff = {
-        'PSIV': (40 / turbine_capacity, 18.5, 24, 144, 200),
-        'Tug': (0.3, 7.5, 5, 0, 2.5),
+        'PSIV': ((40 / turbine_capacity), 18.5, 24, 144, 200),
+        'Tug': ((1/3), 7.5, 5, 0, 2.5),
         'AHV': (7, 18.5, 30, 30, 40)
     }
 
@@ -131,12 +131,12 @@ def calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, operation)
 
     if support_structure in ['monopile', 'jacket']:
         c1, c2, c3, c4, c5 = coeff['PSIV']
-        total_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * ((c5 * 1e3) / 24)
+        total_cost = ((1 / c1) * ((2 * port_distance)/c2 + c3) + c4) * ((c5 * 1e3) / 24)
     elif support_structure == 'floating':
         total_cost = 0
         for vessel_type in ['Tug', 'AHV']:
             c1, c2, c3, c4, c5 = coeff[vessel_type]
-            vessel_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * ((c5 * 1e3) / 24)
+            vessel_cost = ((1 / c1) * ((2 * port_distance)/c2 + c3) + c4) * ((c5 * 1e3) / 24)
             total_cost += vessel_cost
 
     return total_cost
@@ -178,7 +178,7 @@ def calculate_costs(water_depth, ice_cover, port_distance, turbine_capacity):
 def plot_costs_vs_water_depth():
     water_depths = np.linspace(0, 120, 500)
     ice_cover = 0  # Assuming no ice cover for simplicity
-    port_distance = 50  # Assuming a constant port distance for simplicity
+    port_distance = 100  # Assuming a constant port distance for simplicity
     turbine_capacity = 15  # Assuming a constant turbine capacity of 15 MW
 
     total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
@@ -236,7 +236,7 @@ def plot_costs_vs_water_depth():
 
 def plot_equip_costs_vs_water_depth():
     water_depths = np.linspace(0, 120, 500)
-    ice_cover = 1  # Assuming no ice cover for simplicity
+    ice_cover = 0  # Assuming no ice cover for simplicity
     turbine_capacity = 15  # Assuming a constant turbine capacity of 5 MW
 
     supp_costs, turbine_costs, equip_costs = [], [], []
