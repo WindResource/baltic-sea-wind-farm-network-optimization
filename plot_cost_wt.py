@@ -151,46 +151,54 @@ def plot_costs_vs_water_depth():
         total_ope_costs.append(total_ope_cost)
         deco_costs.append(deco_cost)
 
-    plt.figure(figsize=(7, 5))
-    plt.plot(water_depths, total_costs, label='Total PV')
-    plt.plot(water_depths, equip_costs, label='Equipment PV')
-    plt.plot(water_depths, inst_costs, label='Installation PV')
-    plt.plot(water_depths, total_ope_costs, label='Total Operating PV')
-    plt.plot(water_depths, deco_costs, label='Decommissioning PV')
-
-    x_major_locator = MultipleLocator(20)
-    x_minor_locator = MultipleLocator(5)
-    y_major_locator = MultipleLocator(10)
-    y_minor_locator = MultipleLocator(2.5)
-
-    plt.gca().xaxis.set_major_locator(x_major_locator)
-    plt.gca().xaxis.set_minor_locator(x_minor_locator)
-    plt.gca().yaxis.set_major_locator(y_major_locator)
-    plt.gca().yaxis.set_minor_locator(y_minor_locator)
-
-
-    plt.xlabel('Water Depth (m)')
-    plt.ylabel('Cost (M\u20AC)')
-
-    # Set domain and range
-    plt.xlim(0, 120)
-    plt.ylim(0, 50)
-
-    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
-    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
-    plt.minorticks_on()
+    fig, axs = plt.subplots(2, 1, figsize=(6, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
     
-    # Add vertical lines for support structure domains
-    plt.axvline(x=25, color='grey', linewidth='1.5', linestyle='--')
-    plt.axvline(x=55, color='grey', linewidth='1.5', linestyle='--')
-    
-    # Add vertical text annotations
-    plt.text(2, plt.ylim()[1] * 0.05, 'Monopile', rotation=90)
-    plt.text(27, plt.ylim()[1] * 0.05, 'Jacket', rotation=90)
-    plt.text(57, plt.ylim()[1] * 0.05, 'Floating', rotation=90)
+    # Plotting the larger range
+    axs[0].plot(water_depths, total_costs, label='Total PV')
+    axs[0].plot(water_depths, equip_costs, label='Equipment PV')
+    axs[0].plot(water_depths, inst_costs, label='Installation PV')
+    axs[0].plot(water_depths, total_ope_costs, label='Total Operating PV')
+    axs[0].plot(water_depths, deco_costs, label='Decommissioning PV')
 
-    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
-    plt.grid(True)
+    axs[0].set_xlim(0, 120)
+    axs[0].set_ylim(0, 50)
+    axs[0].yaxis.set_major_locator(MultipleLocator(10))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(2.5))
+
+    # Plotting the smaller range
+    axs[1].plot(water_depths, total_costs, label='Total PV')
+    axs[1].plot(water_depths, equip_costs, label='Equipment PV')
+    axs[1].plot(water_depths, inst_costs, label='Installation PV')
+    axs[1].plot(water_depths, total_ope_costs, label='Total Operating PV')
+    axs[1].plot(water_depths, deco_costs, label='Decommissioning PV')
+
+    axs[0].set_xlim(0, 120)
+    axs[1].set_ylim(0, 2)
+    axs[1].yaxis.set_major_locator(MultipleLocator(1))
+    axs[1].yaxis.set_minor_locator(MultipleLocator(0.25))
+
+    for ax in axs:
+        ax.xaxis.set_major_locator(MultipleLocator(20))
+        ax.xaxis.set_minor_locator(MultipleLocator(5))
+        ax.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+        ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+        ax.minorticks_on()
+        
+        ax.axvline(x=25, color='grey', linewidth='1.5', linestyle='--')
+        ax.axvline(x=55, color='grey', linewidth='1.5', linestyle='--')
+        
+    axs[0].text(2, 2, 'Monopile', rotation=90)
+    axs[0].text(27, 2, 'Jacket', rotation=90)
+    axs[0].text(57, 2, 'Floating', rotation=90)
+
+    axs[1].set_xlabel('Water Depth (m)')
+    axs[0].set_ylabel('Cost (M€)')
+    axs[1].set_ylabel('Cost (M€)')
+
+    lines, labels = axs[0].get_legend_handles_labels()
+    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.02), loc='center', ncol=2, frameon=False)
+    
+    plt.tight_layout()
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_total_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
 
@@ -209,7 +217,7 @@ def plot_equip_costs_vs_water_depth():
         turbine_costs.append(turbine_cost * 1e-6)  # Convert to millions of Euros
         equip_costs.append(equip_cost * 1e-6)  # Convert to millions of Euros
 
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(6, 5))
     plt.plot(water_depths, equip_costs, label='Total Equipment Cost')
     plt.plot(water_depths, supp_costs, label='Support Structure Cost')
     plt.plot(water_depths, turbine_costs, label='Turbine Equipment Cost')
@@ -239,59 +247,66 @@ def plot_equip_costs_vs_water_depth():
     plt.axvline(x=55, color='grey', linewidth='1.5', linestyle='--')
     
     # Add vertical text annotations
-    plt.text(2, plt.ylim()[1] * 0.05, 'Monopile', rotation=90)
-    plt.text(27, plt.ylim()[1] * 0.05, 'Jacket', rotation=90)
-    plt.text(57, plt.ylim()[1] * 0.05, 'Floating', rotation=90)
+    plt.text(2, 2, 'Monopile', rotation=90)
+    plt.text(27, 2, 'Jacket', rotation=90)
+    plt.text(57, 2, 'Floating', rotation=90)
 
-    plt.legend(bbox_to_anchor=(0, 1.2), loc='upper left', ncol=2, frameon=False)
+    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=1, frameon=False)
     plt.grid(True)
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_equip_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
 
-def plot_inst_deco_cost_vs_port_distance(water_depth):
+def plot_inst_deco_cost_vs_port_distance():
     port_distances = np.linspace(0, 200, 100)
     turbine_capacity = 15
+    water_depths = [40, 80]
 
-    inst_costs, deco_costs = [], []
-
-    for pd in port_distances:
-        inst_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "inst")
-        deco_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "deco")
-        inst_costs.append(inst_cost * 1e-6)  # Convert to millions of Euros
-        deco_costs.append(deco_cost * 1e-6)  # Convert to millions of Euros
-
-    plt.figure(figsize=(7, 5))
-    plt.plot(port_distances, inst_costs, label='Installation Cost')
-    plt.plot(port_distances, deco_costs, label='Decommissioning Cost')
+    fig, axs = plt.subplots(2, 1, figsize=(6, 6), gridspec_kw={'height_ratios': [1, 1]}, sharex=True)
     
-    # Set domain and range
-    plt.xlim(0, 200)
-    plt.ylim(0, 2)
+    for i, water_depth in enumerate(water_depths):
+        inst_costs, deco_costs = [], []
 
-    x_major_locator = MultipleLocator(20)
-    x_minor_locator = MultipleLocator(5)
-    y_major_locator = MultipleLocator(0.5)
-    y_minor_locator = MultipleLocator(0.125)
+        for pd in port_distances:
+            inst_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "inst")
+            deco_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "deco")
+            inst_costs.append(inst_cost * 1e-6)  # Convert to millions of Euros
+            deco_costs.append(deco_cost * 1e-6)  # Convert to millions of Euros
 
-    plt.gca().xaxis.set_major_locator(x_major_locator)
-    plt.gca().xaxis.set_minor_locator(x_minor_locator)
-    plt.gca().yaxis.set_major_locator(y_major_locator)
-    plt.gca().yaxis.set_minor_locator(y_minor_locator)
+        axs[i].plot(port_distances, inst_costs, label='Installation Cost')
+        axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost')
+        
+        # Set domain and range
+        axs[i].set_xlim(0, 200)
+        axs[i].set_ylim(0, 2)
 
+        x_major_locator = MultipleLocator(20)
+        x_minor_locator = MultipleLocator(5)
+        y_major_locator = MultipleLocator(0.5)
+        y_minor_locator = MultipleLocator(0.125)
 
-    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
-    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
-    plt.minorticks_on()
+        axs[i].xaxis.set_major_locator(x_major_locator)
+        axs[i].xaxis.set_minor_locator(x_minor_locator)
+        axs[i].yaxis.set_major_locator(y_major_locator)
+        axs[i].yaxis.set_minor_locator(y_minor_locator)
 
-    supp_struct_str = 'Monopile/Jacket' if water_depth < 55 else 'Floating'
+        axs[i].grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+        axs[i].grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+        axs[i].minorticks_on()
+
+        axs[i].set_ylabel('Cost (M€)')
+        
+        supp_struct_str = f'Monopile/Jacket' if water_depth < 55 else f'Floating'
+        axs[i].text(2, 0.05, supp_struct_str, rotation=90, ha='left', va='bottom')
+        
+        # Add horizontal text annotation in the top left of the figure
+        axs[i].text(2, 1.95, f'$WD ={water_depth}m$', ha='left', va='top')
+        
+    axs[1].set_xlabel('Distance to Closest Port (km)')
     
-    # Add vertical text annotations
-    plt.text(2, plt.ylim()[1] * 0.05, supp_struct_str, rotation=90)
-
-    plt.xlabel('Distance to Closest Port (km)')
-    plt.ylabel('Cost (M\u20AC)')
-    plt.legend(bbox_to_anchor=(0, 1.1), loc='upper left', ncol=2, frameon=False)
-    plt.grid(True)
+    lines, labels = axs[0].get_legend_handles_labels()
+    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.02), loc='center', ncol=2, frameon=False)
+    
+    plt.tight_layout()
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_cost_vs_port_distance_{supp_struct_str.replace("/","-")}.png', dpi=400, bbox_inches='tight')
     plt.show()
 
@@ -299,5 +314,4 @@ plot_costs_vs_water_depth()
 
 plot_equip_costs_vs_water_depth()
 
-for wd in (40, 80):
-    plot_inst_deco_cost_vs_port_distance(wd)
+plot_inst_deco_cost_vs_port_distance()
