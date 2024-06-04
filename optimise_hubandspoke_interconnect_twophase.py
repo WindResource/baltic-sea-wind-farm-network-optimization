@@ -41,55 +41,7 @@ from pyomo.environ import *
 import numpy as np
 import os
 from itertools import product
-
-def present_value(equip_costs, inst_costs, ope_costs_yearly, deco_costs):
-    """
-    Calculate the total present value of cable costs.
-
-    Parameters:
-        equip_costs (float): Equipment costs.
-        inst_costs (float): Installation costs.
-        ope_costs_yearly (float): Yearly operational costs.
-        deco_costs (float): Decommissioning costs.
-
-    Returns:
-        tuple: A tuple containing the equipment costs, installation costs, and total present value of costs.
-    """
-    # Define years for installation, operational, and decommissioning
-    inst_year = 0  # First year
-    ope_year = inst_year + 5
-    dec_year = ope_year + 25  
-    end_year = dec_year + 2  # End year
-
-    # Discount rate
-    discount_rate = 0.05
-
-    # Define the years as a function of inst_year and end_year
-    years = range(inst_year, end_year + 1)
-
-    # Initialize total operational costs
-    ope_costs = 0
-    
-    # Adjust costs for each year
-    for year in years:
-        # Adjust installation costs
-        if year == inst_year:
-            equip_costs *= (1 + discount_rate) ** -year
-            inst_costs *= (1 + discount_rate) ** -year
-        # Adjust operational costs
-        if year >= inst_year and year < ope_year:
-            inst_costs *= (1 + discount_rate) ** -year
-        elif year >= ope_year and year < dec_year:
-            ope_costs_yearly *= (1 + discount_rate) ** -year
-            ope_costs += ope_costs_yearly  # Accumulate yearly operational costs
-        # Adjust decommissioning costs
-        if year >= dec_year and year <= end_year:
-            deco_costs *= (1 + discount_rate) ** -year
-
-    # Calculate total present value of costs
-    total_costs = equip_costs + inst_costs + ope_costs + deco_costs
-
-    return total_costs
+from scripts.cost_functions import present_value
 
 def haversine_distance_scalar(lon1, lat1, lon2, lat2):
     """
