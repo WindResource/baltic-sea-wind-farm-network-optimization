@@ -112,7 +112,7 @@ def ec1_cost_ceil(distance, capacity):
     equip_cost = parallel_cables * cable_length * cable_equip_cost
     inst_cost = parallel_cables * cable_length * cable_inst_cost
     
-    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
+    ope_cost_yearly = 0.002 * equip_cost
     
     deco_cost = 0.5 * inst_cost
 

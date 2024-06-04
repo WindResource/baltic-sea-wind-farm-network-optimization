@@ -10,6 +10,47 @@ font = {'family': 'serif',
 # Set font
 plt.rc('font', **font)
 
+def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
+    """
+    Calculate the total present value of cable cost.
+
+    Parameters:
+        equip_cost (float): Equipment cost.
+        inst_cost (float): Installation cost.
+        ope_cost_yearly (float): Yearly operational cost.
+        deco_cost (float): Decommissioning cost.
+
+    Returns:
+        float: Total present value of cost.
+    """
+    # Define years for installation, operational, and decommissioning
+    inst_year = 0  # First year (installation year)
+    ope_year = inst_year + 5  # Operational costs start year
+    dec_year = ope_year + 25  # Decommissioning year
+    end_year = dec_year + 2  # End year
+
+    # Discount rate
+    discount_rate = 0.05
+
+    # Initialize total operational cost
+    total_ope_cost = 0
+
+    # Adjust cost for each year
+    for year in range(inst_year, end_year + 1):
+        discount_factor = (1 + discount_rate) ** -year  # Calculate the discount factor for the year
+        if year == inst_year:
+            equip_cost *= discount_factor  # Discount equipment cost for the installation year
+            inst_cost *= discount_factor  # Discount installation cost for the installation year
+        elif ope_year <= year < dec_year:
+            total_ope_cost += ope_cost_yearly * discount_factor  # Accumulate discounted operational cost for each year
+        elif year == dec_year:
+            deco_cost *= discount_factor  # Discount decommissioning cost for the decommissioning year
+
+    # Calculate total present value of cost
+    total_cost = equip_cost + inst_cost + total_ope_cost + deco_cost
+
+    return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
+
 def onss_cost(capacity, threshold):
     """
     Calculate the cost for ONSS expansion above a certain capacity.
@@ -22,12 +63,17 @@ def onss_cost(capacity, threshold):
     - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
     """
     
-    overcap_cost = 0.02287 # Million EU/ MW
+    threshold_equip_cost = 0.02287 # Million EU/ MW
     
     # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    cost_function = np.maximum(capacity - threshold, 0) * overcap_cost
+    equip_cost_function = np.maximum(capacity - threshold, 0) * threshold_equip_cost
     
-    return cost_function
+    ope_cost_yearly = 0.015 * equip_cost_function
+    
+    # Calculate present value
+    total_cost, equip_cost, _, total_ope_cost, _ = present_value(equip_cost_function, 0, ope_cost_yearly, 0)
+    
+    return total_cost, equip_cost, total_ope_cost
 
 def onss_cost_lin(capacity, threshold):
     """
@@ -41,12 +87,17 @@ def onss_cost_lin(capacity, threshold):
     - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
     """
     
-    overcap_cost = 0.02287 # Million EU/ MW
+    threshold_equip_cost = 0.02287 # Million EU/ MW
     
     # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    cost_function = (capacity - threshold) * overcap_cost
+    equip_cost_function = (capacity - threshold) * threshold_equip_cost
     
-    return cost_function
+    ope_cost_yearly = 0.015 * equip_cost_function
+    
+    # Calculate present value
+    total_cost, equip_cost, _, total_ope_cost, _ = present_value(equip_cost_function, 0, ope_cost_yearly, 0)
+    
+    return total_cost, equip_cost, total_ope_cost
 
 def plot_onss_costs():
     """
@@ -54,26 +105,43 @@ def plot_onss_costs():
     """
     
     threshold = 0
-    capacities = np.linspace(-250, 500, 400)
-    costs = [onss_cost(cap, threshold) for cap in capacities]
-    costs_lin = [onss_cost_lin(cap, threshold) for cap in capacities]
+    capacities = np.linspace(-200, 600, 400)
+
+    total_costs = []
+    equip_costs = []
+    total_ope_costs = []
+
+    total_costs_lin = []
+    equip_costs_lin = []
+    total_ope_costs_lin = []
+
+    for cap in capacities:
+        total_cost, equip_cost, total_ope_cost = onss_cost(cap, threshold)
+        total_costs.append(total_cost)
+        equip_costs.append(equip_cost)
+        total_ope_costs.append(total_ope_cost)
+
+        total_cost_lin, equip_cost_lin, total_ope_cost_lin = onss_cost_lin(cap, threshold)
+        total_costs_lin.append(total_cost_lin)
+        equip_costs_lin.append(equip_cost_lin)
+        total_ope_costs_lin.append(total_ope_cost_lin)
 
     plt.figure(figsize=(7, 5))
-    
-    plt.plot(capacities, costs, label='ONSS Cost (Max Function)')
-    plt.plot(capacities, costs_lin, label='ONSS Cost (Linear Function)', linestyle='--')
-    
+
+    line1, = plt.plot(capacities, total_costs, label='Total PV')
+    line2, = plt.plot(capacities, equip_costs, label='Equipment PV')
+    line3, = plt.plot(capacities, total_ope_costs, label='Total Operating PV')
+
+    plt.plot(capacities, total_costs_lin, label='Total PV (smooth)',  color=line1.get_color(), linestyle='--')
+    plt.plot(capacities, equip_costs_lin, label='Equipment PV (smooth)',  color=line2.get_color(), linestyle='--')
+    plt.plot(capacities, total_ope_costs_lin, label='Total Operating PV (smooth)',  color=line3.get_color(), linestyle='--')
+
     plt.xlabel('Capacity (MW)')
-    plt.ylabel('Cost (Million EU)')
+    plt.ylabel('Cost (M\u20AC)')
     
     # Set domain and range
-    plt.xlim(-250, 500)
+    plt.xlim(-200, 500)
     plt.ylim(-7.5, 15)
-    
-    # Set x-ticks dynamically over the range of capacities
-    x_ticks = np.arange(-250, 501, 100)
-    x_tick_labels = [f'$\\mathit{{TH}}-{abs(tick)}$' if tick < 0 else ('$\\mathit{TH}$' if tick == 0 else f'$\\mathit{{TH}}+{tick}$') for tick in x_ticks]
-    plt.xticks(x_ticks, x_tick_labels)
     
     # Define major and minor locators
     x_major_locator = MultipleLocator(200)
@@ -88,11 +156,19 @@ def plot_onss_costs():
     ax.yaxis.set_minor_locator(y_minor_locator)
     
     plt.grid(which='both', linestyle='--', linewidth=0.5)
+    
+    # Set x-ticks dynamically over the range of capacities
+    x_ticks = np.arange(-200, 501, 100)
+    x_tick_labels = [f'$\\mathit{{TH}}-{abs(tick)}$' if tick < 0 else ('$\\mathit{TH}$' if tick == 0 else f'$\\mathit{{TH}}+{tick}$') for tick in x_ticks]
+    plt.xticks(x_ticks, x_tick_labels, fontfamily=font['family'], fontweight=font['weight'], fontsize=11, rotation=45, rotation_mode='anchor', ha='right')
+    
     plt.minorticks_on()
-    plt.legend(bbox_to_anchor=(0, 1.2), loc='upper left', ncol=2, frameon=False)
+    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
     
+    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
     plt.grid(True)
-    
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\onss_cost_vs_capacity.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 # Example usage:
