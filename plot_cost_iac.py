@@ -103,11 +103,11 @@ def plot_costs_vs_distance(capacity):
         deco_costs.append(deco_cost)
 
     plt.figure(figsize=(7.5, 5))
-    plt.plot(distances, total_costs, label='Total Cost', linestyle='-', color='k')
-    plt.plot(distances, equip_costs, label='Equipment Cost', linestyle='--', color='b')
-    plt.plot(distances, inst_costs, label='Installation Cost', linestyle='-', color='b')
-    plt.plot(distances, total_ope_costs, label='Total Operational Cost', linestyle='--', color='g')
-    plt.plot(distances, deco_costs, label='Decommissioning Cost', linestyle='-', color='g')
+    plt.plot(distances, total_costs, label='Total Cost')
+    plt.plot(distances, equip_costs, label='Equipment Cost')
+    plt.plot(distances, inst_costs, label='Installation Cost')
+    plt.plot(distances, total_ope_costs, label='Total Operational Cost')
+    plt.plot(distances, deco_costs, label='Decommissioning Cost')
 
     plt.xlim(0, 5)
     plt.ylim(0, max(total_costs + equip_costs + inst_costs + total_ope_costs + deco_costs) * 1.1)
@@ -129,11 +129,11 @@ def plot_costs_vs_distance(capacity):
     plt.xlabel('Distance (km)')
     plt.ylabel('Cost (M\u20AC)')
     plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
-
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\iac_cost_vs_distance.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 def plot_costs_vs_capacity(distance):
-    capacities = np.linspace(5, 500, 1000)  # Capacities in MW
+    capacities = np.linspace(0, 500, 1000)  # Capacities in MW
 
     total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
 
@@ -146,11 +146,11 @@ def plot_costs_vs_capacity(distance):
         deco_costs.append(deco_cost)
 
     plt.figure(figsize=(7.5, 5))
-    plt.plot(capacities, total_costs, label='Total PV', linestyle='-', color='k')
-    plt.plot(capacities, equip_costs, label='Equipment PV', linestyle='--', color='b')
-    plt.plot(capacities, inst_costs, label='Installation PV', linestyle='-', color='b')
-    plt.plot(capacities, total_ope_costs, label='Total Operating PV', linestyle='--', color='g')
-    plt.plot(capacities, deco_costs, label='Decommissioning PV', linestyle='-', color='g')
+    plt.plot(capacities, total_costs, label='Total PV')
+    plt.plot(capacities, equip_costs, label='Equipment PV')
+    plt.plot(capacities, inst_costs, label='Installation PV')
+    plt.plot(capacities, total_ope_costs, label='Total Operating PV')
+    plt.plot(capacities, deco_costs, label='Decommissioning PV')
 
     plt.xlim(0, 500)
     plt.ylim(0, max(total_costs + equip_costs + inst_costs + total_ope_costs + deco_costs) * 1.1)
@@ -172,7 +172,7 @@ def plot_costs_vs_capacity(distance):
     plt.xlabel('Capacity (MW)')
     plt.ylabel('Cost (M\u20AC)')
     plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
-
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\iac_cost_vs_capacity.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 
