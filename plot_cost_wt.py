@@ -187,9 +187,9 @@ def plot_costs_vs_water_depth():
         ax.axvline(x=25, color='grey', linewidth='1.5', linestyle='--')
         ax.axvline(x=55, color='grey', linewidth='1.5', linestyle='--')
         
-    axs[0].text(2, 2, 'Monopile', rotation=90)
-    axs[0].text(27, 2, 'Jacket', rotation=90)
-    axs[0].text(57, 2, 'Floating', rotation=90)
+    axs[0].text(2, plt.ylim()[1] * 0.5, 'Monopile', rotation=90)
+    axs[0].text(27, plt.ylim()[1] * 0.5, 'Jacket', rotation=90)
+    axs[0].text(57, plt.ylim()[1] * 0.5, 'Floating', rotation=90)
 
     axs[1].set_xlabel('Water Depth (m)')
     axs[0].set_ylabel('Cost (M€)')
@@ -217,7 +217,7 @@ def plot_equip_costs_vs_water_depth():
         turbine_costs.append(turbine_cost * 1e-6)  # Convert to millions of Euros
         equip_costs.append(equip_cost * 1e-6)  # Convert to millions of Euros
 
-    plt.figure(figsize=(6, 5))
+    plt.figure(figsize=(6, 4.5))
     plt.plot(water_depths, equip_costs, label='Total Equipment Cost')
     plt.plot(water_depths, supp_costs, label='Support Structure Cost')
     plt.plot(water_depths, turbine_costs, label='Turbine Equipment Cost')
