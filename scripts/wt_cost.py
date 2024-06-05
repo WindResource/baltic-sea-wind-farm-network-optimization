@@ -45,6 +45,10 @@ def calc_equip_cost(water_depth, support_structure, ice_cover, turbine_capacity)
 
     turbine_cost = turbine_capacity * turbine_coeff
 
+    # Millions of Euros
+    supp_cost *= 1e-6
+    turbine_cost *= 1e-6
+    
     return supp_cost, turbine_cost
 
 def calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, operation):
@@ -86,5 +90,7 @@ def calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, operation)
             c1, c2, c3, c4, c5 = coeff[vessel_type]
             vessel_cost = ((1 / c1) * ((2 * port_distance)/c2 + c3) + c4) * ((c5 * 1e3) / 24)
             total_cost += vessel_cost
+
+    total_cost *= 1e-6 # Millions of Euros
 
     return total_cost

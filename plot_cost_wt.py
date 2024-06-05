@@ -40,12 +40,6 @@ def calc_total_cost(water_depth, ice_cover, port_distance, turbine_capacity):
 
     total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)  # Calculate present value of cost
 
-    total_cost *= 1e-6  # Convert cost to millions of Euros
-    equip_cost *= 1e-6
-    inst_cost *= 1e-6
-    total_ope_cost *= 1e-6
-    deco_cost *= 1e-6
-
     return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
 
 def plot_costs_vs_water_depth():
@@ -126,11 +120,11 @@ def plot_equip_costs_vs_water_depth():
         support_structure = check_supp(wd)
         supp_cost, turbine_cost = calc_equip_cost(wd, support_structure, ice_cover, turbine_capacity)
         equip_cost = supp_cost + turbine_cost
-        supp_costs.append(supp_cost * 1e-6)  # Convert to millions of Euros
-        turbine_costs.append(turbine_cost * 1e-6)  # Convert to millions of Euros
-        equip_costs.append(equip_cost * 1e-6)  # Convert to millions of Euros
+        supp_costs.append(supp_cost)
+        turbine_costs.append(turbine_cost)
+        equip_costs.append(equip_cost)
 
-    plt.figure(figsize=(6, 4.5))
+    plt.figure(figsize=(6, 5))
     plt.plot(water_depths, equip_costs, label='Total Equipment Cost')
     plt.plot(water_depths, supp_costs, label='Support Structure Cost')
     plt.plot(water_depths, turbine_costs, label='Turbine Equipment Cost')
@@ -164,7 +158,7 @@ def plot_equip_costs_vs_water_depth():
     plt.text(27, 2, 'Jacket', rotation=90)
     plt.text(57, 2, 'Floating', rotation=90)
 
-    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=1, frameon=False)
+    plt.legend(bbox_to_anchor=(0, 1.3), loc='upper left', ncol=1, frameon=False)
     plt.grid(True)
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_equip_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
@@ -182,8 +176,8 @@ def plot_inst_deco_cost_vs_port_distance():
         for pd in port_distances:
             inst_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "inst")
             deco_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "deco")
-            inst_costs.append(inst_cost * 1e-6)  # Convert to millions of Euros
-            deco_costs.append(deco_cost * 1e-6)  # Convert to millions of Euros
+            inst_costs.append(inst_cost)
+            deco_costs.append(deco_cost)
 
         axs[i].plot(port_distances, inst_costs, label='Installation Cost')
         axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost')
@@ -217,13 +211,13 @@ def plot_inst_deco_cost_vs_port_distance():
     axs[1].set_xlabel('Distance to Closest Port (km)')
     
     lines, labels = axs[0].get_legend_handles_labels()
-    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.02), loc='center', ncol=2, frameon=False)
+    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.04), loc='center', ncol=1, frameon=False)
     
     plt.tight_layout()
-    plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_cost_vs_port_distance_{supp_struct_str.replace("/","-")}.png', dpi=400, bbox_inches='tight')
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\wt_cost_vs_port_distance.png', dpi=400, bbox_inches='tight')
     plt.show()
 
-def plot_ic_costs_vs_water_depth():
+def plot_ice_costs_vs_water_depth():
     water_depths = np.linspace(0, 120, 500)
     port_distance = 100  # Assuming a constant port distance for simplicity
     turbine_capacity = 15  # Assuming a constant turbine capacity of 15 MW
@@ -307,6 +301,77 @@ def plot_ic_costs_vs_water_depth():
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\ic_wt_total_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
 
+def plot_ice_equip_costs_vs_water_depth():
+    water_depths = np.linspace(0, 120, 500)
+    turbine_capacity = 15  # Assuming a constant turbine capacity
+
+    # Initialize lists to store the costs for ice cover 0 and 1
+    supp_costs_ice0, turbine_costs_ice0, equip_costs_ice0 = [], [], []
+    supp_costs_ice1, turbine_costs_ice1, equip_costs_ice1 = [], [], []
+
+    for wd in water_depths:
+        support_structure = check_supp(wd)
+
+        # Costs for ice_cover = 0
+        supp_cost, turbine_cost = calc_equip_cost(wd, support_structure, 0, turbine_capacity)
+        equip_cost = supp_cost + turbine_cost
+        supp_costs_ice0.append(supp_cost)
+        turbine_costs_ice0.append(turbine_cost)
+        equip_costs_ice0.append(equip_cost)
+
+        # Costs for ice_cover = 1
+        supp_cost, turbine_cost = calc_equip_cost(wd, support_structure, 1, turbine_capacity)
+        equip_cost = supp_cost + turbine_cost
+        supp_costs_ice1.append(supp_cost)
+        turbine_costs_ice1.append(turbine_cost)
+        equip_costs_ice1.append(equip_cost)
+
+    plt.figure(figsize=(6, 5))
+    
+    # Plot the solid lines for ice_cover = 0
+    line1, = plt.plot(water_depths, equip_costs_ice0, label='Total Equipment Cost', linestyle='-')
+    plt.plot(water_depths, supp_costs_ice0, label='Support Structure Cost', linestyle='-')
+    line3, = plt.plot(water_depths, turbine_costs_ice0, label='Turbine Equipment Cost', linestyle='-')
+
+    # Plot the dashed lines for ice_cover = 1 using colors from the solid lines
+    plt.plot(water_depths, equip_costs_ice1, label='Total Equipment Cost (IC)', color=line1.get_color(), linestyle='--')
+    plt.plot(water_depths, turbine_costs_ice1, label='Turbine Equipment Cost (IC)', color=line3.get_color(), linestyle='--')
+    
+    plt.xlabel('Water Depth (m)')
+    plt.ylabel('Cost (M\u20AC)')
+
+    # Set domain and range
+    plt.xlim(0, 120)
+    plt.ylim(0, 50)
+
+    x_major_locator = MultipleLocator(20)
+    x_minor_locator = MultipleLocator(5)
+    y_major_locator = MultipleLocator(10)
+    y_minor_locator = MultipleLocator(2.5)
+
+    plt.gca().xaxis.set_major_locator(x_major_locator)
+    plt.gca().xaxis.set_minor_locator(x_minor_locator)
+    plt.gca().yaxis.set_major_locator(y_major_locator)
+    plt.gca().yaxis.set_minor_locator(y_minor_locator)
+
+    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    plt.minorticks_on()
+    
+    # Add vertical lines for support structure domains
+    plt.axvline(x=25, color='grey', linewidth='1.5', linestyle='--')
+    plt.axvline(x=55, color='grey', linewidth='1.5', linestyle='--')
+    
+    # Add vertical text annotations
+    plt.text(2, 2, 'Monopile', rotation=90)
+    plt.text(27, 2, 'Jacket', rotation=90)
+    plt.text(57, 2, 'Floating', rotation=90)
+
+    plt.legend(bbox_to_anchor=(-0.15, 1.3), loc='upper left', ncol=2, frameon=False)
+    plt.grid(True)
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\ic_wt_equip_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
+    plt.show()
+
 if __name__ == "__main__":
 
     plot_costs_vs_water_depth()
@@ -315,4 +380,6 @@ if __name__ == "__main__":
 
     plot_inst_deco_cost_vs_port_distance()
 
-    plot_ic_costs_vs_water_depth()
+    plot_ice_costs_vs_water_depth()
+    
+    plot_ice_equip_costs_vs_water_depth()
