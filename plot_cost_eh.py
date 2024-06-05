@@ -338,8 +338,8 @@ def plot_ic_cost_vs_water_depth():
         
         ax.axvline(x=120, color='grey', linewidth='1.5', linestyle='--')
         
-    axs[0].text(4, 5, 'Jacket', rotation=90, verticalalignment='bottom')
-    axs[0].text(124, 5, 'Floating', rotation=90, verticalalignment='bottom')
+    axs[0].text(4, plt.ylim()[1] * 0.05, 'Jacket', rotation=90, verticalalignment='bottom')
+    axs[0].text(124, plt.ylim()[1] * 0.05, 'Floating', rotation=90, verticalalignment='bottom')
 
     axs[1].set_xlabel('Water Depth (m)')
     axs[0].set_ylabel('Cost (M€)')

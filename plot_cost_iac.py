@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
+
 from scripts.present_value import present_value
+from scripts.iac_cost import iac_cost_ceil
 
 # Define font parameters
 font = {'family': 'serif',
@@ -11,33 +13,10 @@ font = {'family': 'serif',
 # Set font
 plt.rc('font', **font)
 
-def iac_cost_lin(distance, capacity):
-    """
-    Calculate the total cost of an inter array cable section for a given distance and desired capacity.
-
-    Parameters:
-        distance (float): The distance of the cable (in meters).
-        capacity (float): Cable capacity (in MW).
-
-    Returns:
-        float: Total cost associated with the selected HVAC cables in millions of euros.
-    """
-    cable_length = 1.05 * distance
-    cable_capacity = 80 # MW
-    cable_equip_cost = 0.152 # MEU/km
-    cable_inst_cost = 0.114 # MEU/km
-    capacity_factor = 0.98
-    
-    parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
-    
-    equip_cost = parallel_cables * cable_length * cable_equip_cost
-    inst_cost = parallel_cables * cable_length * cable_inst_cost
-
-    return equip_cost, inst_cost
 
 def calc_total_cost_iac(distance, capacity):
     
-    equip_cost, inst_cost = iac_cost_lin(distance, capacity)
+    equip_cost, inst_cost = iac_cost_ceil(distance, capacity)
     
     ope_cost_yearly = 0.002 * equip_cost
     
@@ -49,8 +28,9 @@ def calc_total_cost_iac(distance, capacity):
     return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
 
 
-def plot_costs_vs_distance(capacity):
-    distances = np.linspace(0, 5, 100)  # Distances in km
+def plot_costs_vs_distance():
+    capacity = 120 # MW
+    distances = np.linspace(0, 1.5, 100)  # Distances in km
 
     total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
 
@@ -62,38 +42,54 @@ def plot_costs_vs_distance(capacity):
         total_ope_costs.append(total_ope_cost)
         deco_costs.append(deco_cost)
 
-    plt.figure(figsize=(6, 5))
-    plt.plot(distances, total_costs, label='Total Cost')
-    plt.plot(distances, equip_costs, label='Equipment Cost')
-    plt.plot(distances, inst_costs, label='Installation Cost')
-    plt.plot(distances, total_ope_costs, label='Total Operational Cost')
-    plt.plot(distances, deco_costs, label='Decommissioning Cost')
+    fig, axs = plt.subplots(2, 1, figsize=(6, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
-    plt.xlim(0, 5)
-    plt.ylim(0, max(total_costs + equip_costs + inst_costs + total_ope_costs + deco_costs) * 1.1)
+    # Plotting the larger range
+    axs[0].plot(distances, total_costs, label='Total PV')
+    axs[0].plot(distances, equip_costs, label='Equipment PV')
+    axs[0].plot(distances, inst_costs, label='Installation PV')
+    axs[0].plot(distances, total_ope_costs, label='Total Operational PV')
+    axs[0].plot(distances, deco_costs, label='Decommissioning PV')
 
-    x_major_locator = MultipleLocator(1)
-    x_minor_locator = MultipleLocator(0.25)
-    y_major_locator = MultipleLocator(0.5)
-    y_minor_locator = MultipleLocator(0.25)
+    axs[0].set_xlim(0, 1.5)
+    axs[0].set_ylim(0,1)
+    axs[0].yaxis.set_major_locator(MultipleLocator(0.25))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(0.0625))
 
-    plt.gca().xaxis.set_major_locator(x_major_locator)
-    plt.gca().xaxis.set_minor_locator(x_minor_locator)
-    plt.gca().yaxis.set_major_locator(y_major_locator)
-    plt.gca().yaxis.set_minor_locator(y_minor_locator)
+    # Plotting the smaller range
+    axs[1].plot(distances, total_costs, label='Total Cost')
+    axs[1].plot(distances, equip_costs, label='Equipment Cost')
+    axs[1].plot(distances, inst_costs, label='Installation Cost')
+    axs[1].plot(distances, total_ope_costs, label='Total Operational Cost')
+    axs[1].plot(distances, deco_costs, label='Decommissioning Cost')
 
-    plt.minorticks_on()
-    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
-    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    axs[1].set_xlim(0, 1.5)
+    axs[1].set_ylim(0, 0.05)
+    axs[1].yaxis.set_major_locator(MultipleLocator(0.05))
+    axs[1].yaxis.set_minor_locator(MultipleLocator(0.0125))
 
-    plt.xlabel('Distance (km)')
-    plt.ylabel('Cost (M\u20AC)')
-    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
+    for ax in axs:
+        ax.xaxis.set_major_locator(MultipleLocator(0.25))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.0625))
+        ax.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+        ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    
+    axs[0].text(axs[0].get_xlim()[1] * 0.02, axs[0].get_ylim()[1] * 0.99, f'$Capacity ={capacity}MW$', ha='left', va='top', fontsize=11)
+    
+    axs[1].set_xlabel('Distance (km)')
+    axs[0].set_ylabel('Cost (M€)')
+    axs[1].set_ylabel('Cost (M€)')
+
+    lines, labels = axs[0].get_legend_handles_labels()
+    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.04), loc='center', ncol=2, frameon=False)
+
+    plt.tight_layout()
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\iac_cost_vs_distance.png', dpi=400, bbox_inches='tight')
     plt.show()
 
-def plot_costs_vs_capacity(distance):
-    capacities = np.linspace(0, 500, 1000)  # Capacities in MW
+def plot_costs_vs_capacity():
+    distance = 1.680 # km
+    capacities = np.linspace(0, 150, 1000)  # Capacities in MW
 
     total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
 
@@ -105,39 +101,56 @@ def plot_costs_vs_capacity(distance):
         total_ope_costs.append(total_ope_cost)
         deco_costs.append(deco_cost)
 
-    plt.figure(figsize=(6, 5))
-    plt.plot(capacities, total_costs, label='Total PV')
-    plt.plot(capacities, equip_costs, label='Equipment PV')
-    plt.plot(capacities, inst_costs, label='Installation PV')
-    plt.plot(capacities, total_ope_costs, label='Total Operating PV')
-    plt.plot(capacities, deco_costs, label='Decommissioning PV')
+    fig, axs = plt.subplots(2, 1, figsize=(6, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
 
-    plt.xlim(0, 500)
-    plt.ylim(0, max(total_costs + equip_costs + inst_costs + total_ope_costs + deco_costs) * 1.1)
+    # Plotting the larger range
+    axs[0].plot(capacities, total_costs, label='Total PV')
+    axs[0].plot(capacities, equip_costs, label='Equipment PV')
+    axs[0].plot(capacities, inst_costs, label='Installation PV')
+    axs[0].plot(capacities, total_ope_costs, label='Total Operating PV')
+    axs[0].plot(capacities, deco_costs, label='Decommissioning PV')
 
-    x_major_locator = MultipleLocator(100)
-    x_minor_locator = MultipleLocator(25)
-    y_major_locator = MultipleLocator(0.5)
-    y_minor_locator = MultipleLocator(0.25)
+    axs[0].set_xlim(0, 150)
+    axs[0].set_ylim(0, 1.25)
+    axs[0].yaxis.set_major_locator(MultipleLocator(0.25))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(0.0625))
 
-    plt.gca().xaxis.set_major_locator(x_major_locator)
-    plt.gca().xaxis.set_minor_locator(x_minor_locator)
-    plt.gca().yaxis.set_major_locator(y_major_locator)
-    plt.gca().yaxis.set_minor_locator(y_minor_locator)
+    # Plotting the smaller range
+    axs[1].plot(capacities, total_costs, label='Total PV')
+    axs[1].plot(capacities, equip_costs, label='Equipment PV')
+    axs[1].plot(capacities, inst_costs, label='Installation PV')
+    axs[1].plot(capacities, total_ope_costs, label='Total Operating PV')
+    axs[1].plot(capacities, deco_costs, label='Decommissioning PV')
 
-    plt.minorticks_on()
-    plt.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
-    plt.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+    axs[1].set_xlim(0, 150)
+    axs[1].set_ylim(0, 0.075)
+    axs[1].yaxis.set_major_locator(MultipleLocator(0.075))
+    axs[1].yaxis.set_minor_locator(MultipleLocator(0.025))
 
-    plt.xlabel('Capacity (MW)')
-    plt.ylabel('Cost (M\u20AC)')
-    plt.legend(bbox_to_anchor=(0, 1.25), loc='upper left', ncol=2, frameon=False)
+    for ax in axs:
+        ax.xaxis.set_major_locator(MultipleLocator(25))
+        ax.xaxis.set_minor_locator(MultipleLocator(6.25))
+        ax.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+        ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+        ax.minorticks_on()
+
+    axs[0].text(axs[0].get_xlim()[1] * 0.02, axs[0].get_ylim()[1] * 0.99, f'$Distance ={distance}km$', ha='left', va='top', fontsize=11)
+    
+    axs[1].set_xlabel('Capacity (MW)')
+    axs[0].set_ylabel('Cost (M€)')
+    axs[1].set_ylabel('Cost (M€)')
+
+    lines, labels = axs[0].get_legend_handles_labels()
+    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.04), loc='center', ncol=2, frameon=False)
+
+    plt.tight_layout()
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\iac_cost_vs_capacity.png', dpi=400, bbox_inches='tight')
     plt.show()
 
+
 if __name__ == "__main__":
     # Call the function to plot the costs for a given capacity
-    plot_costs_vs_distance(150)
+    plot_costs_vs_distance()
 
     # Call the function to plot the costs for a given distance
-    plot_costs_vs_capacity(1)
+    plot_costs_vs_capacity()
