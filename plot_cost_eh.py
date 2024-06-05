@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
-from scripts.cost_functions import present_value
+from scripts.present_value import present_value
 
 # Define font parameters
 font = {'family': 'serif',
@@ -241,7 +241,7 @@ def plot_total_cost_vs_capacity(water_depth):
         ax.minorticks_on()
         
     supp_struct_str = 'Jacket' if water_depth < 120 else 'Floating'
-    axs[0].text(275, 5, supp_struct_str, rotation=90, verticalalignment='bottom')
+    axs[0].text(275, axs[0].get_ylim()[1] * 0.05, supp_struct_str, rotation=90, verticalalignment='bottom')
 
     axs[1].set_xlabel('Capacity (MW)')
     axs[0].set_ylabel('Cost (M€)')
@@ -372,10 +372,8 @@ if __name__ == "__main__":
 
     for wd in (wd_jacket, wd_floating):
         plot_total_cost_vs_capacity(wd)
-    
+        
     plot_equip_cost_vs_water_depth()
-
+    
     # Call the function to plot the costs
     plot_inst_deco_cost_vs_port_distance([wd_jacket, wd_floating])
-    
-

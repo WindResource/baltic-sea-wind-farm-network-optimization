@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
-from scripts.cost_functions import present_value
+from scripts.present_value import present_value
 
 # Define font parameters
 font = {'family': 'serif',
@@ -150,7 +150,7 @@ def plot_cost_vs_distance(capacity, ec):
         total_ope_costs.append(total_ope_cost)
         deco_costs.append(deco_cost)
 
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(6, 5))
     plt.plot(distances, total_costs, label='Total PV')
     plt.plot(distances, equip_costs, label='Equipment PV')
     plt.plot(distances, inst_costs, label='Installation PV')
@@ -207,7 +207,7 @@ def plot_cost_vs_capacity(distance, ec):
         total_ope_costs_lin.append(total_ope_cost_lin)
         deco_costs_lin.append(deco_cost_lin)
 
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(6, 5))
     # Plot the solid lines
     line1, = plt.plot(capacities, total_costs, label='Total PV')
     line2, = plt.plot(capacities, equip_costs, label='Equipment PV')
@@ -241,16 +241,16 @@ def plot_cost_vs_capacity(distance, ec):
 
     plt.xlabel('Capacity (MW)')
     plt.ylabel('Cost (M\u20AC)')
-    plt.legend(bbox_to_anchor=(0, 1.4), loc='upper left', ncol=2, frameon=False)
+    plt.legend(bbox_to_anchor=(-0.1, 1.4), loc='upper left', ncol=2, frameon=False)
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\ec{ec}_cost_vs_capacity.png', dpi=400, bbox_inches='tight')
     plt.show()
 
+if __name__ == "__main__":
+    # Call the function to plot the costs for a given capacity
+    plot_cost_vs_distance(1000, 1)  # Example capacity in MW
+    plot_cost_vs_distance(1000, 2)
 
-# Call the function to plot the costs for a given capacity
-plot_cost_vs_distance(1000, 1)  # Example capacity in MW
-plot_cost_vs_distance(1000, 2)
 
-
-# Call the function to plot the costs for a given distance
-plot_cost_vs_capacity(100, 1)  # Example distance in km
-plot_cost_vs_capacity(100, 2)
+    # Call the function to plot the costs for a given distance
+    plot_cost_vs_capacity(100, 1)  # Example distance in km
+    plot_cost_vs_capacity(100, 2)

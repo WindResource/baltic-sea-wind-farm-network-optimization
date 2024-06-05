@@ -2,7 +2,7 @@ from pyomo.environ import *
 import numpy as np
 import os
 from itertools import product
-from scripts.cost_functions import present_value
+from scripts.present_value import present_value
 
 def onss_cost_lin(capacity, threshold):
     """

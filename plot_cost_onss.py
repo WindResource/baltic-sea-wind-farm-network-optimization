@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
-from scripts.cost_functions import present_value
+from scripts.present_value import present_value
 
 # Define font parameters
 font = {'family': 'serif',
@@ -86,7 +86,7 @@ def plot_onss_costs():
         equip_costs_lin.append(equip_cost_lin)
         total_ope_costs_lin.append(total_ope_cost_lin)
 
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(6, 5))
 
     line1, = plt.plot(capacities, total_costs, label='Total PV')
     line2, = plt.plot(capacities, equip_costs, label='Equipment PV')
@@ -131,5 +131,6 @@ def plot_onss_costs():
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\onss_cost_vs_capacity.png', dpi=400, bbox_inches='tight')
     plt.show()
 
-# Example usage:
-plot_onss_costs()
+if __name__ == "__main__":
+    # Example usage:
+    plot_onss_costs()

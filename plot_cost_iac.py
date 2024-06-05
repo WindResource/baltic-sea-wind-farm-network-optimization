@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
-from scripts.cost_functions import present_value
+from scripts.present_value import present_value
 
 # Define font parameters
 font = {'family': 'serif',
@@ -62,7 +62,7 @@ def plot_costs_vs_distance(capacity):
         total_ope_costs.append(total_ope_cost)
         deco_costs.append(deco_cost)
 
-    plt.figure(figsize=(7.5, 5))
+    plt.figure(figsize=(6, 5))
     plt.plot(distances, total_costs, label='Total Cost')
     plt.plot(distances, equip_costs, label='Equipment Cost')
     plt.plot(distances, inst_costs, label='Installation Cost')
@@ -105,7 +105,7 @@ def plot_costs_vs_capacity(distance):
         total_ope_costs.append(total_ope_cost)
         deco_costs.append(deco_cost)
 
-    plt.figure(figsize=(7.5, 5))
+    plt.figure(figsize=(6, 5))
     plt.plot(capacities, total_costs, label='Total PV')
     plt.plot(capacities, equip_costs, label='Equipment PV')
     plt.plot(capacities, inst_costs, label='Installation PV')
@@ -135,9 +135,9 @@ def plot_costs_vs_capacity(distance):
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\iac_cost_vs_capacity.png', dpi=400, bbox_inches='tight')
     plt.show()
 
+if __name__ == "__main__":
+    # Call the function to plot the costs for a given capacity
+    plot_costs_vs_distance(150)
 
-# Call the function to plot the costs for a given capacity
-plot_costs_vs_distance(150)
-
-# Call the function to plot the costs for a given distance
-plot_costs_vs_capacity(1)
+    # Call the function to plot the costs for a given distance
+    plot_costs_vs_capacity(1)
