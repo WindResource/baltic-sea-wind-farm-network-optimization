@@ -403,7 +403,7 @@ def opt_model(workspace_folder):
         wf_lon[id] = float(data[2])
         wf_lat[id] = float(data[3])
         wf_cap[id] = float(data[4])
-        wf_cost[id] = float(data[6])
+        wf_cost[id] = float(data[5])
 
     # Offshore substation data
     eh_iso, eh_lon, eh_lat, eh_wdepth, eh_icover, eh_pdist = {}, {}, {}, {}, {}, {}

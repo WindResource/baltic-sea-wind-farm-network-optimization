@@ -48,9 +48,8 @@ def update_fields(output_folder):
         return
 
     # Deselect all currently selected features
-    arcpy.SelectLayerByAttribute_management(turbine_layer, "CLEAR_SELECTION")
-    arcpy.SelectLayerByAttribute_management(iac_layer, "CLEAR_SELECTION")
-    arcpy.SelectLayerByAttribute_management(oss_layer, "CLEAR_SELECTION")
+    for layer in (turbine_layer, iac_layer, oss_layer):
+        arcpy.SelectLayerByAttribute_management(layer, "CLEAR_SELECTION")
     
     arcpy.AddMessage(f"Processing layers: {turbine_layer.name}, {iac_layer.name}, {oss_layer.name}")
 
@@ -84,18 +83,15 @@ def update_fields(output_folder):
     # Process the OSS layer to get the full set of data
     process_oss_layer(oss_layer)
     # Process the other layers to accumulate TotalCost
-    process_other_layer(turbine_layer)
-    process_other_layer(iac_layer)
+    for layer in (turbine_layer, iac_layer):
+        process_other_layer(layer)
 
     # Prepare the structured array
     dtype = [('WF_ID', 'i8'), ('ISO', 'U50'), ('Longitude', 'f8'), ('Latitude', 'f8'), ('TotalCap', 'f8'), ('TotalCost', 'f8')]
-    structured_array = np.zeros(len(cost_dict), dtype=dtype)
+    filtered_data = [(wf_id, data[1], round(data[2], 6), round(data[3], 6), round(data[4]), round(cost_dict[wf_id]))
+                    for wf_id, data in data_dict.items() if round(data[4]) > 0]
 
-    # Populate the structured array
-    for idx, wf_id in enumerate(cost_dict.keys()):
-        iso, lon, lat, total_cap = data_dict[wf_id][1:5]
-        total_cost = cost_dict[wf_id]
-        structured_array[idx] = (wf_id, iso, round(lon, 6), round(lat, 6), round(total_cap), round(total_cost))
+    structured_array = np.array(filtered_data, dtype=dtype)
 
     # Save the structured array to a .npy file
     npy_filename = os.path.join(output_folder, 'wf_data.npy')
