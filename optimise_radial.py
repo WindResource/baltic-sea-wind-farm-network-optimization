@@ -169,10 +169,10 @@ def opt_model(workspace_folder):
     for data in wf_dataset:
         id = int(data[0])
         wf_iso[id] = iso_to_int_mp[data[1]]
-        wf_lon[id] = data[2]
-        wf_lat[id] = data[3]
-        wf_cap[id] = data[5]
-        wf_cost[id] = data[6] * 1e-3 #Meu
+        wf_lon[id] = float(data[2])
+        wf_lat[id] = float(data[3])
+        wf_cap[id] = float(data[5])
+        wf_cost[id] = float(data[5])
     
     # Onshore substation data
     onss_iso, onss_lon, onss_lat, onss_thold = {}, {}, {}, {}

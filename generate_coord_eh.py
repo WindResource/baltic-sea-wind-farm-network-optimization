@@ -34,10 +34,10 @@ def generate_offshore_substation_coordinates(output_folder: str) -> None:
     map = aprx.activeMap
 
     # Get the first layer in the map that starts with 'OSSA'
-    input_layer = next((layer for layer in map.listLayers() if layer.name.startswith('OSSA')), None)
+    input_layer = next((layer for layer in map.listLayers() if layer.name.startswith('EHA')), None)
     
     if input_layer is None:
-        arcpy.AddError("No layer starting with 'OSSA' found in the current map.")
+        arcpy.AddError("No layer starting with 'EHA' found in the current map.")
         return
 
     arcpy.AddMessage(f"Processing layer: {input_layer.name}")
@@ -56,13 +56,13 @@ def generate_offshore_substation_coordinates(output_folder: str) -> None:
     arcpy.management.AddFields(output_feature_class, [
         ["Territory", "TEXT"],
         ["ISO", "TEXT"],
-        ["OSS_ID", "TEXT"],
+        ["EH_ID", "DOUBLE"],
         ["Longitude", "DOUBLE"],
         ["Latitude", "DOUBLE"]
     ])
 
     # Prepare to insert new substation point features
-    insert_cursor_fields = ["SHAPE@", "Territory", "ISO", "OSS_ID", "Longitude", "Latitude"]
+    insert_cursor_fields = ["SHAPE@", "Territory", "ISO", "EH_ID", "Longitude", "Latitude"]
     insert_cursor =  arcpy.da.InsertCursor(output_feature_class, insert_cursor_fields)
     eh_id = 0
     

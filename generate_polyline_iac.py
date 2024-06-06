@@ -45,11 +45,11 @@ def create_and_add_inter_array_cables():
         return
 
     # Find the wind farm coordinate layer in the map
-    substation_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WFC')), None)
+    substation_layer = next((layer for layer in map.listLayers() if layer.name.startswith('OSSC')), None)
 
     # Check if the substation layer exists
     if not substation_layer:
-        arcpy.AddError("No layer starting with 'WFC' found in the current map.")
+        arcpy.AddError("No layer starting with 'OSSC' found in the current map.")
         return
 
     # Check if the Capacity field exists in the substation layer, add it if not
@@ -63,7 +63,7 @@ def create_and_add_inter_array_cables():
 
     # Add necessary fields for cable distance, connected capacity, and WF_ID
     arcpy.AddFields_management(output_fc, [
-        ["WF_ID", "TEXT", "", 10],
+        ["WF_ID", "DOUBLE"],
         ["Distance", "DOUBLE"],
         ["Capacity", "DOUBLE"]
     ])
@@ -79,8 +79,8 @@ def create_and_add_inter_array_cables():
 
     for wf_id in wf_ids:
         # Get turbine and substation coordinates for the current WF_ID
-        turbine_points = [row[0] for row in arcpy.da.SearchCursor(turbine_layer, ["SHAPE@XY"], f"WF_ID = '{wf_id}'")]
-        substation_points = [row[0] for row in arcpy.da.SearchCursor(substation_layer, ["SHAPE@XY"], f"WF_ID = '{wf_id}'")]
+        turbine_points = [row[0] for row in arcpy.da.SearchCursor(turbine_layer, ["SHAPE@XY"], f"WF_ID = {wf_id}")]
+        substation_points = [row[0] for row in arcpy.da.SearchCursor(substation_layer, ["SHAPE@XY"], f"WF_ID = {wf_id}")]
 
         if not turbine_points:
             arcpy.AddWarning(f"No turbines found for WF_ID '{wf_id}'. Skipping...")

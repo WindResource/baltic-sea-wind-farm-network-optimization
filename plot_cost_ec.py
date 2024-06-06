@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
-from scripts.ec_cost import ec1_cost_ceil, ec1_cost_lin, ec2_cost_ceil, ec2_cost_lin
+from scripts.ec_cost import EC_cost
 
+ec_cost = EC_cost()
 
 # Define font parameters
 font = {'family': 'serif',
@@ -20,9 +21,9 @@ def plot_cost_vs_distance(ec):
 
     for distance in distances:
         if ec == 1:
-            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec1_cost_ceil(distance, capacity)
+            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec_cost.ec1_cost_ceil(distance, capacity)
         else:
-            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec2_cost_ceil(distance, capacity)
+            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec_cost.ec2_cost_ceil(distance, capacity)
 
         total_costs.append(total_cost)
         equip_costs.append(equip_cost)
@@ -85,11 +86,11 @@ def plot_cost_vs_capacity(ec):
 
     for capacity in capacities:
         if ec == 1:
-            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec1_cost_ceil(distance, capacity)
-            total_cost_lin, equip_cost_lin, inst_cost_lin, total_ope_cost_lin, deco_cost_lin = ec1_cost_lin(distance, capacity)
+            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec_cost.ec1_cost_ceil(distance, capacity)
+            total_cost_lin, equip_cost_lin, inst_cost_lin, total_ope_cost_lin, deco_cost_lin = ec_cost.ec1_cost_lin(distance, capacity)
         else:
-            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec2_cost_ceil(distance, capacity)
-            total_cost_lin, equip_cost_lin, inst_cost_lin, total_ope_cost_lin, deco_cost_lin = ec2_cost_lin(distance, capacity)
+            total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = ec_cost.ec2_cost_ceil(distance, capacity)
+            total_cost_lin, equip_cost_lin, inst_cost_lin, total_ope_cost_lin, deco_cost_lin = ec_cost.ec2_cost_lin(distance, capacity)
         
         total_costs.append(total_cost)
         equip_costs.append(equip_cost)

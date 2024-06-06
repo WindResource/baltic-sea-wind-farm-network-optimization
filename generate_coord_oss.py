@@ -50,7 +50,7 @@ def generate_windfarm_coordinates(output_folder: str) -> None:
     arcpy.AddFields_management(oss_layer, [
         ["Country", "TEXT", "", 10],
         ["ISO", "TEXT", "", "", 50, "Country"],
-        ["WF_ID", "TEXT", "", "", 50, "Wind Farm ID"],
+        ["WF_ID", "DOUBLE"],
         ["Longitude", "DOUBLE"],
         ["Latitude", "DOUBLE"],
     ])

@@ -41,7 +41,9 @@ from pyomo.environ import *
 import numpy as np
 import os
 from itertools import product
-from scripts.present_value import present_value
+from scripts.present_value import PV
+
+pv = PV()
 
 def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     """
@@ -163,7 +165,7 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     ope_cost_yearly = 0.03 * conv_cost
     
     # Calculate present value of cost    
-    eh_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    eh_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
     
     # Offshore substation cost in million Euros
     eh_cost *= 1e-6
@@ -189,7 +191,7 @@ def onss_cost_lin(capacity, threshold):
     
     return cost_function
 
-def ec1_cost_lin(distance, capacity, polarity="AC"):
+def ec1_cost_lin(distance, capacity):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -220,11 +222,11 @@ def ec1_cost_lin(distance, capacity, polarity="AC"):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
-def ec2_cost_lin(distance, capacity, polarity="AC"):
+def ec2_cost_lin(distance, capacity):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -255,7 +257,7 @@ def ec2_cost_lin(distance, capacity, polarity="AC"):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
@@ -398,10 +400,10 @@ def opt_model(workspace_folder):
     for data in wf_dataset:
         id = int(data[0])
         wf_iso[id] = iso_to_int_mp[data[1]]
-        wf_lon[id] = data[2]
-        wf_lat[id] = data[3]
-        wf_cap[id] = data[5]
-        wf_cost[id] = data[6] * 1e-3 #Meu
+        wf_lon[id] = float(data[2])
+        wf_lat[id] = float(data[3])
+        wf_cap[id] = float(data[4])
+        wf_cost[id] = float(data[6])
 
     # Offshore substation data
     eh_iso, eh_lon, eh_lat, eh_wdepth, eh_icover, eh_pdist = {}, {}, {}, {}, {}, {}
@@ -409,11 +411,11 @@ def opt_model(workspace_folder):
     for data in eh_dataset:
         id = int(data[0])
         eh_iso[id] = iso_to_int_mp[data[1]]
-        eh_lon[id] = data[2]
-        eh_lat[id] = data[3]
-        eh_wdepth[id] = data[4]
-        eh_icover[id] = data[5]
-        eh_pdist[id] = data[6]
+        eh_lon[id] = float(data[2])
+        eh_lat[id] = float(data[3])
+        eh_wdepth[id] = int(data[4])
+        eh_icover[id] = int(data[5])
+        eh_pdist[id] = float(data[6])
     
     # Onshore substation data
     onss_iso, onss_lon, onss_lat, onss_thold = {}, {}, {}, {}
@@ -421,9 +423,9 @@ def opt_model(workspace_folder):
     for data in onss_dataset:
         id = int(data[0])
         onss_iso[id] = iso_to_int_mp[data[1]]
-        onss_lon[id] = data[2]
-        onss_lat[id] = data[3]
-        onss_thold[id] = data[4]
+        onss_lon[id] = float(data[2])
+        onss_lat[id] = float(data[3])
+        onss_thold[id] = float(data[4])
 
     """
     Define model parameters
@@ -515,7 +517,7 @@ def opt_model(workspace_folder):
     model.ec1_dist_exp = Expression(model.viable_ec1_ids, rule=ec1_distance_rule)
 
     def ec1_cost_rule(model, wf, eh):
-        return ec1_cost_lin(model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh], polarity="AC")
+        return ec1_cost_lin(model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh])
     model.ec1_cost_exp = Expression(model.viable_ec1_ids, rule=ec1_cost_rule)
 
     """
@@ -523,7 +525,7 @@ def opt_model(workspace_folder):
     """
 
     def eh_cost_rule(model, eh):
-        return eh_cost_lin(model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh], polarity="AC")
+        return eh_cost_lin(model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh])
     model.eh_cost_exp = Expression(model.viable_eh_ids, rule=eh_cost_rule)
 
     """
@@ -534,7 +536,7 @@ def opt_model(workspace_folder):
     model.ec2_dist_exp = Expression(model.viable_ec2_ids, rule=ec2_distance_rule)
 
     def ec2_cost_rule(model, eh, onss):
-        return ec2_cost_lin(model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss], polarity="AC")
+        return ec2_cost_lin(model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss])
     model.ec2_cost_exp = Expression(model.viable_ec2_ids, rule=ec2_cost_rule)
 
     """

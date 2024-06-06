@@ -63,7 +63,7 @@ def gen_dataset(output_folder: str):
     array['IceCover'] = np.where(array['IceCover'] == "Yes", 1, 0)
 
     # Define the dtype for the structured array
-    dtype = [('EH_ID', 'U10'), 
+    dtype = [('EH_ID', 'i8'), 
             ('ISO', 'U3'), 
             ('Longitude', 'f8'), 
             ('Latitude', 'f8'), 
