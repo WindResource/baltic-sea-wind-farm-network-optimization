@@ -102,22 +102,26 @@ def create_point_feature_layer(npy_file_path, workspace_folder, layer_name):
 
 if __name__ == "__main__":
     workspace_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets"
-    hubspoke_folder = os.path.join(workspace_folder, 'results', 'hubspoke')
-    feature_layer_folder = os.path.join(hubspoke_folder, 'features')
+    combined_folder = os.path.join(workspace_folder, 'results', 'combined')
+    feature_layer_folder = os.path.join(combined_folder, 'features')
     
-    npy_file_path_ec1 = os.path.join(hubspoke_folder, 'ec1_ids_hs.npy')
-    npy_file_path_ec2 = os.path.join(hubspoke_folder, 'ec2_ids_hs.npy')
-    npy_file_path_wf = os.path.join(hubspoke_folder, 'wf_ids_hs.npy')
-    npy_file_path_eh = os.path.join(hubspoke_folder, 'eh_ids_hs.npy')
-    npy_file_path_onss = os.path.join(hubspoke_folder, 'onss_ids_hs.npy')
+    npy_file_path_ec1 = os.path.join(combined_folder, 'ec1_ids_c.npy')
+    npy_file_path_ec2 = os.path.join(combined_folder, 'ec2_ids_c.npy')
+    npy_file_path_ec3 = os.path.join(combined_folder, 'ec3_ids_c.npy')
+    npy_file_path_wf = os.path.join(combined_folder, 'wf_ids_c.npy')
+    npy_file_path_eh = os.path.join(combined_folder, 'eh_ids_c.npy')
+    npy_file_path_onss = os.path.join(combined_folder, 'onss_ids_c.npy')
 
     # Generate point feature layers for wind farms, offshore substations, and onshore substations
-    create_point_feature_layer(npy_file_path_wf, feature_layer_folder, 'HS_WindFarms')
-    create_point_feature_layer(npy_file_path_eh, feature_layer_folder, 'HS_EnergyHubs')
-    create_point_feature_layer(npy_file_path_onss, feature_layer_folder, 'HS_OnshoreSubstations')
+    create_point_feature_layer(npy_file_path_wf, feature_layer_folder, 'C_WindFarms')
+    create_point_feature_layer(npy_file_path_eh, feature_layer_folder, 'C_EnergyHubs')
+    create_point_feature_layer(npy_file_path_onss, feature_layer_folder, 'C_OnshoreSubstations')
     
     # Generate feature layer for export cables 1
-    create_export_cable_feature_layer(npy_file_path_ec1, feature_layer_folder, 'HS_ExportCables1')
+    create_export_cable_feature_layer(npy_file_path_ec1, feature_layer_folder, 'C_ExportCables1')
 
     # Generate feature layer for export cables 2
-    create_export_cable_feature_layer(npy_file_path_ec2, feature_layer_folder, 'HS_ExportCables2')
+    create_export_cable_feature_layer(npy_file_path_ec2, feature_layer_folder, 'C_ExportCables2')
+
+    # Generate feature layer for export cables 3
+    create_export_cable_feature_layer(npy_file_path_ec3, feature_layer_folder, 'C_ExportCables3')
