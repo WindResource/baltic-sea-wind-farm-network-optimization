@@ -311,7 +311,22 @@ def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso):
                 connections.append((int(eh_id), int(onss_id)))
     return connections
 
-def get_viable_entities(viable_ec1, viable_ec2):
+def find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat, wf_iso, onss_iso):
+    """
+    Find all pairs of wind farms and onshore substations within 450km,
+    ensuring that they belong to the same country based on their ISO codes.
+    
+    Parameters are dictionaries indexed by IDs with longitude, latitude, and ISO codes.
+    """
+    connections = []
+    for wf_id, onss_id in product(wf_lon.keys(), onss_lon.keys()):
+        distance = haversine(wf_lon[wf_id], wf_lat[wf_id], onss_lon[onss_id], onss_lat[onss_id])
+        if distance <= 450:  # Check if the distance is within 450 km
+            if wf_iso[wf_id] == onss_iso[onss_id]:
+                connections.append((int(wf_id), int(onss_id)))
+    return connections
+
+def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
     """
     Identifies unique wind farm, energy hub, and onshore substation IDs
     based on their involvement in viable export and export cable connections.
@@ -321,12 +336,14 @@ def get_viable_entities(viable_ec1, viable_ec2):
         between a wind farm and an energy hub (wf_id, eh_id).
     - viable_ec2 (list of tuples): List of tuples, each representing a viable connection
         between an energy hub and an onshore substation (eh_id, onss_id).
+    - viable_ec3 (list of tuples): List of tuples, each representing a viable direct connection
+        between a wind farm and an onshore substation (wf_id, onss_id).
 
     Returns:
-    - viable_wf (set): Set of wind farm IDs with at least one viable connection to an energy hub.
+    - viable_wf (set): Set of wind farm IDs with at least one viable connection to an energy hub or onshore substation.
     - viable_eh (set): Set of energy hub IDs involved in at least one viable connection
         either to a wind farm or an onshore substation.
-    - viable_onss (set): Set of onshore substation IDs with at least one viable connection to an energy hub.
+    - viable_onss (set): Set of onshore substation IDs with at least one viable connection to an energy hub or wind farm.
     """
     viable_wf = set()
     viable_eh = set()
@@ -340,6 +357,11 @@ def get_viable_entities(viable_ec1, viable_ec2):
     # Extract unique offshore and onshore substation IDs from export cable connections
     for eh_id, onss_id in viable_ec2:
         viable_eh.add(int(eh_id))
+        viable_onss.add(int(onss_id))
+
+    # Extract unique wind farm and onshore substation IDs from direct connections
+    for wf_id, onss_id in viable_ec3:
+        viable_wf.add(int(wf_id))
         viable_onss.add(int(onss_id))
 
     return viable_wf, viable_eh, viable_onss
@@ -466,12 +488,14 @@ def opt_model(workspace_folder):
     # Calculate viable connections
     viable_ec1 = find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso)
     viable_ec2 = find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso)
+    viable_ec3 = find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat, wf_iso, onss_iso)
 
     model.viable_ec1_ids = Set(initialize= viable_ec1, dimen=2)
     model.viable_ec2_ids = Set(initialize= viable_ec2, dimen=2)
+    model.viable_ec3_ids = Set(initialize= viable_ec3, dimen=2)
     
     # Calculate viable entities based on the viable connections
-    model.viable_wf_ids, model.viable_eh_ids, model.viable_onss_ids = get_viable_entities(viable_ec1, viable_ec2)
+    model.viable_wf_ids, model.viable_eh_ids, model.viable_onss_ids = get_viable_entities(viable_ec1, viable_ec2, viable_ec3)
     
     # Initialize variables
     model.wf_bool_var = Var(model.viable_wf_ids, within=Binary)
@@ -480,6 +504,7 @@ def opt_model(workspace_folder):
     model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
     model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
+    model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
     
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     
@@ -489,7 +514,8 @@ def opt_model(workspace_folder):
         "select_eh": model.eh_cap_var,
         "select_onss": model.onss_cap_var,
         "select_ec1": model.ec1_cap_var,
-        "select_ec2": model.ec2_cap_var
+        "select_ec2": model.ec2_cap_var,
+        "select_ec3": model.ec3_cap_var
     }
 
     # Iterate over the dictionary and print variable ids and their lengths
@@ -540,6 +566,17 @@ def opt_model(workspace_folder):
     model.ec2_cost_exp = Expression(model.viable_ec2_ids, rule=ec2_cost_rule)
 
     """
+    Define distance and capacity expressions for direct connections (WF to ONSS)
+    """
+    def ec3_distance_rule(model, wf, onss):
+        return haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss])
+    model.ec3_dist_exp = Expression(model.viable_ec3_ids, rule=ec3_distance_rule)
+
+    def ec3_cost_rule(model, wf, onss):
+        return ec2_cost_lin(model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
+    model.ec3_cost_exp = Expression(model.viable_ec3_ids, rule=ec3_cost_rule)
+
+    """
     Define expressions for Onshore Substation (ONSS) capacity
     """
 
@@ -562,6 +599,7 @@ def opt_model(workspace_folder):
         - The operational cost of selected energy hubs.
         - The cost associated with export cables connecting wind farms to energy hubs.
         - The cost associated with export cables connecting energy hubs to onshore substations.
+        - The cost associated with direct cables connecting wind farms to onshore substations.
 
         Parameters:
         - model: The Pyomo model object containing all necessary decision variables and parameters.
@@ -574,8 +612,9 @@ def opt_model(workspace_folder):
         onss_total_cost = sum(model.onss_cost_var[onss] for onss in model.viable_onss_ids)
         ec1_total_cost = sum(model.ec1_cost_exp[wf, eh] for (wf, eh) in model.viable_ec1_ids)
         ec2_total_cost = sum(model.ec2_cost_exp[eh, onss] for (eh, onss) in model.viable_ec2_ids)
+        ec3_total_cost = sum(model.ec3_cost_exp[wf, onss] for (wf, onss) in model.viable_ec3_ids)
         
-        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + onss_total_cost
+        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + ec3_total_cost + onss_total_cost
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
@@ -596,19 +635,27 @@ def opt_model(workspace_folder):
     
     print("Defining capacity constraints...")
     
-    def ec1_cap_connect_rule(model, wf):
+    def wf_connection_rule(model, wf):
         """
-        Ensure each selected wind farm is connected to exactly one energy hub.
-        The connection capacity must match the selected wind farm's capacity.
+        Ensure each selected wind farm connects to at least one energy hub or at least one onshore substation.
         """
         connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids)
-        return connect_to_eh >= model.wf_bool_var[wf] * model.wf_cap[wf]
+        connect_to_onss = sum(model.ec3_cap_var[wf, onss] for onss in model.viable_onss_ids if (wf, onss) in model.viable_ec3_ids)
+        return (connect_to_eh + connect_to_onss) >= model.wf_bool_var[wf]
+    model.wf_connection_con = Constraint(model.viable_wf_ids, rule=wf_connection_rule)
+
+    def ec1_cap_connect_rule(model, wf):
+        """
+        Ensure each selected wind farm is connected to either one energy hub or directly to one onshore substation.
+        """
+        connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids)
+        connect_to_onss = sum(model.ec3_cap_var[wf, onss] for onss in model.viable_onss_ids if (wf, onss) in model.viable_ec3_ids)
+        return connect_to_eh + connect_to_onss >= model.wf_bool_var[wf] * model.wf_cap[wf]
     model.ec1_cap_connect_con = Constraint(model.viable_wf_ids, rule=ec1_cap_connect_rule)
 
     def eh_cap_connect_rule(model, eh):
         """
         Ensure the capacity of each energy hub matches or exceeds the total capacity of the connected wind farms.
-        This ensures that the substation can handle all incoming power from the connected farms.
         """
         connect_from_wf = sum(model.ec1_cap_var[wf, eh] for wf in model.viable_wf_ids if (wf, eh) in model.viable_ec1_ids)
         return model.eh_cap_var[eh] >= connect_from_wf
@@ -617,19 +664,18 @@ def opt_model(workspace_folder):
     def ec2_cap_connect_rule(model, eh):
         """
         Ensure the connection capacity from each energy hub to onshore substations matches the substation's capacity.
-        This links the energy hub's output directly to the export cables.
         """
-        connect_to_onss = sum(model.ec2_cap_var[eh, onss] for onss in model.viable_eh_ids if (eh, onss) in model.viable_ec2_ids)
+        connect_to_onss = sum(model.ec2_cap_var[eh, onss] for onss in model.viable_onss_ids if (eh, onss) in model.viable_ec2_ids)
         return connect_to_onss >= model.eh_cap_var[eh]
     model.ec2_cap_connect_con = Constraint(model.viable_eh_ids, rule=ec2_cap_connect_rule)
 
     def onss_cap_connect_rule(model, onss):
         """
-        Ensure the capacity of each onshore substation is at least the total incoming capacity from the connected energy hubs.
-        This ensures that the onshore substation can handle all incoming power.
+        Ensure the capacity of each onshore substation is at least the total incoming capacity from connected energy hubs or wind farms.
         """
         connect_from_eh = sum(model.ec2_cap_var[eh, onss] for eh in model.viable_eh_ids if (eh, onss) in model.viable_ec2_ids)
-        return model.onss_cap_var[onss] >= connect_from_eh
+        connect_from_wf = sum(model.ec3_cap_var[wf, onss] for wf in model.viable_wf_ids if (wf, onss) in model.viable_ec3_ids)
+        return model.onss_cap_var[onss] >= connect_from_eh + connect_from_wf
     model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
     
     print("Defining the cost variables...")
@@ -656,19 +702,19 @@ def opt_model(workspace_folder):
         'parallel/threads': -1,          # Use all CPU cores for parallel processing
         'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
         'branching/varsel': 'pscost',    # Pseudocost variable selection in branching
-        'separating/aggressive': 1,   # Enable aggressive separation
-        'conflict/enable': 1,         # Activate conflict analysis
+        'separating/aggressive': 1,      # Enable aggressive separation
+        'conflict/enable': 1,            # Activate conflict analysis
         'heuristics/rens/freq': 10,      # Frequency of RENS heuristic
         'heuristics/diving/freq': 10,    # Frequency of diving heuristic
         'propagating/maxroundsroot': 15, # Propagation rounds at root node
         'limits/nodes': 1e5,             # Maximum nodes in search tree
-        'limits/totalnodes': 1e5,         # Total node limit across threads
-        'emphasis/optimality': 1,   # Emphasize optimality
-        'emphasis/memory': 1,           # Emphasize memory
-        'separating/maxrounds': 10,  # Limit cut rounds at non-root nodes
+        'limits/totalnodes': 1e5,        # Total node limit across threads
+        'emphasis/optimality': 1,        # Emphasize optimality
+        'emphasis/memory': 1,            # Emphasize memory
+        'separating/maxrounds': 10,      # Limit cut rounds at non-root nodes
         'heuristics/feaspump/freq': 10,  # Frequency of feasibility pump heuristic
-        'tol': 0.01,  # Set the relative optimality gap tolerance to 1%
-        'display/verblevel': 4  # Set verbosity level to display information about the solution
+        'tol': 0.01,                     # Set the relative optimality gap tolerance to 1%
+        'display/verblevel': 4           # Set verbosity level to display information about the solution
     }
 
     def save_results(model, workspace_folder):
@@ -757,16 +803,32 @@ def opt_model(workspace_folder):
             'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
+        # Create ec3_ids with export cable ID, single row for each cable
+        ec3_data = []
+        ec_id_counter = 1
+        for wf, onss in model.viable_ec3_ids:
+            if model.ec3_cap_var[wf, onss].value > 0:
+                ec3_cap = var_f(model.ec3_cap_var[wf, onss])
+                ec3_cost = exp_f(model.ec3_cost_exp[wf, onss])
+                dist3 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
+                ec3_data.append((ec_id_counter, wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost))
+                ec_id_counter += 1
+
+        selected_components['ec3_ids'] = {
+            'data': np.array(ec3_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
+        }
+
         # Ensure the results directory exists
-        results_dir = os.path.join(workspace_folder, "results", "hubspoke")
+        results_dir = os.path.join(workspace_folder, "results", "combined")
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
 
         total_capacity_cost = []
 
         for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'{key}_hs.npy')
-            txt_file_path = os.path.join(results_dir, f'{key}_hs.txt')
+            npy_file_path = os.path.join(results_dir, f'{key}_c.npy')
+            txt_file_path = os.path.join(results_dir, f'{key}_c.txt')
 
             # Save as .npy file
             np.save(npy_file_path, info['data'])
@@ -793,8 +855,8 @@ def opt_model(workspace_folder):
         total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
 
         # Save the total capacities and cost in .npy and .txt files
-        total_npy_file_path = os.path.join(results_dir, 'total_hs.npy')
-        total_txt_file_path = os.path.join(results_dir, 'total_hs.txt')
+        total_npy_file_path = os.path.join(results_dir, 'total_c.npy')
+        total_txt_file_path = os.path.join(results_dir, 'total_c.txt')
 
         # Save as .npy file
         np.save(total_npy_file_path, total_capacity_cost_array)
@@ -815,7 +877,7 @@ def opt_model(workspace_folder):
     solver.options['executable'] = scip_path
 
     # Define the path for the solver log
-    solver_log_path = os.path.join(workspace_folder, "results", "hubspoke", "solverlog_hs.txt")
+    solver_log_path = os.path.join(workspace_folder, "results", "combined", "solverlog_c.txt")
 
     # Solve the optimisation model
     results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
