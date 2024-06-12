@@ -241,6 +241,44 @@ def ec2_cost_lin(distance, capacity):
                 associated with the selected HVAC cables.
     """
 
+    equip_discount = 0.90
+    inst_discount = 0.80
+    
+    cable_length = 1.2 * distance
+    cable_capacity = 348 # MW
+    cable_equip_cost = 0.860 # Million EU/km
+    cable_inst_cost = 0.540 # Million EU/km
+    capacity_factor = 0.90
+    
+    parallel_cables = capacity / (cable_capacity * capacity_factor)
+    
+    equip_cost = parallel_cables * cable_length * cable_equip_cost * equip_discount
+    inst_cost = parallel_cables * cable_length * cable_inst_cost * inst_discount
+    
+    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
+    
+    deco_cost = 0.5 * inst_cost
+
+    # Calculate present value
+    total_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+
+    return total_cost
+
+def ec3_cost_lin(distance, capacity):
+    """
+    Calculate the cost associated with selecting export cables for a given length, desired capacity,
+    and desired voltage.
+
+    Parameters:
+        length (float): The length of the cable (in meters).
+        desired_capacity (float): The desired capacity of the cable (in watts).
+        desired_voltage (int): The desired voltage of the cable (in kilovolts).
+
+    Returns:
+        tuple: A tuple containing the equipment cost, installation cost, and total cost
+                associated with the selected HVAC cables.
+    """
+
     cable_length = 1.2 * distance
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 # Million EU/km
@@ -573,7 +611,7 @@ def opt_model(workspace_folder):
     model.ec3_dist_exp = Expression(model.viable_ec3_ids, rule=ec3_distance_rule)
 
     def ec3_cost_rule(model, wf, onss):
-        return ec2_cost_lin(model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
+        return ec3_cost_lin(model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
     model.ec3_cost_exp = Expression(model.viable_ec3_ids, rule=ec3_cost_rule)
 
     """
