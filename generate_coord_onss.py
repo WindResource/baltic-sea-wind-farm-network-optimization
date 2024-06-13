@@ -165,8 +165,8 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
 
 if __name__ == "__main__":
     # Get user parameters
-    highvoltage_vertices = arcpy.GetParameterAsText(0)
-    highvoltage_vertices_folder = arcpy.GetParameterAsText(1)
+    highvoltage_vertices = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Data\\gridkit_europe\\gridkit_europe-highvoltage-vertices1.xlsx"
+    highvoltage_vertices_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\onshore_station_folder"
 
     # Call the function to convert Excel to shapefile
     excel_to_shapefile(highvoltage_vertices, highvoltage_vertices_folder)

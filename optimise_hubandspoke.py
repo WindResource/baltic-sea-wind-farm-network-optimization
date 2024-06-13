@@ -521,7 +521,7 @@ def opt_model(workspace_folder):
     model.ec1_cost_exp = Expression(model.viable_ec1_ids, rule=ec1_cost_rule)
 
     """
-    Define expressions for Offshore Substation (OSS) capacity
+    Define expressions for Energy Hub (EH) capacity
     """
 
     def eh_cost_rule(model, eh):
@@ -616,6 +616,13 @@ def opt_model(workspace_folder):
         return model.eh_cap_var[eh] >= connect_from_wf
     model.eh_cap_connect_con = Constraint(model.viable_eh_ids, rule=eh_cap_connect_rule)
 
+    def max_eh_cap_rule(model, eh):
+        """
+        Ensure the capacity of each energy hub does not exceed 2500 MW.
+        """
+        return model.eh_cap_var[eh] <= 2500
+    model.max_eh_cap_con = Constraint(model.viable_eh_ids, rule=max_eh_cap_rule)
+
     def ec2_cap_connect_rule(model, eh):
         """
         Ensure the connection capacity from each energy hub to onshore substations matches the substation's capacity.
@@ -642,6 +649,13 @@ def opt_model(workspace_folder):
         """
         return model.onss_cost_var[onss] >= model.onss_cost_exp[onss]
     model.onss_cost_con = Constraint(model.viable_onss_ids, rule=onss_cost_rule)
+    
+    def max_onss_cap_rule(model, onss):
+        """
+        Ensure the capacity of each onshore substation does not exceed twice the threshold value.
+        """
+        return model.onss_cap_var[onss] <= 2.5 * model.onss_thold[onss]
+    model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
     
     """
     Solve the model

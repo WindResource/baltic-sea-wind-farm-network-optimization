@@ -69,9 +69,9 @@ def gen_dataset(output_folder: str):
         data_dict = {
             'OnSS_ID': row['OnSS_ID'],
             'ISO': row['ISO'],
-            'Longitude': np.round(row['Longitude'], 6),
-            'Latitude': np.round(row['Latitude'], 6),
-            'TotalCapacity': np.int(np.round(700))
+            'Longitude': round(row['Longitude'], 6),
+            'Latitude': round(row['Latitude'], 6),
+            'TotalCapacity': round(750)
         }
         data_list.append(data_dict)
 
