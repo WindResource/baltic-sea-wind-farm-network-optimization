@@ -84,5 +84,5 @@ def gen_dataset(output_folder: str):
 
 if __name__ == "__main__":
     # Prompt the user to input the folder path where they want to save the output files
-    output_folder = arcpy.GetParameterAsText(0)
+    output_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets"
     gen_dataset(output_folder)

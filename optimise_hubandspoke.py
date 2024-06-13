@@ -206,7 +206,7 @@ def ec1_cost_lin(distance, capacity):
                 associated with the selected HVAC cables.
     """
 
-    cable_length = 1.1 * distance
+    cable_length = 1.10 * distance
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 #Meu/km
     cable_inst_cost = 0.540 #Meu/km
@@ -241,11 +241,11 @@ def ec2_cost_lin(distance, capacity):
                 associated with the selected HVAC cables.
     """
 
-    cable_length = 1.2 * distance
+    cable_length = 1.10 * distance + 2 # km Accounting for the offshore to onshore transition
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 # Million EU/km
     cable_inst_cost = 0.540 # Million EU/km
-    capacity_factor = 0.90
+    capacity_factor = 0.95
     
     parallel_cables = capacity / (cable_capacity * capacity_factor)
     
@@ -575,7 +575,9 @@ def opt_model(workspace_folder):
         ec1_total_cost = sum(model.ec1_cost_exp[wf, eh] for (wf, eh) in model.viable_ec1_ids)
         ec2_total_cost = sum(model.ec2_cost_exp[eh, onss] for (eh, onss) in model.viable_ec2_ids)
         
-        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + onss_total_cost
+        onss_total_cap_aux = sum(model.onss_cap_var[onss] for onss in model.viable_onss_ids) # Ensures that the onss capacity is zero when not connected
+        
+        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + onss_total_cost + onss_total_cap_aux
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)

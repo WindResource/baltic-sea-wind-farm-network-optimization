@@ -206,7 +206,7 @@ def ec1_cost_lin(distance, capacity):
                 associated with the selected HVAC cables.
     """
 
-    cable_length = 1.1 * distance
+    cable_length = 1.10 * distance
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 #Meu/km
     cable_inst_cost = 0.540 #Meu/km
@@ -241,19 +241,16 @@ def ec2_cost_lin(distance, capacity):
                 associated with the selected HVAC cables.
     """
 
-    equip_discount = 0.90
-    inst_discount = 0.80
-    
-    cable_length = 1.2 * distance
+    cable_length = 1.10 * distance + 2 # km Accounting for the offshore to onshore transition
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 # Million EU/km
     cable_inst_cost = 0.540 # Million EU/km
-    capacity_factor = 0.90
+    capacity_factor = 0.95
     
     parallel_cables = capacity / (cable_capacity * capacity_factor)
     
-    equip_cost = parallel_cables * cable_length * cable_equip_cost * equip_discount
-    inst_cost = parallel_cables * cable_length * cable_inst_cost * inst_discount
+    equip_cost = parallel_cables * cable_length * cable_equip_cost
+    inst_cost = parallel_cables * cable_length * cable_inst_cost
     
     ope_cost_yearly = 0.2 * 1e-2 * equip_cost
     
@@ -279,11 +276,11 @@ def ec3_cost_lin(distance, capacity):
                 associated with the selected HVAC cables.
     """
 
-    cable_length = 1.2 * distance
+    cable_length = 1.10 * distance + 2 # km Accounting for the offshore to onshore transition
     cable_capacity = 348 # MW
     cable_equip_cost = 0.860 # Million EU/km
     cable_inst_cost = 0.540 # Million EU/km
-    capacity_factor = 0.90
+    capacity_factor = 0.95
     
     parallel_cables = capacity / (cable_capacity * capacity_factor)
     
@@ -528,9 +525,9 @@ def opt_model(workspace_folder):
     viable_ec2 = find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso)
     viable_ec3 = find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat, wf_iso, onss_iso)
 
-    model.viable_ec1_ids = Set(initialize= viable_ec1, dimen=2)
-    model.viable_ec2_ids = Set(initialize= viable_ec2, dimen=2)
-    model.viable_ec3_ids = Set(initialize= viable_ec3, dimen=2)
+    model.viable_ec1_ids = Set(initialize=viable_ec1, dimen=2)
+    model.viable_ec2_ids = Set(initialize=viable_ec2, dimen=2)
+    model.viable_ec3_ids = Set(initialize=viable_ec3, dimen=2)
     
     # Calculate viable entities based on the viable connections
     model.viable_wf_ids, model.viable_eh_ids, model.viable_onss_ids = get_viable_entities(viable_ec1, viable_ec2, viable_ec3)
@@ -652,7 +649,9 @@ def opt_model(workspace_folder):
         ec2_total_cost = sum(model.ec2_cost_exp[eh, onss] for (eh, onss) in model.viable_ec2_ids)
         ec3_total_cost = sum(model.ec3_cost_exp[wf, onss] for (wf, onss) in model.viable_ec3_ids)
         
-        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + ec3_total_cost + onss_total_cost
+        onss_total_cap_aux = sum(model.onss_cap_var[onss] for onss in model.viable_onss_ids) # Ensures that the onss capacity is zero when not connected
+        
+        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + ec3_total_cost + onss_total_cost + onss_total_cap_aux
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
