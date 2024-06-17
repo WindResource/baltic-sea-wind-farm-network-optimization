@@ -342,7 +342,7 @@ def haversine(lon1, lat1, lon2, lat2):
     r = 6371  # Radius of Earth in kilometers
     return c * r
 
-def find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso):
+def find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat):
     """
     Find all pairs of offshore wind farms and energy hubs within 150km,
     ensuring that they belong to the same country based on their ISO codes.
@@ -354,12 +354,10 @@ def find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], eh_lon[eh_id], eh_lat[eh_id])
         if distance <= 150:  # Check if the distance is within 150 km
-            # Then check if the ISO codes match for the current wind farm and energy hub pair
-            if wf_iso[wf_id] == eh_iso[eh_id]:
-                connections.append((int(wf_id), int(eh_id)))
+            connections.append((int(wf_id), int(eh_id)))
     return connections
 
-def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso):
+def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat):
     """
     Find all pairs of offshore and onshore substations within 300km,
     ensuring that they belong to the same country based on their ISO codes.
@@ -371,12 +369,10 @@ def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(eh_lon[eh_id], eh_lat[eh_id], onss_lon[onss_id], onss_lat[onss_id])
         if distance <= 300:  # Check if the distance is within 300 km
-            # Then check if the ISO codes match for the current offshore and onshore substation pair
-            if eh_iso[eh_id] == onss_iso[onss_id]:
-                connections.append((int(eh_id), int(onss_id)))
+            connections.append((int(eh_id), int(onss_id)))
     return connections
 
-def find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat, wf_iso, onss_iso):
+def find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat):
     """
     Find all pairs of wind farms and onshore substations within 450km,
     ensuring that they belong to the same country based on their ISO codes.
@@ -387,11 +383,10 @@ def find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat, wf_iso, onss_iso):
     for wf_id, onss_id in product(wf_lon.keys(), onss_lon.keys()):
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], onss_lon[onss_id], onss_lat[onss_id])
         if distance <= 450:  # Check if the distance is within 450 km
-            if wf_iso[wf_id] == onss_iso[onss_id]:
-                connections.append((int(wf_id), int(onss_id)))
+            connections.append((int(wf_id), int(onss_id)))
     return connections
 
-def find_viable_onc(onss_lon, onss_lat, onss_iso):
+def find_viable_onc(onss_lon, onss_lat):
     """
     Find all pairs of onshore substations within 100km,
     ensuring that they belong to the same country based on their ISO codes.
@@ -402,9 +397,8 @@ def find_viable_onc(onss_lon, onss_lat, onss_iso):
     for onss_id1, onss_id2 in product(onss_lon.keys(), repeat=2):
         if onss_id1 != onss_id2:  # Prevent self-connections
             distance = haversine(onss_lon[onss_id1], onss_lat[onss_id1], onss_lon[onss_id2], onss_lat[onss_id2])
-            if distance <= 100:  # Check if the distance is within 100 km
-                if onss_iso[onss_id1] == onss_iso[onss_id2]:  # Check if the ISO codes match
-                    connections.append((int(onss_id1), int(onss_id2)))
+            if distance <= 150:  # Check if the distance is within 100 km
+                connections.append((int(onss_id1), int(onss_id2)))
     return connections
 
 def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
@@ -483,6 +477,18 @@ def opt_model(workspace_folder, model_combined=0):
         'SE': 8   # Sweden
     }
 
+    # Define the capacity fractions for each country
+    country_cf = {
+        1: 0.9,  # Germany
+        2: 0.8,  # Denmark
+        3: 0.85, # Estonia
+        4: 0.7,  # Finland
+        5: 0.75, # Latvia
+        6: 0.8,  # Lithuania
+        7: 0.85, # Poland
+        8: 0.9   # Sweden
+    }
+
     # Load datasets
     wf_dataset_file = os.path.join(workspace_folder, 'wf_data.npy')
     eh_dataset_file = os.path.join(workspace_folder, 'eh_data.npy')
@@ -540,6 +546,9 @@ def opt_model(workspace_folder, model_combined=0):
     model.eh_ids = Set(initialize=eh_ids)
     model.onss_ids = Set(initialize=onss_ids)
     
+    # Define the set of countries based on the ISO codes
+    model.country_ids = Set(initialize=iso_to_int_mp.values())
+    
     # Wind farm model parameters
     model.wf_iso = Param(model.wf_ids, initialize=wf_iso, within=NonNegativeIntegers)
     model.wf_lon = Param(model.wf_ids, initialize=wf_lon, within=NonNegativeReals)
@@ -560,6 +569,9 @@ def opt_model(workspace_folder, model_combined=0):
     model.onss_lon = Param(model.onss_ids, initialize=onss_lon, within=NonNegativeReals)
     model.onss_lat = Param(model.onss_ids, initialize=onss_lat, within=NonNegativeReals)
     model.onss_thold = Param(model.onss_ids, initialize=onss_thold, within=NonNegativeIntegers)
+
+    # Define a parameter for capacity fractions
+    model.country_cf = Param(model.country_ids, initialize=country_cf, within=NonNegativeReals)
 
     """
     Define decision variables
@@ -597,6 +609,12 @@ def opt_model(workspace_folder, model_combined=0):
     model.onc_cap_var = Var(model.viable_onc_ids, within=NonNegativeReals)
     
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
+    
+    # Print total available wind farm capacity per country
+    print("Total available wind farm capacity per country:")
+    for country, country_code in iso_to_int_mp.items():
+        total_capacity = sum(wf_cap[wf] for wf in wf_ids if wf_iso[wf] == country_code)
+        print(f"{country}: {total_capacity} MW")
     
     # Define a dictionary containing variable names and their respective lengths
     print_variables = {
@@ -730,14 +748,15 @@ def opt_model(workspace_folder, model_combined=0):
     """
     print("Defining total capacity constraint...")
 
-    def tot_wf_cap_rule(model):
+    def wf_country_cap_rule(model, country):
         """
-        Ensure the selected wind farms collectively meet a minimum required capacity.
-        This capacity is specified as a fraction of the total potential capacity of all considered wind farms.
+        Ensure the selected wind farms in each country collectively meet a minimum required capacity.
+        This capacity is specified as a fraction of the total potential capacity of all considered wind farms in that country.
         """
-        min_req_cap = 1 * sum(model.wf_cap[wf] for wf in model.viable_wf_ids)
-        return sum(model.wf_bool_var[wf] * model.wf_cap[wf] for wf in model.viable_wf_ids) >= min_req_cap
-    model.tot_wf_cap_con = Constraint(rule=tot_wf_cap_rule)
+        min_req_cap_country = model.country_cf[country] * sum(model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
+        cap_country = sum(model.wf_bool_var[wf] * model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
+        return cap_country >= min_req_cap_country
+    model.wf_country_cap_con = Constraint(model.country_ids, rule=wf_country_cap_rule)
     
     print("Defining capacity constraints...")
     
@@ -808,13 +827,6 @@ def opt_model(workspace_folder, model_combined=0):
         """
         return model.onss_cost_var[onss] >= model.onss_cost_exp[onss]
     model.onss_cost_con = Constraint(model.viable_onss_ids, rule=onss_cost_rule)
-    
-    def max_onss_cap_rule(model, onss):
-        """
-        Ensure the capacity of each onshore substation does not exceed twice the threshold value.
-        """
-        return model.onss_cap_var[onss] <= 2.5 * model.onss_thold[onss]
-    model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
     
     """
     Solve the model
