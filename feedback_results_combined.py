@@ -2,25 +2,21 @@ import arcpy
 import numpy as np
 import os
 
-def create_export_cable_feature_layer(npy_file_path, workspace_folder, layer_name):
+def create_polyline_feature_layer(npy_file_path, workspace_folder, layer_name):
     """
-    Create a feature layer with polylines connecting the coordinates of the export cables using the .npy data directly
+    Create a feature layer with polylines connecting the coordinates using the .npy data directly
     and add it to the current project map.
     
     Parameters:
-    - npy_file_path: The path to the .npy file containing export cable data.
+    - npy_file_path: The path to the .npy file containing cable data.
     - workspace_folder: The path to the workspace folder where the feature class will be stored.
     - layer_name: The name of the layer to be created in the current map.
     """
-    # Load the export cable data from the .npy file
-    ec_data = np.load(npy_file_path)
+    # Load the cable data from the .npy file
+    cable_data = np.load(npy_file_path)
     
-    # Create the feature class in the output workspace folder to store the polylines
-    lines_path = os.path.join(workspace_folder, f"{layer_name}.shp")
-    if arcpy.Exists(lines_path):
-        arcpy.Delete_management(lines_path)
-    arcpy.management.CreateFeatureclass(workspace_folder, layer_name, 'POLYLINE', spatial_reference=4326)
-    arcpy.management.AddFields(lines_path, [
+    # Define the fields for the feature class
+    fields = [
         ['EC_ID', 'LONG'],
         ['Comp_1_ID', 'LONG'],
         ['Comp_2_ID', 'LONG'],
@@ -31,26 +27,28 @@ def create_export_cable_feature_layer(npy_file_path, workspace_folder, layer_nam
         ['Distance', 'DOUBLE'],
         ['Capacity', 'DOUBLE'],
         ['Cost', 'DOUBLE']
-    ])
+    ]
+    
+    # Create the feature class in the output workspace folder to store the polylines
+    lines_path = os.path.join(workspace_folder, f"{layer_name}.shp")
+    if arcpy.Exists(lines_path):
+        arcpy.Delete_management(lines_path)
+    arcpy.management.CreateFeatureclass(workspace_folder, layer_name, 'POLYLINE', spatial_reference=4326)
+    arcpy.management.AddFields(lines_path, fields)
 
     # Insert the polylines into the feature class
-    with arcpy.da.InsertCursor(lines_path, ['EC_ID', 'Comp_1_ID', 'Comp_2_ID', 'SHAPE@', 'Lon_1', 'Lat_1', 'Lon_2', 'Lat_2', 'Distance', 'Capacity', 'Cost']) as insert_cursor:
-        for row in ec_data:
-            ec_id = int(row['ec_id'])
-            comp_1_id = int(row['comp_1_id'])
-            comp_2_id = int(row['comp_2_id'])
+    with arcpy.da.InsertCursor(lines_path, [field[0] for field in fields] + ['SHAPE@']) as insert_cursor:
+        for row in cable_data:
+            row_data = [row[field[0].lower()] for field in fields]
             lon_1 = float(row['lon_1'])
             lat_1 = float(row['lat_1'])
             lon_2 = float(row['lon_2'])
             lat_2 = float(row['lat_2'])
-            distance = float(row['distance'])
-            capacity = float(row['capacity'])
-            cost = float(row['cost'])
             point_1 = arcpy.Point(lon_1, lat_1)
             point_2 = arcpy.Point(lon_2, lat_2)
             array = arcpy.Array([point_1, point_2])
             polyline = arcpy.Polyline(array)
-            insert_cursor.insertRow((ec_id, comp_1_id, comp_2_id, polyline, lon_1, lat_1, lon_2, lat_2, distance, capacity, cost))
+            insert_cursor.insertRow(row_data + [polyline])
 
     # Add the feature class to the current map
     aprx = arcpy.mp.ArcGISProject("CURRENT")
@@ -108,6 +106,7 @@ if __name__ == "__main__":
     npy_file_path_ec1 = os.path.join(combined_folder, 'ec1_ids_c.npy')
     npy_file_path_ec2 = os.path.join(combined_folder, 'ec2_ids_c.npy')
     npy_file_path_ec3 = os.path.join(combined_folder, 'ec3_ids_c.npy')
+    npy_file_path_onc = os.path.join(combined_folder, 'onc_ids_c.npy')
     npy_file_path_wf = os.path.join(combined_folder, 'wf_ids_c.npy')
     npy_file_path_eh = os.path.join(combined_folder, 'eh_ids_c.npy')
     npy_file_path_onss = os.path.join(combined_folder, 'onss_ids_c.npy')
@@ -118,10 +117,13 @@ if __name__ == "__main__":
     create_point_feature_layer(npy_file_path_onss, feature_layer_folder, 'C_OnshoreSubstations')
     
     # Generate feature layer for export cables 1
-    create_export_cable_feature_layer(npy_file_path_ec1, feature_layer_folder, 'C_ExportCables1')
+    create_polyline_feature_layer(npy_file_path_ec1, feature_layer_folder, 'C_ExportCables1')
 
     # Generate feature layer for export cables 2
-    create_export_cable_feature_layer(npy_file_path_ec2, feature_layer_folder, 'C_ExportCables2')
+    create_polyline_feature_layer(npy_file_path_ec2, feature_layer_folder, 'C_ExportCables2')
 
     # Generate feature layer for export cables 3
-    create_export_cable_feature_layer(npy_file_path_ec3, feature_layer_folder, 'C_ExportCables3')
+    create_polyline_feature_layer(npy_file_path_ec3, feature_layer_folder, 'C_ExportCables3')
+
+    # Generate feature layer for onshore cables
+    create_polyline_feature_layer(npy_file_path_onc, feature_layer_folder, 'C_OnshoreCables')

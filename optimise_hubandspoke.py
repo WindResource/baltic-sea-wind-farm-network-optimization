@@ -261,6 +261,36 @@ def ec2_cost_lin(distance, capacity):
 
     return total_cost
 
+def onc_cost_lin(distance, capacity):
+    """
+    Calculate the cost associated with selecting onshore substation cables for a given length and desired capacity.
+
+    Parameters:
+        distance (float): The length of the cable (in kilometers).
+        capacity (float): The desired capacity of the cable (in MW).
+
+    Returns:
+        float: The total cost associated with the selected onshore substation cables.
+    """
+    cable_length = 1.15 * distance  # Adjusted length with safety factor
+    cable_capacity = 348  # MW (assuming same as export cable capacity)
+    cable_equip_cost = 0.860  # Million EU/km
+    cable_inst_cost = 0.540  # Million EU/km
+    capacity_factor = 0.95
+    
+    parallel_cables = capacity / (cable_capacity * capacity_factor)
+    
+    equip_cost = parallel_cables * cable_length * cable_equip_cost
+    inst_cost = parallel_cables * cable_length * cable_inst_cost
+    
+    ope_cost_yearly = 0.2 * 1e-2 * equip_cost
+    deco_cost = 0.5 * inst_cost
+
+    # Assuming a placeholder for present value calculation (to be defined)
+    total_cost = equip_cost + inst_cost + (ope_cost_yearly * 20) + deco_cost  # Simplified for illustration
+
+    return total_cost
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great-circle distance between two points
@@ -309,6 +339,22 @@ def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso):
             # Then check if the ISO codes match for the current offshore and onshore substation pair
             if eh_iso[eh_id] == onss_iso[onss_id]:
                 connections.append((int(eh_id), int(onss_id)))
+    return connections
+
+def find_viable_onc(onss_lon, onss_lat, onss_iso):
+    """
+    Find all pairs of onshore substations within 100km,
+    ensuring that they belong to the same country based on their ISO codes.
+    
+    Parameters are dictionaries indexed by IDs with longitude, latitude, and ISO codes.
+    """
+    connections = []
+    for onss_id1, onss_id2 in product(onss_lon.keys(), repeat=2):
+        if onss_id1 != onss_id2:  # Prevent self-connections
+            distance = haversine(onss_lon[onss_id1], onss_lat[onss_id1], onss_lon[onss_id2], onss_lat[onss_id2])
+            if distance <= 100:  # Check if the distance is within 100 km
+                if onss_iso[onss_id1] == onss_iso[onss_id2]:  # Check if the ISO codes match
+                    connections.append((int(onss_id1), int(onss_id2)))
     return connections
 
 def get_viable_entities(viable_ec1, viable_ec2):
@@ -466,9 +512,11 @@ def opt_model(workspace_folder):
     # Calculate viable connections
     viable_ec1 = find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso)
     viable_ec2 = find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso)
+    viable_onc = find_viable_onc(onss_lon, onss_lat, onss_iso)
 
-    model.viable_ec1_ids = Set(initialize= viable_ec1, dimen=2)
-    model.viable_ec2_ids = Set(initialize= viable_ec2, dimen=2)
+    model.viable_ec1_ids = Set(initialize=viable_ec1, dimen=2)
+    model.viable_ec2_ids = Set(initialize=viable_ec2, dimen=2)
+    model.viable_onc_ids = Set(initialize=viable_onc, dimen=2)
     
     # Calculate viable entities based on the viable connections
     model.viable_wf_ids, model.viable_eh_ids, model.viable_onss_ids = get_viable_entities(viable_ec1, viable_ec2)
@@ -480,6 +528,7 @@ def opt_model(workspace_folder):
     model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
     model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
+    model.onc_cap_var = Var(model.viable_onc_ids, within=NonNegativeReals)
     
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     
@@ -540,12 +589,24 @@ def opt_model(workspace_folder):
     model.ec2_cost_exp = Expression(model.viable_ec2_ids, rule=ec2_cost_rule)
 
     """
-    Define expressions for Onshore Substation (ONSS) capacity
+    Define expressions for Onshore Substations (ONSS)
     """
 
     def onss_cost_rule(model, onss):
         return onss_cost_lin(model.onss_cap_var[onss], model.onss_thold[onss])
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
+
+    """
+    Define expressions for Onshore Substation Cables (ONC)
+    """
+    
+    def onc_distance_rule(model, onss1, onss2):
+        return haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2])
+    model.onc_dist_exp = Expression(model.viable_onc_ids, rule=onc_distance_rule)
+
+    def onc_cost_rule(model, onss1, onss2):
+        return onc_cost_lin(model.onc_dist_exp[onss1, onss2], model.onc_cap_var[onss1, onss2])
+    model.onc_cost_exp = Expression(model.viable_onc_ids, rule=onc_cost_rule)
 
     """
     Define Objective function
@@ -574,10 +635,11 @@ def opt_model(workspace_folder):
         onss_total_cost = sum(model.onss_cost_var[onss] for onss in model.viable_onss_ids)
         ec1_total_cost = sum(model.ec1_cost_exp[wf, eh] for (wf, eh) in model.viable_ec1_ids)
         ec2_total_cost = sum(model.ec2_cost_exp[eh, onss] for (eh, onss) in model.viable_ec2_ids)
+        onc_total_cost = sum(model.onc_cost_exp[onss1, onss2] for (onss1, onss2) in model.viable_onc_ids)
         
         onss_total_cap_aux = sum(model.onss_cap_var[onss] for onss in model.viable_onss_ids) # Ensures that the onss capacity is zero when not connected
         
-        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + onss_total_cost + onss_total_cap_aux
+        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + onss_total_cost + onc_total_cost + onss_total_cap_aux
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
@@ -632,13 +694,23 @@ def opt_model(workspace_folder):
         return connect_to_onss >= model.eh_cap_var[eh]
     model.ec2_cap_connect_con = Constraint(model.viable_eh_ids, rule=ec2_cap_connect_rule)
 
+    def max_onss_cap_rule(model, onss):
+        """
+        Ensure the capacity of each onshore substation does not exceed twice the threshold value.
+        """
+        return model.onss_cap_var[onss] <= 2.5 * model.onss_thold[onss]
+    model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
+    
+    # Define new constraint for onshore substation connections
     def onss_cap_connect_rule(model, onss):
         """
-        Ensure the capacity of each onshore substation is at least the total incoming capacity from the connected energy hubs.
-        This ensures that the onshore substation can handle all incoming power.
+        Ensure the capacity of each onshore substation is at least the total incoming capacity from connected energy hubs,
+        adjust for the distributed capacity to other substations, and account for capacity received from other substations.
         """
         connect_from_eh = sum(model.ec2_cap_var[eh, onss] for eh in model.viable_eh_ids if (eh, onss) in model.viable_ec2_ids)
-        return model.onss_cap_var[onss] >= connect_from_eh
+        distribute_to_others = sum(model.onc_cap_var[onss, other_onss] for other_onss in model.viable_onss_ids if (onss, other_onss) in model.viable_onc_ids)
+        receive_from_others = sum(model.onc_cap_var[other_onss, onss] for other_onss in model.viable_onss_ids if (other_onss, onss) in model.viable_onc_ids)
+        return model.onss_cap_var[onss] >= connect_from_eh + receive_from_others - distribute_to_others
     model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
     
     print("Defining the cost variables...")
@@ -649,13 +721,6 @@ def opt_model(workspace_folder):
         """
         return model.onss_cost_var[onss] >= model.onss_cost_exp[onss]
     model.onss_cost_con = Constraint(model.viable_onss_ids, rule=onss_cost_rule)
-    
-    def max_onss_cap_rule(model, onss):
-        """
-        Ensure the capacity of each onshore substation does not exceed twice the threshold value.
-        """
-        return model.onss_cap_var[onss] <= 2.5 * model.onss_thold[onss]
-    model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
     
     """
     Solve the model
@@ -771,6 +836,22 @@ def opt_model(workspace_folder):
         selected_components['ec2_ids'] = {
             'data': np.array(ec2_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
             'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
+        }
+
+        # Create onc_ids with onshore cable ID, single row for each cable
+        onc_data = []
+        onc_id_counter = 1
+        for onss1, onss2 in model.viable_onc_ids:
+            if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0:
+                onc_cap = var_f(model.onc_cap_var[onss1, onss2])
+                onc_cost = exp_f(model.onc_cost_exp[onss1, onss2])
+                dist3 = par_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
+                onc_data.append((onc_id_counter, onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist3, onc_cap, onc_cost))
+                onc_id_counter += 1
+
+        selected_components['onc_ids'] = {
+            'data': np.array(onc_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "ONC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
         # Ensure the results directory exists
