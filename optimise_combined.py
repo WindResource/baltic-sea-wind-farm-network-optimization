@@ -447,7 +447,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder):
+def opt_model(workspace_folder, model_combined=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -588,6 +588,12 @@ def opt_model(workspace_folder):
     model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
     model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
     model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
+    
+    if model_combined == 1:
+        model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
+    elif model_combined == 0:
+        model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals, bounds=(0, 0))
+    
     model.onc_cap_var = Var(model.viable_onc_ids, within=NonNegativeReals)
     
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
