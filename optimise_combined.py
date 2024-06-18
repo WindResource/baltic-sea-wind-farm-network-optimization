@@ -579,10 +579,10 @@ def opt_model(workspace_folder, model_combined=0):
     print("Defining decision parameters...")
     
     # Calculate viable connections
-    viable_ec1 = find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat, wf_iso, eh_iso)
-    viable_ec2 = find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat, eh_iso, onss_iso)
-    viable_ec3 = find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat, wf_iso, onss_iso)
-    viable_onc = find_viable_onc(onss_lon, onss_lat, onss_iso)
+    viable_ec1 = find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat)
+    viable_ec2 = find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat)
+    viable_ec3 = find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat)
+    viable_onc = find_viable_onc(onss_lon, onss_lat)
     
     model.viable_ec1_ids = Set(initialize=viable_ec1, dimen=2)
     model.viable_ec2_ids = Set(initialize=viable_ec2, dimen=2)
@@ -746,7 +746,7 @@ def opt_model(workspace_folder, model_combined=0):
     """
     Define Constraints
     """
-    print("Defining total capacity constraint...")
+    print("Defining capacity demand constraints...")
 
     def wf_country_cap_rule(model, country):
         """
@@ -758,7 +758,7 @@ def opt_model(workspace_folder, model_combined=0):
         return cap_country >= min_req_cap_country
     model.wf_country_cap_con = Constraint(model.country_ids, rule=wf_country_cap_rule)
     
-    print("Defining capacity constraints...")
+    print("Defining network constraints...")
     
     def wf_connection_rule(model, wf):
         """
@@ -786,13 +786,6 @@ def opt_model(workspace_folder, model_combined=0):
         return model.eh_cap_var[eh] >= connect_from_wf
     model.eh_cap_connect_con = Constraint(model.viable_eh_ids, rule=eh_cap_connect_rule)
 
-    def max_eh_cap_rule(model, eh):
-        """
-        Ensure the capacity of each energy hub does not exceed 2500 MW.
-        """
-        return model.eh_cap_var[eh] <= 2500
-    model.max_eh_cap_con = Constraint(model.viable_eh_ids, rule=max_eh_cap_rule)
-
     def ec2_cap_connect_rule(model, eh):
         """
         Ensure the connection capacity from each energy hub to onshore substations matches the substation's capacity.
@@ -800,13 +793,6 @@ def opt_model(workspace_folder, model_combined=0):
         connect_to_onss = sum(model.ec2_cap_var[eh, onss] for onss in model.viable_onss_ids if (eh, onss) in model.viable_ec2_ids)
         return connect_to_onss >= model.eh_cap_var[eh]
     model.ec2_cap_connect_con = Constraint(model.viable_eh_ids, rule=ec2_cap_connect_rule)
-    
-    def max_onss_cap_rule(model, onss):
-        """
-        Ensure the capacity of each onshore substation does not exceed twice the threshold value.
-        """
-        return model.onss_cap_var[onss] <= 2.5 * model.onss_thold[onss]
-    model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
     
     def onss_cap_connect_rule(model, onss):
         """
@@ -819,7 +805,23 @@ def opt_model(workspace_folder, model_combined=0):
         return model.onss_cap_var[onss] >= connect_from_eh + connect_from_wf + receive_from_others - distribute_to_others
     model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
     
-    print("Defining the cost variables...")
+    print("Defining capacity limit constraints...")
+    
+    def max_eh_cap_rule(model, eh):
+        """
+        Ensure the capacity of each energy hub does not exceed 2500 MW.
+        """
+        return model.eh_cap_var[eh] <= 2500
+    model.max_eh_cap_con = Constraint(model.viable_eh_ids, rule=max_eh_cap_rule)
+    
+    def max_onss_cap_rule(model, onss):
+        """
+        Ensure the capacity of each onshore substation does not exceed twice the threshold value.
+        """
+        return model.onss_cap_var[onss] <= 2.5 * model.onss_thold[onss]
+    model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
+    
+    print("Defining cost constraints...")
     
     def onss_cost_rule(model, onss):
         """
