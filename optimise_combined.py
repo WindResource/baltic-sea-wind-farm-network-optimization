@@ -441,7 +441,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_combined=0):
+def opt_model(workspace_folder, model_type=2, cross_border=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -451,6 +451,17 @@ def opt_model(workspace_folder, model_combined=0):
     Returns:
     - model: Pyomo ConcreteModel object representing the optimization model.
     """
+    # Define the selected countries (1 for selected, 0 for not selected)
+    selected_countries = {
+        'DE': 0,  # Germany
+        'DK': 0,  # Denmark
+        'EE': 0,  # Estonia
+        'FI': 1,  # Finland
+        'LV': 0,  # Latvia
+        'LT': 0,  # Lithuania
+        'PL': 0,  # Poland
+        'SE': 1   # Sweden
+    }
     
     """
     Initialise model
@@ -465,6 +476,21 @@ def opt_model(workspace_folder, model_combined=0):
     """
     print("Processing data...")
     
+    # Define the base capacity fractions for each country
+    base_country_cf = {
+        'DE': 0.9,  # Germany
+        'DK': 0.8,  # Denmark
+        'EE': 0.85, # Estonia
+        'FI': 0.7,  # Finland
+        'LV': 0.75, # Latvia
+        'LT': 0.8,  # Lithuania
+        'PL': 0.85, # Poland
+        'SE': 0.9   # Sweden
+    }
+
+    # Adjust capacity fractions based on selected countries
+    country_cf = {iso: base_country_cf[iso] * selected_countries[iso] for iso in selected_countries}
+    
     # Mapping ISO country codes of Baltic Sea countries to unique integers
     iso_to_int_mp = {
         'DE': 1,  # Germany
@@ -477,17 +503,8 @@ def opt_model(workspace_folder, model_combined=0):
         'SE': 8   # Sweden
     }
 
-    # Define the capacity fractions for each country
-    country_cf = {
-        1: 0.9,  # Germany
-        2: 0.8,  # Denmark
-        3: 0.85, # Estonia
-        4: 0.7,  # Finland
-        5: 0.75, # Latvia
-        6: 0.8,  # Lithuania
-        7: 0.85, # Poland
-        8: 0.9   # Sweden
-    }
+    # Convert adjusted country CF to use integer keys
+    country_cf = {iso_to_int_mp[iso]: cf for iso, cf in country_cf.items()}
 
     # Load datasets
     wf_dataset_file = os.path.join(workspace_folder, 'wf_data.npy')
@@ -594,21 +611,27 @@ def opt_model(workspace_folder, model_combined=0):
     
     # Initialize variables
     model.wf_bool_var = Var(model.viable_wf_ids, within=Binary)
-    
-    model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals)
     model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
-    model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
-    model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
-    model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
     
-    if model_combined == 1:
+    if model_type == 0:
+        model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals, bounds=(0, 0))
+        model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals, bounds=(0, 0))
+        model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals, bounds=(0, 0))
         model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
-    elif model_combined == 0:
+    elif model_type == 1:
+        model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals)
+        model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
+        model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
         model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals, bounds=(0, 0))
-    
+    elif model_type == 2:
+        model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals)
+        model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
+        model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
+        model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
+
     model.onc_cap_var = Var(model.viable_onc_ids, within=NonNegativeReals)
-    
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
+    model.wf_country_alloc = Var(model.viable_wf_ids, model.country_ids, within=NonNegativeReals)
     
     # Print total available wind farm capacity per country
     print("Total available wind farm capacity per country:")
@@ -738,45 +761,52 @@ def opt_model(workspace_folder, model_combined=0):
         
         onss_total_cap_aux = sum(model.onss_cap_var[onss] for onss in model.viable_onss_ids) # Ensures that the onss capacity is zero when not connected
         
-        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + ec3_total_cost + onss_total_cost + + onc_total_cost + onss_total_cap_aux
+        return wf_total_cost + eh_total_cost + ec1_total_cost + ec2_total_cost + ec3_total_cost + onss_total_cost + onc_total_cost + onss_total_cap_aux
 
     # Set the objective in the model
     model.global_cost_obj = Objective(rule=global_cost_rule, sense=minimize)
-
+    
     """
     Define Constraints
     """
-    print("Defining capacity demand constraints...")
+    print("Defining capacity allocation constraints...")
 
-    def wf_country_cap_rule(model, country):
-        """
-        Ensure the selected wind farms in each country collectively meet a minimum required capacity.
-        This capacity is specified as a fraction of the total potential capacity of all considered wind farms in that country.
-        """
-        min_req_cap_country = model.country_cf[country] * sum(model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
-        cap_country = sum(model.wf_bool_var[wf] * model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
-        return cap_country >= min_req_cap_country
-    model.wf_country_cap_con = Constraint(model.country_ids, rule=wf_country_cap_rule)
+    if cross_border == 1:
+        def wf_country_cap_rule(model, country):
+            """
+            Ensure the selected wind farms collectively meet a minimum required capacity for each country.
+            This capacity is specified as a fraction of the total potential capacity of all considered wind farms.
+            """
+            min_req_cap_country = model.country_cf[country] * sum(model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
+            cap_country = sum(model.wf_country_alloc[wf, country] for wf in model.viable_wf_ids)
+            return cap_country >= min_req_cap_country
+        model.wf_country_cap_con = Constraint(model.country_ids, rule=wf_country_cap_rule)
+    elif cross_border == 0:
+        def wf_country_cap_rule(model, country):
+            """
+            Ensure the selected wind farms collectively meet a minimum required capacity for each country.
+            This capacity is specified as a fraction of the total potential capacity of all considered wind farms.
+            """
+            min_req_cap_country = model.country_cf[country] * sum(model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
+            cap_country = sum(model.wf_country_alloc[wf, country] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
+            return cap_country >= min_req_cap_country
+        model.wf_country_cap_con = Constraint(model.country_ids, rule=wf_country_cap_rule)
     
+    def wf_alloc_rule(model, wf):
+        """
+        Ensure the allocated capacity of each wind farm equals its total capacity when selected.
+        """
+        return sum(model.wf_country_alloc[wf, country] for country in model.country_ids) == model.wf_cap[wf] * model.wf_bool_var[wf]
+    model.wf_alloc_con = Constraint(model.viable_wf_ids, rule=wf_alloc_rule)
+
     print("Defining network constraints...")
     
-    def wf_connection_rule(model, wf):
-        """
-        Ensure each selected wind farm connects to at least one energy hub or at least one onshore substation.
-        """
-        connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids)
-        connect_to_onss = sum(model.ec3_cap_var[wf, onss] for onss in model.viable_onss_ids if (wf, onss) in model.viable_ec3_ids)
-        return (connect_to_eh + connect_to_onss) >= model.wf_bool_var[wf]
-    model.wf_connection_con = Constraint(model.viable_wf_ids, rule=wf_connection_rule)
-
-    def ec1_cap_connect_rule(model, wf):
-        """
-        Ensure each selected wind farm is connected to either one energy hub or directly to one onshore substation.
-        """
-        connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids)
-        connect_to_onss = sum(model.ec3_cap_var[wf, onss] for onss in model.viable_onss_ids if (wf, onss) in model.viable_ec3_ids)
-        return connect_to_eh + connect_to_onss >= model.wf_bool_var[wf] * model.wf_cap[wf]
-    model.ec1_cap_connect_con = Constraint(model.viable_wf_ids, rule=ec1_cap_connect_rule)
+    def wf_connection_rule(model, wf, country):
+        """Ensure allocated capacity is connected to the energy hub or onshore substation of the corresponding country."""
+        connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids and model.eh_iso[eh] == country)
+        connect_to_onss = sum(model.ec3_cap_var[wf, onss] for onss in model.viable_onss_ids if (wf, onss) in model.viable_ec3_ids and model.onss_iso[onss] == country)
+        return connect_to_eh + connect_to_onss >= model.wf_country_alloc[wf, country]
+    model.wf_connection_con = Constraint(model.viable_wf_ids, model.country_ids, rule=wf_connection_rule)
 
     def eh_cap_connect_rule(model, eh):
         """
@@ -786,14 +816,15 @@ def opt_model(workspace_folder, model_combined=0):
         return model.eh_cap_var[eh] >= connect_from_wf
     model.eh_cap_connect_con = Constraint(model.viable_eh_ids, rule=eh_cap_connect_rule)
 
-    def ec2_cap_connect_rule(model, eh):
+    def eh_to_onss_connection_rule(model, eh):
         """
-        Ensure the connection capacity from each energy hub to onshore substations matches the substation's capacity.
+        Ensure the capacity of each energy hub is connected to an onshore substation of the corresponding country.
         """
-        connect_to_onss = sum(model.ec2_cap_var[eh, onss] for onss in model.viable_onss_ids if (eh, onss) in model.viable_ec2_ids)
+        country = model.eh_iso[eh]
+        connect_to_onss = sum(model.ec2_cap_var[eh, onss] for onss in model.viable_onss_ids if (eh, onss) in model.viable_ec2_ids and model.onss_iso[onss] == country)
         return connect_to_onss >= model.eh_cap_var[eh]
-    model.ec2_cap_connect_con = Constraint(model.viable_eh_ids, rule=ec2_cap_connect_rule)
-    
+    model.eh_to_onss_connect_con = Constraint(model.viable_eh_ids, rule=eh_to_onss_connection_rule)
+
     def onss_cap_connect_rule(model, onss):
         """
         Ensure the capacity of each onshore substation is at least the total incoming capacity from connected energy hubs or wind farms.
@@ -813,7 +844,7 @@ def opt_model(workspace_folder, model_combined=0):
         """
         return model.eh_cap_var[eh] <= 2500
     model.max_eh_cap_con = Constraint(model.viable_eh_ids, rule=max_eh_cap_rule)
-    
+
     def max_onss_cap_rule(model, onss):
         """
         Ensure the capacity of each onshore substation does not exceed twice the threshold value.
@@ -894,19 +925,19 @@ def opt_model(workspace_folder, model_combined=0):
         selected_components = {
             'wf_ids': {
                 'data': np.array([(wf, int_to_iso_mp[model.wf_iso[wf]], model.wf_lon[wf], model.wf_lat[wf], model.wf_cap[wf], model.wf_cost[wf]) 
-                                for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0], 
+                                for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0.1], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
                 'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
             },
             'eh_ids': {
                 'data': np.array([(eh, int_to_iso_mp[model.eh_iso[eh]], model.eh_lon[eh], model.eh_lat[eh], model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], var_f(model.eh_cap_var[eh]), exp_f(model.eh_cost_exp[eh])) 
-                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0], 
+                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0.1], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
             },
             'onss_ids': {
                 'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), var_f(model.onss_cost_var[onss])) 
-                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0], 
+                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0.1], 
                                 dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
                 'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
             }
@@ -918,7 +949,7 @@ def opt_model(workspace_folder, model_combined=0):
         # Create ec1_ids with export cable ID, single row for each cable
         ec1_data = []
         for wf, eh in model.viable_ec1_ids:
-            if model.ec1_cap_var[wf, eh].value > 0:
+            if model.ec1_cap_var[wf, eh].value > 0.1:
                 ec1_cap = var_f(model.ec1_cap_var[wf, eh])
                 ec1_cost = exp_f(model.ec1_cost_exp[wf, eh])
                 dist1 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
@@ -934,7 +965,7 @@ def opt_model(workspace_folder, model_combined=0):
         ec2_data = []
         ec_id_counter = 1
         for eh, onss in model.viable_ec2_ids:
-            if model.ec2_cap_var[eh, onss].value > 0:
+            if model.ec2_cap_var[eh, onss].value > 0.1:
                 ec2_cap = var_f(model.ec2_cap_var[eh, onss])
                 ec2_cost = exp_f(model.ec2_cost_exp[eh, onss])
                 dist2 = par_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
@@ -950,7 +981,7 @@ def opt_model(workspace_folder, model_combined=0):
         ec3_data = []
         ec_id_counter = 1
         for wf, onss in model.viable_ec3_ids:
-            if model.ec3_cap_var[wf, onss].value > 0:
+            if model.ec3_cap_var[wf, onss].value > 0.1:
                 ec3_cap = var_f(model.ec3_cap_var[wf, onss])
                 ec3_cost = exp_f(model.ec3_cost_exp[wf, onss])
                 dist3 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
@@ -966,7 +997,7 @@ def opt_model(workspace_folder, model_combined=0):
         onc_data = []
         onc_id_counter = 1
         for onss1, onss2 in model.viable_onc_ids:
-            if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0:
+            if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0.1:
                 onc_cap = var_f(model.onc_cap_var[onss1, onss2])
                 onc_cost = exp_f(model.onc_cost_exp[onss1, onss2])
                 dist4 = par_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))

@@ -1,6 +1,27 @@
 import arcpy
 import numpy as np
 import os
+import time
+
+def add_fields_with_retry(feature_class, fields, max_retries=3, wait_time=0.5):
+    """
+    Adds fields to a feature class with a retry mechanism in case of failure.
+    
+    Parameters:
+    - feature_class: The feature class to which fields will be added.
+    - fields: The fields to be added.
+    - max_retries: Maximum number of retry attempts.
+    - wait_time: Time to wait between retries in seconds.
+    """
+    for attempt in range(max_retries):
+        try:
+            arcpy.management.AddFields(feature_class, fields)
+            return
+        except Exception as e:
+            if attempt <= max_retries:
+                time.sleep(wait_time)
+            else:
+                raise e
 
 def create_polyline_feature_layer(npy_file_path, workspace_folder, layer_name):
     """
@@ -34,7 +55,9 @@ def create_polyline_feature_layer(npy_file_path, workspace_folder, layer_name):
     if arcpy.Exists(lines_path):
         arcpy.Delete_management(lines_path)
     arcpy.management.CreateFeatureclass(workspace_folder, layer_name, 'POLYLINE', spatial_reference=4326)
-    arcpy.management.AddFields(lines_path, fields)
+    
+    # Add fields with retry logic
+    add_fields_with_retry(lines_path, fields)
 
     # Insert the polylines into the feature class
     with arcpy.da.InsertCursor(lines_path, [field[0] for field in fields] + ['SHAPE@']) as insert_cursor:
@@ -74,12 +97,17 @@ def create_point_feature_layer(npy_file_path, workspace_folder, layer_name):
     if arcpy.Exists(points_path):
         arcpy.Delete_management(points_path)
     arcpy.management.CreateFeatureclass(workspace_folder, layer_name, 'POINT', spatial_reference=4326)
-    arcpy.management.AddFields(points_path, [
+    
+    # Define the fields for the feature class
+    fields = [
         ['ID', 'LONG'],
         ['ISO', 'TEXT'],
         ['Capacity', 'DOUBLE'],
         ['Cost', 'DOUBLE']
-    ])
+    ]
+    
+    # Add fields with retry logic
+    add_fields_with_retry(points_path, fields)
 
     # Insert the points into the feature class
     with arcpy.da.InsertCursor(points_path, ['SHAPE@', 'ID', 'ISO', 'Capacity', 'Cost']) as insert_cursor:
