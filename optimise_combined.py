@@ -45,6 +45,206 @@ from scripts.present_value import PV
 
 pv = PV()
 
+def save_results(model, workspace_folder):
+    """
+    Save the IDs of selected components of the optimization model along with all their corresponding parameters,
+    including directly retrieved capacity and cost from the model expressions, into both .npy and .txt files as structured arrays.
+    Headers are included in the .txt files for clarity.
+
+    Parameters:
+    - model: The optimized Pyomo model.
+    - workspace_folder: The path to the directory where results will be saved.
+    """
+    def exp_f(e):
+        return round(e.expr(), 3)
+    
+    def var_f(v):
+        return round(v.value, 3)
+    
+    def par_f(p):
+        return round(p, 3)
+    
+    # Mapping ISO country codes of Baltic Sea countries to unique integers
+    int_to_iso_mp = {
+        1 : 'DE',  # Germany
+        2 : 'DK',  # Denmark
+        3 : 'EE',  # Estonia
+        4 : 'FI',  # Finland
+        5 : 'LV',  # Latvia
+        6 : 'LT',  # Lithuania
+        7 : 'PL',  # Poland
+        8 : 'SE'   # Sweden
+    }
+
+    # Reverse mapping
+    iso_to_int_mp = {v: k for k, v in int_to_iso_mp.items()}
+    
+    selected_components = {
+        'wf_ids': {
+            'data': np.array([(wf, int_to_iso_mp[model.wf_iso[wf]], model.wf_lon[wf], model.wf_lat[wf], model.wf_cap[wf], model.wf_cost[wf]) 
+                            for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0.1], 
+                            dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
+            'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
+        },
+        'eh_ids': {
+            'data': np.array([(eh, int_to_iso_mp[model.eh_iso[eh]], model.eh_lon[eh], model.eh_lat[eh], model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], var_f(model.eh_cap_var[eh]), exp_f(model.eh_cost_exp[eh])) 
+                            for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0.1], 
+                            dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
+            'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
+        },
+        'onss_ids': {
+            'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), var_f(model.onss_cost_var[onss])) 
+                            for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0.1], 
+                            dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
+            'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
+        }
+    }
+
+    # Export cable ID counter
+    ec_id_counter = 1
+
+    # Create ec1_ids with export cable ID, single row for each cable
+    ec1_data = []
+    for wf, eh in model.viable_ec1_ids:
+        if model.ec1_cap_var[wf, eh].value > 0.1:
+            ec1_cap = var_f(model.ec1_cap_var[wf, eh])
+            ec1_cost = exp_f(model.ec1_cost_exp[wf, eh])
+            dist1 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
+            ec1_data.append((ec_id_counter, wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost, int_to_iso_mp[model.eh_iso[eh]]))
+            ec_id_counter += 1
+
+    selected_components['ec1_ids'] = {
+        'data': np.array(ec1_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
+        'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+    }
+
+    # Create ec2_ids with export cable ID, single row for each cable
+    ec2_data = []
+    ec_id_counter = 1
+    for eh, onss in model.viable_ec2_ids:
+        if model.ec2_cap_var[eh, onss].value > 0.1:
+            ec2_cap = var_f(model.ec2_cap_var[eh, onss])
+            ec2_cost = exp_f(model.ec2_cost_exp[eh, onss])
+            dist2 = par_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
+            ec2_data.append((ec_id_counter, eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost, int_to_iso_mp[model.onss_iso[onss]]))
+            ec_id_counter += 1
+
+    selected_components['ec2_ids'] = {
+        'data': np.array(ec2_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
+        'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+    }
+
+    # Create ec3_ids with export cable ID, single row for each cable
+    ec3_data = []
+    ec_id_counter = 1
+    for wf, onss in model.viable_ec3_ids:
+        if model.ec3_cap_var[wf, onss].value > 0.1:
+            ec3_cap = var_f(model.ec3_cap_var[wf, onss])
+            ec3_cost = exp_f(model.ec3_cost_exp[wf, onss])
+            dist3 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
+            ec3_data.append((ec_id_counter, wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost, int_to_iso_mp[model.onss_iso[onss]]))
+            ec_id_counter += 1
+
+    selected_components['ec3_ids'] = {
+        'data': np.array(ec3_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
+        'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+    }
+    
+    # Create onc_ids with onshore cable ID, single row for each cable
+    onc_data = []
+    onc_id_counter = 1
+    for onss1, onss2 in model.viable_onc_ids:
+        if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0.1:
+            onc_cap = var_f(model.onc_cap_var[onss1, onss2])
+            onc_cost = exp_f(model.onc_cost_exp[onss1, onss2])
+            dist4 = par_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
+            onc_data.append((onc_id_counter, onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost, model.onss_iso[onss1]))
+            onc_id_counter += 1
+
+    selected_components['onc_ids'] = {
+        'data': np.array(onc_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
+        'headers': "ONC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+    }
+    
+    # Ensure the results directory exists
+    results_dir = os.path.join(workspace_folder, "results", "combined")
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+
+    total_capacity_cost = []
+
+    for key, info in selected_components.items():
+        npy_file_path = os.path.join(results_dir, f'c_{key}.npy')
+        txt_file_path = os.path.join(results_dir, f'c_{key}.txt')
+
+        # Save as .npy file
+        np.save(npy_file_path, info['data'])
+
+        # Save as .txt file for easier viewing
+        with open(txt_file_path, 'w') as file:
+            file.write(info['headers'] + '\n')  # Write the headers
+            for entry in info['data']:
+                file.write(', '.join(map(str, entry)) + '\n')
+        
+        print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
+
+        # Calculate total capacity and cost for this component type
+        total_capacity = sum(info['data']['capacity'])
+        total_cost = sum(info['data']['cost'])
+        total_capacity_cost.append((key, round(total_capacity), round(total_cost, 3)))
+
+    # Calculate overall totals
+    overall_capacity = sum(item[1] for item in total_capacity_cost)
+    overall_cost = sum(item[2] for item in total_capacity_cost)
+    total_capacity_cost.append(("overall", round(overall_capacity), round(overall_cost, 3)))
+
+    # Create a structured array for total capacities and cost
+    total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
+
+    # Save the total capacities and cost in .npy and .txt files
+    total_txt_file_path = os.path.join(results_dir, 'c_total.txt')
+
+    # Save as .txt file
+    with open(total_txt_file_path, 'w') as file:
+        file.write("Component, Total Capacity, Total Cost\n")
+        for entry in total_capacity_cost_array:
+            file.write(f'{entry[0]}, {entry[1]}, {entry[2]}\n')
+
+    print(f'Saved total capacities and cost in {total_txt_file_path}')
+    
+    # Initialize dictionary to hold per-country data
+    country_data = {country: {'wf_ids': {'capacity': 0, 'cost': 0},
+                            'eh_ids': {'capacity': 0, 'cost': 0},
+                            'onss_ids': {'capacity': 0, 'cost': 0},
+                            'ec1_ids': {'capacity': 0, 'cost': 0},
+                            'ec2_ids': {'capacity': 0, 'cost': 0},
+                            'ec3_ids': {'capacity': 0, 'cost': 0},
+                            'onc_ids': {'capacity': 0, 'cost': 0},
+                            'overall': {'capacity': 0, 'cost': 0}}
+                    for country in int_to_iso_mp.values()}
+
+    # Aggregate data per country for each component
+    for component, data in selected_components.items():
+        for entry in data['data']:
+            country = entry['iso']
+            country_data[country][component]['capacity'] += entry['capacity']
+            country_data[country][component]['cost'] += entry['cost']
+    
+    # Calculate overall capacity and cost per country
+    for country in country_data:
+        for component in ['wf_ids', 'eh_ids', 'onss_ids', 'ec1_ids', 'ec2_ids', 'ec3_ids', 'onc_ids']:
+            country_data[country]['overall']['capacity'] += country_data[country][component]['capacity']
+            country_data[country]['overall']['cost'] += country_data[country][component]['cost']
+    
+    # Save the aggregated data per country
+    for country, data in country_data.items():
+        country_txt_file_path = os.path.join(results_dir, f'c_total_{country}.txt')
+        with open(country_txt_file_path, 'w') as file:
+            file.write("Component, Total Capacity, Total Cost\n")
+            for component, values in data.items():
+                file.write(f"{component}, {round(values['capacity'])}, {round(values['cost'], 3)}\n")
+        print(f'Saved total capacity and cost for {country} in {country_txt_file_path}')
+
 def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     """
     Estimate the cost associated with an energy hub based on various parameters.
@@ -441,7 +641,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=1):
+def opt_model(workspace_folder, model_type=0, cross_border=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -453,14 +653,14 @@ def opt_model(workspace_folder, model_type=2, cross_border=1):
     """
     # Define the selected countries (1 for selected, 0 for not selected)
     selected_countries = {
-        'DE': 0,  # Germany
+        'DE': 1,  # Germany
         'DK': 0,  # Denmark
         'EE': 0,  # Estonia
-        'FI': 1,  # Finland
+        'FI': 0,  # Finland
         'LV': 0,  # Latvia
         'LT': 0,  # Lithuania
         'PL': 0,  # Poland
-        'SE': 1   # Sweden
+        'SE': 0   # Sweden
     }
     
     """
@@ -891,174 +1091,6 @@ def opt_model(workspace_folder, model_type=2, cross_border=1):
         'display/verblevel': 4           # Set verbosity level to display information about the solution
     }
 
-    def save_results(model, workspace_folder):
-        """
-        Save the IDs of selected components of the optimization model along with all their corresponding parameters,
-        including directly retrieved capacity and cost from the model expressions, into both .npy and .txt files as structured arrays.
-        Headers are included in the .txt files for clarity.
-
-        Parameters:
-        - model: The optimized Pyomo model.
-        - workspace_folder: The path to the directory where results will be saved.
-        """
-        def exp_f(e):
-            return round(e.expr(), 3)
-        
-        def var_f(v):
-            return round(v.value, 3)
-        
-        def par_f(p):
-            return round(p, 3)
-        
-        # Mapping ISO country codes of Baltic Sea countries to unique integers
-        int_to_iso_mp = {
-            1 : 'DE',  # Germany
-            2 : 'DK',  # Denmark
-            3 : 'EE',  # Estonia
-            4 : 'FI',  # Finland
-            5 : 'LV',  # Latvia
-            6 : 'LT',  # Lithuania
-            7 : 'PL',  # Poland
-            8 : 'SE'   # Sweden
-        }
-        
-        selected_components = {
-            'wf_ids': {
-                'data': np.array([(wf, int_to_iso_mp[model.wf_iso[wf]], model.wf_lon[wf], model.wf_lat[wf], model.wf_cap[wf], model.wf_cost[wf]) 
-                                for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0.1], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', int)]),
-                'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
-            },
-            'eh_ids': {
-                'data': np.array([(eh, int_to_iso_mp[model.eh_iso[eh]], model.eh_lon[eh], model.eh_lat[eh], model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], var_f(model.eh_cap_var[eh]), exp_f(model.eh_cost_exp[eh])) 
-                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0.1], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
-                'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
-            },
-            'onss_ids': {
-                'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], var_f(model.onss_cap_var[onss]), var_f(model.onss_cost_var[onss])) 
-                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0.1], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
-                'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
-            }
-        }
-
-        # Export cable ID counter
-        ec_id_counter = 1
-
-        # Create ec1_ids with export cable ID, single row for each cable
-        ec1_data = []
-        for wf, eh in model.viable_ec1_ids:
-            if model.ec1_cap_var[wf, eh].value > 0.1:
-                ec1_cap = var_f(model.ec1_cap_var[wf, eh])
-                ec1_cost = exp_f(model.ec1_cost_exp[wf, eh])
-                dist1 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
-                ec1_data.append((ec_id_counter, wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost))
-                ec_id_counter += 1
-
-        selected_components['ec1_ids'] = {
-            'data': np.array(ec1_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
-            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
-        }
-
-        # Create ec2_ids with export cable ID, single row for each cable
-        ec2_data = []
-        ec_id_counter = 1
-        for eh, onss in model.viable_ec2_ids:
-            if model.ec2_cap_var[eh, onss].value > 0.1:
-                ec2_cap = var_f(model.ec2_cap_var[eh, onss])
-                ec2_cost = exp_f(model.ec2_cost_exp[eh, onss])
-                dist2 = par_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
-                ec2_data.append((ec_id_counter, eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost))
-                ec_id_counter += 1
-
-        selected_components['ec2_ids'] = {
-            'data': np.array(ec2_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
-            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
-        }
-
-        # Create ec3_ids with export cable ID, single row for each cable
-        ec3_data = []
-        ec_id_counter = 1
-        for wf, onss in model.viable_ec3_ids:
-            if model.ec3_cap_var[wf, onss].value > 0.1:
-                ec3_cap = var_f(model.ec3_cap_var[wf, onss])
-                ec3_cost = exp_f(model.ec3_cost_exp[wf, onss])
-                dist3 = par_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
-                ec3_data.append((ec_id_counter, wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost))
-                ec_id_counter += 1
-
-        selected_components['ec3_ids'] = {
-            'data': np.array(ec3_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
-            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
-        }
-        
-        # Create onc_ids with onshore cable ID, single row for each cable
-        onc_data = []
-        onc_id_counter = 1
-        for onss1, onss2 in model.viable_onc_ids:
-            if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0.1:
-                onc_cap = var_f(model.onc_cap_var[onss1, onss2])
-                onc_cost = exp_f(model.onc_cost_exp[onss1, onss2])
-                dist4 = par_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
-                onc_data.append((onc_id_counter, onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost))
-                onc_id_counter += 1
-
-        selected_components['onc_ids'] = {
-            'data': np.array(onc_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
-            'headers': "ONC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
-        }
-        
-        # Ensure the results directory exists
-        results_dir = os.path.join(workspace_folder, "results", "combined")
-        if not os.path.exists(results_dir):
-            os.makedirs(results_dir)
-
-        total_capacity_cost = []
-
-        for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'{key}_c.npy')
-            txt_file_path = os.path.join(results_dir, f'{key}_c.txt')
-
-            # Save as .npy file
-            np.save(npy_file_path, info['data'])
-
-            # Save as .txt file for easier viewing
-            with open(txt_file_path, 'w') as file:
-                file.write(info['headers'] + '\n')  # Write the headers
-                for entry in info['data']:
-                    file.write(', '.join(map(str, entry)) + '\n')
-            
-            print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
-
-            # Calculate total capacity and cost for this component type
-            total_capacity = sum(info['data']['capacity'])
-            total_cost = sum(info['data']['cost'])
-            total_capacity_cost.append((key, round(total_capacity), round(total_cost, 3)))
-
-        # Calculate overall totals
-        overall_capacity = sum(item[1] for item in total_capacity_cost)
-        overall_cost = sum(item[2] for item in total_capacity_cost)
-        total_capacity_cost.append(("overall", round(overall_capacity), round(overall_cost, 3)))
-
-        # Create a structured array for total capacities and cost
-        total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
-
-        # Save the total capacities and cost in .npy and .txt files
-        total_npy_file_path = os.path.join(results_dir, 'total_c.npy')
-        total_txt_file_path = os.path.join(results_dir, 'total_c.txt')
-
-        # Save as .npy file
-        np.save(total_npy_file_path, total_capacity_cost_array)
-
-        # Save as .txt file for easier viewing
-        with open(total_txt_file_path, 'w') as file:
-            file.write("Component, Total Capacity, Total Cost\n")
-            for entry in total_capacity_cost_array:
-                file.write(f'{entry[0]}, {entry[1]}, {entry[2]}\n')
-
-        print(f'Saved total capacities and cost in {total_npy_file_path} and {total_txt_file_path}')
-
     # Set the path to the Scip solver executable
     scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
 
@@ -1067,9 +1099,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=1):
     solver.options['executable'] = scip_path
 
     # Define the path for the solver log
-    solver_log_path = os.path.join(workspace_folder, "results", "combined", "solverlog_c.txt")
+    solver_log_path = os.path.join(workspace_folder, "results", "combined", "c_solverlog.txt")
 
-    # Solve the optimisation model
+    # Solve the optimization model
     results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
 
     # Detailed checking of solver results

@@ -131,13 +131,13 @@ if __name__ == "__main__":
     combined_folder = os.path.join(workspace_folder, 'results', 'combined')
     feature_layer_folder = os.path.join(combined_folder, 'features')
     
-    npy_file_path_ec1 = os.path.join(combined_folder, 'ec1_ids_c.npy')
-    npy_file_path_ec2 = os.path.join(combined_folder, 'ec2_ids_c.npy')
-    npy_file_path_ec3 = os.path.join(combined_folder, 'ec3_ids_c.npy')
-    npy_file_path_onc = os.path.join(combined_folder, 'onc_ids_c.npy')
-    npy_file_path_wf = os.path.join(combined_folder, 'wf_ids_c.npy')
-    npy_file_path_eh = os.path.join(combined_folder, 'eh_ids_c.npy')
-    npy_file_path_onss = os.path.join(combined_folder, 'onss_ids_c.npy')
+    npy_file_path_ec1 = os.path.join(combined_folder, 'c_ec1_ids.npy')
+    npy_file_path_ec2 = os.path.join(combined_folder, 'c_ec2_ids.npy')
+    npy_file_path_ec3 = os.path.join(combined_folder, 'c_ec3_ids.npy')
+    npy_file_path_onc = os.path.join(combined_folder, 'c_onc_ids.npy')
+    npy_file_path_wf = os.path.join(combined_folder, 'c_wf_ids.npy')
+    npy_file_path_eh = os.path.join(combined_folder, 'c_eh_ids.npy')
+    npy_file_path_onss = os.path.join(combined_folder, 'c_onss_ids.npy')
 
     # Generate point feature layers for wind farms, offshore substations, and onshore substations
     create_point_feature_layer(npy_file_path_wf, feature_layer_folder, 'C_WindFarms')
