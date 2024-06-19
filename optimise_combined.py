@@ -45,7 +45,7 @@ from scripts.present_value import PV
 
 pv = PV()
 
-def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
+def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     """
     Estimate the cost associated with an energy hub based on various parameters.
 
@@ -165,33 +165,40 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     ope_cost_yearly = 0.03 * conv_cost
     
     # Calculate present value of cost    
-    eh_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    eh_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
     
     # Offshore substation cost in million Euros
     eh_cost *= 1e-6
     
     return eh_cost
 
-def onss_cost_lin(capacity, threshold):
+def onss_cost_lin(first_year, capacity, threshold):
     """
     Calculate the cost for ONSS expansion above a certain capacity.
 
     Parameters:
-    - capacity (float): The total capacity for which the cost is to be calculated.
-    - threshold (float): The capacity threshold specific to the ONSS above which cost are incurred.
+    - capacity (float): The total capacity in MW for which the cost is to be calculated.
+    - threshold (float): The capacity threshold in MW specific to the ONSS above which cost are incurred.
     
     Returns:
     - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
     """
     
-    overcap_cost = 0.050 # Million EU/ MW
+    threshold_equip_cost = 0.02287 # Million EU/ MW
     
     # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    cost_function = (capacity - threshold) * overcap_cost
+    equip_cost = (capacity - threshold) * threshold_equip_cost
     
-    return cost_function
+    ope_cost_yearly = 0.015 * equip_cost
+    
+    inst_cost, deco_cost = 0, 0
+    
+    # Calculate present value
+    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    
+    return total_cost
 
-def ec1_cost_lin(distance, capacity):
+def ec1_cost_lin(first_year, distance, capacity):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -222,11 +229,11 @@ def ec1_cost_lin(distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
-def ec2_cost_lin(distance, capacity):
+def ec2_cost_lin(first_year, distance, capacity):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -257,11 +264,11 @@ def ec2_cost_lin(distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
-def ec3_cost_lin(distance, capacity):
+def ec3_cost_lin(first_year, distance, capacity):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -292,11 +299,11 @@ def ec3_cost_lin(distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = pv.present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
-def onc_cost_lin(distance, capacity):
+def onc_cost_lin(first_year, distance, capacity):
     """
     Calculate the cost associated with selecting onshore substation cables for a given length and desired capacity.
 
@@ -322,7 +329,7 @@ def onc_cost_lin(distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Assuming a placeholder for present value calculation (to be defined)
-    total_cost = equip_cost + inst_cost + (ope_cost_yearly * 20) + deco_cost  # Simplified for illustration
+    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
@@ -441,27 +448,74 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=0, cross_border=0):
+def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
     Parameters:
     - workspace_folder (str): The path to the workspace folder containing datasets.
+    - model_type (int): The type of the model (0, 1, or 2).
+    - cross_border (int): Whether to allow cross-border connections (0 or 1).
+    - stages (str): "single" for a single stage optimization for 2050, "multi" for a multistage optimization for 2030, 2040, 2050.
 
     Returns:
     - model: Pyomo ConcreteModel object representing the optimization model.
     """
-    # Define the selected countries (1 for selected, 0 for not selected)
-    selected_countries = {
-        'DE': 1,  # Germany
-        'DK': 0,  # Denmark
-        'EE': 0,  # Estonia
-        'FI': 0,  # Finland
-        'LV': 0,  # Latvia
-        'LT': 0,  # Lithuania
-        'PL': 0,  # Poland
-        'SE': 0   # Sweden
+    # Define the years to be optimized
+    first_year_1 = 2030
+    first_year_2 = 2040
+    first_year_3 = 2050
+    
+    # Define the base capacity fractions for 2030, 2040, and 2050
+    base_country_cf_1 = {
+        'DE': 0.7,  # Germany
+        'DK': 0.6,  # Denmark
+        'EE': 0.65, # Estonia
+        'FI': 0.5,  # Finland
+        'LV': 0.55, # Latvia
+        'LT': 0.6,  # Lithuania
+        'PL': 0.65, # Poland
+        'SE': 0.7   # Sweden
     }
+
+    base_country_cf_2 = {
+        'DE': 0.8,  # Germany
+        'DK': 0.7,  # Denmark
+        'EE': 0.75, # Estonia
+        'FI': 0.6,  # Finland
+        'LV': 0.65, # Latvia
+        'LT': 0.7,  # Lithuania
+        'PL': 0.75, # Poland
+        'SE': 0.8   # Sweden
+    }
+
+    base_country_cf_3 = {
+        'DE': 0.9,  # Germany
+        'DK': 0.8,  # Denmark
+        'EE': 0.85, # Estonia
+        'FI': 0.7,  # Finland
+        'LV': 0.75, # Latvia
+        'LT': 0.8,  # Lithuania
+        'PL': 0.85, # Poland
+        'SE': 0.9   # Sweden
+    }
+
+    # Mapping ISO country codes of Baltic Sea countries to unique integers
+    iso_to_int_mp = {
+        'DE': 1,  # Germany
+        'DK': 2,  # Denmark
+        'EE': 3,  # Estonia
+        'FI': 4,  # Finland
+        'LV': 5,  # Latvia
+        'LT': 6,  # Lithuania
+        'PL': 7,  # Poland
+        'SE': 8   # Sweden
+    }
+    
+    # Convert adjusted country CF to use integer keys for each year
+    country_cf_1 = {iso_to_int_mp[iso]: base_country_cf_1[iso] for iso in base_country_cf_1}
+    country_cf_2 = {iso_to_int_mp[iso]: base_country_cf_2[iso] for iso in base_country_cf_2}
+    country_cf_3 = {iso_to_int_mp[iso]: base_country_cf_3[iso] for iso in base_country_cf_3}
     
     """
     Initialise model
@@ -476,36 +530,6 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     """
     print("Processing data...")
     
-    # Define the base capacity fractions for each country
-    base_country_cf = {
-        'DE': 0.9,  # Germany
-        'DK': 0.8,  # Denmark
-        'EE': 0.85, # Estonia
-        'FI': 0.7,  # Finland
-        'LV': 0.75, # Latvia
-        'LT': 0.8,  # Lithuania
-        'PL': 0.85, # Poland
-        'SE': 0.9   # Sweden
-    }
-
-    # Adjust capacity fractions based on selected countries
-    country_cf = {iso: base_country_cf[iso] * selected_countries[iso] for iso in selected_countries}
-    
-    # Mapping ISO country codes of Baltic Sea countries to unique integers
-    iso_to_int_mp = {
-        'DE': 1,  # Germany
-        'DK': 2,  # Denmark
-        'EE': 3,  # Estonia
-        'FI': 4,  # Finland
-        'LV': 5,  # Latvia
-        'LT': 6,  # Lithuania
-        'PL': 7,  # Poland
-        'SE': 8   # Sweden
-    }
-
-    # Convert adjusted country CF to use integer keys
-    country_cf = {iso_to_int_mp[iso]: cf for iso, cf in country_cf.items()}
-
     # Load datasets
     wf_dataset_file = os.path.join(workspace_folder, 'wf_data.npy')
     eh_dataset_file = os.path.join(workspace_folder, 'eh_data.npy')
@@ -587,8 +611,17 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     model.onss_lat = Param(model.onss_ids, initialize=onss_lat, within=NonNegativeReals)
     model.onss_thold = Param(model.onss_ids, initialize=onss_thold, within=NonNegativeIntegers)
 
-    # Define a parameter for capacity fractions
-    model.country_cf = Param(model.country_ids, initialize=country_cf, within=NonNegativeReals)
+    # Define parameters for capacity fractions for each year
+    model.country_cf = Param(model.country_ids, initialize=country_cf_3, within=NonNegativeReals, mutable=True)
+    model.country_cf_1 = Param(model.country_ids, initialize=country_cf_1, within=NonNegativeReals)
+    model.country_cf_2 = Param(model.country_ids, initialize=country_cf_2, within=NonNegativeReals)
+    model.country_cf_3 = Param(model.country_ids, initialize=country_cf_3, within=NonNegativeReals)
+    
+    # Define the first years
+    model.first_year = Param(initialize=first_year_3, within=NonNegativeIntegers, mutable=True)
+    model.first_year_1 = Param(initialize=first_year_1, within=NonNegativeIntegers)
+    model.first_year_2 = Param(initialize=first_year_2, within=NonNegativeIntegers)
+    model.first_year_3 = Param(initialize=first_year_3, within=NonNegativeIntegers)
 
     """
     Define decision variables
@@ -674,7 +707,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     model.ec1_dist_exp = Expression(model.viable_ec1_ids, rule=ec1_distance_rule)
 
     def ec1_cost_rule(model, wf, eh):
-        return ec1_cost_lin(model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh])
+        return ec1_cost_lin(model.first_year.value, model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh])
     model.ec1_cost_exp = Expression(model.viable_ec1_ids, rule=ec1_cost_rule)
 
     """
@@ -682,7 +715,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     """
     
     def eh_cost_rule(model, eh):
-        return eh_cost_lin(model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh])
+        return eh_cost_lin(model.first_year.value, model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh])
     model.eh_cost_exp = Expression(model.viable_eh_ids, rule=eh_cost_rule)
 
     """
@@ -693,7 +726,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     model.ec2_dist_exp = Expression(model.viable_ec2_ids, rule=ec2_distance_rule)
 
     def ec2_cost_rule(model, eh, onss):
-        return ec2_cost_lin(model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss])
+        return ec2_cost_lin(model.first_year.value, model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss])
     model.ec2_cost_exp = Expression(model.viable_ec2_ids, rule=ec2_cost_rule)
 
     """
@@ -704,7 +737,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     model.ec3_dist_exp = Expression(model.viable_ec3_ids, rule=ec3_distance_rule)
 
     def ec3_cost_rule(model, wf, onss):
-        return ec3_cost_lin(model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
+        return ec3_cost_lin(model.first_year.value, model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
     model.ec3_cost_exp = Expression(model.viable_ec3_ids, rule=ec3_cost_rule)
 
     """
@@ -712,7 +745,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     """
 
     def onss_cost_rule(model, onss):
-        return onss_cost_lin(model.onss_cap_var[onss], model.onss_thold[onss])
+        return onss_cost_lin(model.first_year.value, model.onss_cap_var[onss], model.onss_thold[onss])
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
     """
@@ -724,7 +757,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     model.onc_dist_exp = Expression(model.viable_onc_ids, rule=onc_distance_rule)
 
     def onc_cost_rule(model, onss1, onss2):
-        return onc_cost_lin(model.onc_dist_exp[onss1, onss2], model.onc_cap_var[onss1, onss2])
+        return onc_cost_lin(model.first_year.value, model.onc_dist_exp[onss1, onss2], model.onc_cap_var[onss1, onss2])
     model.onc_cost_exp = Expression(model.viable_onc_ids, rule=onc_cost_rule)
 
 
@@ -866,6 +899,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
     """
     print("Solving the model...")
     
+    # Set the path to the Scip solver executable
+    scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
+
+    # Create a solver object and specify the solver executable path
+    solver = SolverFactory('scip')
+    solver.options['executable'] = scip_path
+    
     solver_options = {
         'numerics/scaling': 1,  # Enable scaling
         'tolerances/feasibility': 1e-5,  # Tolerance for feasibility checks
@@ -891,7 +931,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
         'display/verblevel': 4           # Set verbosity level to display information about the solution
     }
 
-    def save_results(model, workspace_folder):
+    def save_results(model, workspace_folder, year):
         """
         Save the IDs of selected components of the optimization model along with all their corresponding parameters,
         including directly retrieved capacity and cost from the model expressions, into both .npy and .txt files as structured arrays.
@@ -900,6 +940,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
         Parameters:
         - model: The optimized Pyomo model.
         - workspace_folder: The path to the directory where results will be saved.
+        - year: The year for which the results are being saved.
         """
         def exp_f(e):
             return round(e.expr(), 3)
@@ -1017,8 +1058,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
         total_capacity_cost = []
 
         for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'c_{key}.npy')
-            txt_file_path = os.path.join(results_dir, f'c_{key}.txt')
+            npy_file_path = os.path.join(results_dir, f'c_{key}_{year}.npy')
+            txt_file_path = os.path.join(results_dir, f'c_{key}_{year}.txt')
 
             # Save as .npy file
             np.save(npy_file_path, info['data'])
@@ -1045,7 +1086,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
         total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
 
         # Save the total capacities and cost in .npy and .txt files
-        total_txt_file_path = os.path.join(results_dir, 'c_total.txt')
+        total_txt_file_path = os.path.join(results_dir, f'c_total_{year}.txt')
 
         # Save as .txt file
         with open(total_txt_file_path, 'w') as file:
@@ -1081,47 +1122,109 @@ def opt_model(workspace_folder, model_type=0, cross_border=0):
         
         # Save the aggregated data per country
         for country, data in country_data.items():
-            country_txt_file_path = os.path.join(results_dir, f'c_total_{country}.txt')
+            country_txt_file_path = os.path.join(results_dir, f'c_total_{country}_{year}.txt')
             with open(country_txt_file_path, 'w') as file:
                 file.write("Component, Total Capacity, Total Cost\n")
                 for component, values in data.items():
                     file.write(f"{component}, {round(values['capacity'])}, {round(values['cost'], 3)}\n")
             print(f'Saved total capacity and cost for {country} in {country_txt_file_path}')
 
-    # Set the path to the Scip solver executable
-    scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
-
-    # Create a solver object and specify the solver executable path
-    solver = SolverFactory('scip')
-    solver.options['executable'] = scip_path
-
-    # Define the path for the solver log
-    solver_log_path = os.path.join(workspace_folder, "results", "combined", "c_solverlog.txt")
-
-    # Solve the optimization model
-    results = solver.solve(model, tee=True, logfile=solver_log_path, options=solver_options)
-
-    # Detailed checking of solver results
-    if results.solver.status == SolverStatus.ok:
-        if results.solver.termination_condition == TerminationCondition.optimal:
-            print("Solver found an optimal solution.")
-            print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
-            save_results(model, workspace_folder)
-        elif results.solver.termination_condition == TerminationCondition.infeasible:
-            print("Problem is infeasible. Check model constraints and data.")
-        elif results.solver.termination_condition == TerminationCondition.unbounded:
-            print("Problem is unbounded. Check objective function and constraints.")
+    def update_and_fix_variables(model):
+        """
+        Fix decision variables if their values are above 0.1.
+        """
+        for var in [model.wf_bool_var, model.eh_cap_var, model.ec1_cap_var, model.ec2_cap_var, model.ec3_cap_var]:
+            for index in var:
+                if var[index].value > 0.1:
+                    var[index].fix(round(var[index].value))
+    
+    def solve_single_stage(model, workspace_folder):
+        # Use country_cf_2050 for the single stage optimization
+        country_cf_y = model.country_cf_3
+        year = first_year_3
+        
+        # Update country_cf for the single stage optimization for 2050
+        model.country_cf.store_values(country_cf_y)
+        
+        # Update first_year
+        model.first_year.store_values(year)
+        
+        # Solve the model
+        results = solver.solve(model, tee=True, logfile=os.path.join(workspace_folder, "results", "combined", "c_solverlog_2050.txt"), options=solver_options)
+            
+        # Detailed checking of solver results
+        if results.solver.status == SolverStatus.ok:
+            if results.solver.termination_condition == TerminationCondition.optimal:
+                print(f"Solver found an optimal solution for {year}.")
+                print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
+                save_results(model, workspace_folder, year)
+            elif results.solver.termination_condition == TerminationCondition.infeasible:
+                print(f"Problem is infeasible for {year}. Check model constraints and data.")
+            elif results.solver.termination_condition == TerminationCondition.unbounded:
+                print(f"Problem is unbounded for {year}. Check objective function and constraints.")
+            else:
+                print(f"Solver terminated with condition for {year}: {results.solver.termination_condition}.")
+        elif results.solver.status == SolverStatus.error:
+            print(f"Solver error occurred for {year}. Check solver log for more details.")
+        elif results.solver.status == SolverStatus.warning:
+            print(f"Solver finished with warnings for {year}. Results may not be reliable.")
         else:
-            print(f"Solver terminated with condition: {results.solver.termination_condition}.")
-    elif results.solver.status == SolverStatus.error:
-        print("Solver error occurred. Check solver log for more details.")
-    elif results.solver.status == SolverStatus.warning:
-        print("Solver finished with warnings. Results may not be reliable.")
-    else:
-        print(f"Unexpected solver status: {results.solver.status}. Check solver log for details.")
+            print(f"Unexpected solver status for : {results.solver.status}. Check solver log for details.")
+        
+        # Optionally, print a message about where the solver log was saved
+        print(f"Solver log for {year} saved to {os.path.join(workspace_folder, 'results', 'combined', 'c_solverlog_2050.txt')}")
+    
+    def solve_stages(model, workspace_folder):
+        # Define the country_cf parameters for each stage
+        country_cf_params = {
+            first_year_1: model.country_cf_1,
+            first_year_2: model.country_cf_1,
+            first_year_3: model.country_cf_1
+        }
+        
+        for year in [first_year_1, first_year_2, first_year_3]:
+            print(f"Solving for {year}...")
+            
+            # Update country_cf for the single stage optimization for 2050
+            model.country_cf.store_values(country_cf_params[year])
+            
+            # Update first_year
+            model.first_year.store_values(year)
+            
+            # Solve the model
+            results = solver.solve(model, tee=True, logfile=os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year}.txt"), options=solver_options)
+            
+            # Detailed checking of solver results
+            if results.solver.status == SolverStatus.ok:
+                if results.solver.termination_condition == TerminationCondition.optimal:
+                    print(f"Solver found an optimal solution for {year}.")
+                    print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
+                    save_results(model, workspace_folder, year)
+                    if year < first_year_3:
+                        update_and_fix_variables(model)
+                elif results.solver.termination_condition == TerminationCondition.infeasible:
+                    print(f"Problem is infeasible for {year}. Check model constraints and data.")
+                elif results.solver.termination_condition == TerminationCondition.unbounded:
+                    print(f"Problem is unbounded for {year}. Check objective function and constraints.")
+                else:
+                    print(f"Solver terminated with condition for {year}: {results.solver.termination_condition}.")
+            elif results.solver.status == SolverStatus.error:
+                print(f"Solver error occurred for {year}. Check solver log for more details.")
+            elif results.solver.status == SolverStatus.warning:
+                print(f"Solver finished with warnings for {year}. Results may not be reliable.")
+            else:
+                print(f"Unexpected solver status for {year}: {results.solver.status}. Check solver log for details.")
+            
+            # Optionally, print a message about where the solver log was saved
+            print(f"Solver log for {year} saved to {os.path.join(workspace_folder, 'results', 'combined', f'c_solverlog_{year}.txt')}")
 
-    # Optionally, print a message about where the solver log was saved
-    print(f"Solver log saved to {solver_log_path}")
+    # Decide whether to run single stage or multistage optimization
+    if multi_stage == 0:
+        print(f"Performing single stage optimization for {first_year_3}...")
+        solve_single_stage(model, workspace_folder)
+    elif multi_stage == 1:
+        print(f"Performing multistage optimization for {first_year_1}, {first_year_2}, and {first_year_3}...")
+        solve_stages(model, workspace_folder)
 
     return None
 
