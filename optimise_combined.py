@@ -41,7 +41,7 @@ from pyomo.environ import *
 import numpy as np
 import os
 from itertools import product
-from scripts.present_value import present_value, present_value_single
+from scripts.present_value import present_value_single
 
 def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     """

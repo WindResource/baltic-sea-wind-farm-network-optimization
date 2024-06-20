@@ -100,5 +100,5 @@ def gen_dataset(output_folder):
     arcpy.AddMessage(f"Data saved to {npy_filename} and {txt_filename}")
 
 if __name__ == "__main__":
-    output_folder = r"C:\Users\cflde\Documents\Graduation Project\ArcGIS Pro\BalticSea\Results\datasets"
+    output_folder = f"C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets"
     gen_dataset(output_folder)
