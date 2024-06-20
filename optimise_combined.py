@@ -41,9 +41,7 @@ from pyomo.environ import *
 import numpy as np
 import os
 from itertools import product
-from scripts.present_value import PV
-
-pv = PV()
+from scripts.present_value import present_value, present_value_single
 
 def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     """
@@ -165,7 +163,7 @@ def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     ope_cost_yearly = 0.03 * conv_cost
     
     # Calculate present value of cost    
-    eh_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    eh_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
     
     # Offshore substation cost in million Euros
     eh_cost *= 1e-6
@@ -194,7 +192,7 @@ def onss_cost_lin(first_year, capacity, threshold):
     inst_cost, deco_cost = 0, 0
     
     # Calculate present value
-    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
     
     return total_cost
 
@@ -229,7 +227,7 @@ def ec1_cost_lin(first_year, distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
@@ -264,7 +262,7 @@ def ec2_cost_lin(first_year, distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
@@ -299,7 +297,7 @@ def ec3_cost_lin(first_year, distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Calculate present value
-    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
@@ -329,7 +327,7 @@ def onc_cost_lin(first_year, distance, capacity):
     deco_cost = 0.5 * inst_cost
 
     # Assuming a placeholder for present value calculation (to be defined)
-    total_cost = pv.present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 

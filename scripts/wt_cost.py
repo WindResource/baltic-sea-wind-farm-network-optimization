@@ -16,7 +16,7 @@ def check_supp(water_depth):
     elif 55 <= water_depth:
         return "floating"
 
-def calc_equip_cost(water_depth, support_structure, ice_cover, turbine_capacity):
+def calc_equip_cost(first_year, water_depth, support_structure, ice_cover, turbine_capacity):
     """
     Calculates the equipment cost based on water depth, support structure, ice cover, and turbine capacity.
 
@@ -29,13 +29,27 @@ def calc_equip_cost(water_depth, support_structure, ice_cover, turbine_capacity)
     Returns:
         tuple: Calculated support structure cost and turbine cost.
     """
-    support_structure_coeff = {
-        'monopile': (181, 552, 370),
-        'jacket': (103, -2043, 478),
-        'floating': (0, 697, 1223)
-    }
-
-    turbine_coeff = 1200 * 1e3  # Coefficient for turbine cost (EU/MW)
+    if first_year == 2030:
+        support_structure_coeff = {
+            'monopile': (181, 552, 370),
+            'jacket': (103, -2043, 478),
+            'floating': (0, 697, 1223)
+        }
+        turbine_coeff = 1200 * 1e3  # Coefficient for turbine cost (EU/MW)
+    elif first_year == 2040:
+        support_structure_coeff = {
+            'monopile': (176, 536, 270),
+            'jacket': (100, -1986, 375),
+            'floating': (0, 678, 1034)
+        }
+        turbine_coeff = 1100 * 1e3  # Coefficient for turbine cost (EU/MW)
+    elif first_year == 2050:
+        support_structure_coeff = {
+            'monopile': (171, 521, 170),
+            'jacket': (97, -1930, 658),
+            'floating': (0, 658, 844)
+        }
+        turbine_coeff = 1000 * 1e3  # Coefficient for turbine cost (EU/MW)
 
     c1, c2, c3 = support_structure_coeff[support_structure]  # Get coefficients for the support structure
     supp_cost = turbine_capacity * (c1 * (water_depth ** 2) + c2 * water_depth + c3 * 1e3)
@@ -57,9 +71,9 @@ def calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, operation)
     and rated power of the wind turbines.
 
     Parameters:
-        water_depth (float): Water depth at the turbine location.
-        port_distance (float): Distance to the port.
-        turbine_capacity (float): Capacity of the turbine.
+        water_depth (float): Water depth at the turbine location in m.
+        port_distance (float): Distance to the port in km.
+        turbine_capacity (float): Capacity of the turbine in MW.
         operation (str): Type of operation ('installation' or 'decommissioning').
 
     Returns:

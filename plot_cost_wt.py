@@ -27,9 +27,12 @@ def calc_total_cost(water_depth, ice_cover, port_distance, turbine_capacity):
     Returns:
         tuple: Total cost, equipment cost, installation cost, total operational cost, decommissioning cost in millions of Euros.
     """
+    global first_year
+    first_year = 2050
+    
     support_structure = check_supp(water_depth)  # Determine support structure
 
-    supp_cost, turbine_cost = calc_equip_cost(water_depth, support_structure, ice_cover, turbine_capacity)  # Calculate equipment cost
+    supp_cost, turbine_cost = calc_equip_cost(first_year, water_depth, support_structure, ice_cover, turbine_capacity)  # Calculate equipment cost
 
     equip_cost = supp_cost + turbine_cost
     
@@ -38,7 +41,7 @@ def calc_total_cost(water_depth, ice_cover, port_distance, turbine_capacity):
 
     ope_cost_yearly = 0.025 * turbine_cost  # Calculate yearly operational cost
 
-    total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)  # Calculate present value of cost
+    total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = present_value(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)  # Calculate present value of cost
 
     return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
 
@@ -118,7 +121,7 @@ def plot_equip_costs_vs_water_depth():
 
     for wd in water_depths:
         support_structure = check_supp(wd)
-        supp_cost, turbine_cost = calc_equip_cost(wd, support_structure, ice_cover, turbine_capacity)
+        supp_cost, turbine_cost = calc_equip_cost(first_year, wd, support_structure, ice_cover, turbine_capacity)
         equip_cost = supp_cost + turbine_cost
         supp_costs.append(supp_cost)
         turbine_costs.append(turbine_cost)
@@ -313,14 +316,14 @@ def plot_ice_equip_costs_vs_water_depth():
         support_structure = check_supp(wd)
 
         # Costs for ice_cover = 0
-        supp_cost, turbine_cost = calc_equip_cost(wd, support_structure, 0, turbine_capacity)
+        supp_cost, turbine_cost = calc_equip_cost(first_year, wd, support_structure, 0, turbine_capacity)
         equip_cost = supp_cost + turbine_cost
         supp_costs_ice0.append(supp_cost)
         turbine_costs_ice0.append(turbine_cost)
         equip_costs_ice0.append(equip_cost)
 
         # Costs for ice_cover = 1
-        supp_cost, turbine_cost = calc_equip_cost(wd, support_structure, 1, turbine_capacity)
+        supp_cost, turbine_cost = calc_equip_cost(first_year, wd, support_structure, 1, turbine_capacity)
         equip_cost = supp_cost + turbine_cost
         supp_costs_ice1.append(supp_cost)
         turbine_costs_ice1.append(turbine_cost)
