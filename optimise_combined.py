@@ -42,6 +42,7 @@ import numpy as np
 import os
 from itertools import product
 from scripts.present_value import present_value_single
+from scripts.eh_cost import check_supp, equip_cost_lin, inst_deco_cost_lin
 
 def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     """
@@ -57,100 +58,9 @@ def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     Returns:
     - float: Estimated total cost of the energy hub.
     """
-    
-    def supp_struct_cond(water_depth):
-        """
-        Determines the support structure type based on water depth.
-
-        Returns:
-        - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
-        """
-        # Define depth ranges for different support structures
-        if water_depth < 150:
-            return "jacket"
-        elif 150 <= water_depth:
-            return "floating"
-
-    def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity):
-        """
-        Calculates the energy hub equipment cost based on water depth, capacity, and export cable type.
-
-        Returns:
-        - float: Calculated equipment cost.
-        """
-        # Coefficients for equipment cost calculation based on the support structure and year
-        support_structure_coeff = {
-            'jacket': (233, 47, 309, 62),
-            'floating': (87, 68, 116, 91)
-        }
-
-        equip_coeff = (22.87, 7.06)
-        
-        # Define parameters
-        c1, c2, c3, c4 = support_structure_coeff[support_structure]
-        
-        c5, c6 = equip_coeff
-        
-        # Define equivalent electrical power
-        equiv_capacity = 0.5 * eh_capacity
-
-        # Calculate foundation cost for jacket/floating
-        supp_cost = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
-        
-        # Add support structure cost for ice cover adaptation
-        supp_cost = 1.10 * supp_cost if ice_cover == 1 else supp_cost
-        
-        # Power converter cost
-        conv_cost = c5 * eh_capacity * int(1e3) + c6 * int(1e6) #* int(1e3)
-        
-        # Calculate equipment cost
-        equip_cost = supp_cost + conv_cost
-        
-        return conv_cost, equip_cost
-
-    def inst_deco_cost_lin(support_structure, port_distance, operation):
-        """
-        Calculate installation or decommissioning cost of offshore substations based on the water depth, and port distance.
-
-        Returns:
-        - float: Calculated installation or decommissioning cost.
-        """
-        # Installation coefficients for different vehicles
-        inst_coeff = {
-            ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
-            ('floating','HLCV'): (1, 22.5, 10, 0, 40),
-            ('floating','AHV'): (3, 18.5, 30, 90, 40)
-        }
-
-        # Decommissioning coefficients for different vehicles
-        deco_coeff = {
-            ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
-            ('floating','HLCV'): (1, 22.5, 10, 0, 40),
-            ('floating','AHV'): (3, 18.5, 30, 30, 40)
-        }
-
-        # Choose the appropriate coefficients based on the operation type
-        coeff = inst_coeff if operation == 'inst' else deco_coeff
-            
-        if support_structure == 'jacket':
-            c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
-            # Calculate installation cost for jacket
-            total_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-        elif support_structure == 'floating':
-            total_cost = 0
-            
-            # Iterate over the coefficients for floating (HLCV and AHV)
-            for vessel_type in [('floating', 'HLCV'), ('floating', 'AHV')]:
-                c1, c2, c3, c4, c5 = coeff[vessel_type]
-                # Calculate installation cost for the current vessel type
-                vessel_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-                # Add the cost for the current vessel type to the total cost
-                total_cost += vessel_cost
-        
-        return total_cost
 
     # Determine support structure
-    supp_structure = supp_struct_cond(water_depth)
+    supp_structure = check_supp(water_depth)
     
     # Calculate equipment cost
     conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity)
@@ -164,9 +74,6 @@ def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     
     # Calculate present value of cost    
     eh_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
-    
-    # Offshore substation cost in million Euros
-    eh_cost *= 1e-6
     
     return eh_cost
 
@@ -459,10 +366,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     Returns:
     - model: Pyomo ConcreteModel object representing the optimization model.
     """
-    # Define the years to be optimized
-    first_year_1 = 2030
-    first_year_2 = 2040
-    first_year_3 = 2050
+    # Define the year to be optimized for single stage
+    first_year_sf_1 = 2050
+    
+    # Define the years to be optimized for multi stage
+    first_year_mf_1 = 2030
+    first_year_mf_2 = 2040
+    first_year_mf_3 = 2050
     
     # Define the base capacity fractions for 2030, 2040, and 2050
     base_country_cf_1 = {
@@ -543,7 +453,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     onss_ids = [int(data[0]) for data in onss_dataset]
 
     # Wind farm data
-    wf_iso, wf_lon, wf_lat, wf_cap, wf_cost = {}, {}, {}, {}, {}
+    wf_iso, wf_lon, wf_lat, wf_cap, wf_cost_1, wf_cost_2, wf_cost_3 = {}, {}, {}, {}, {}, {}, {}
 
     for data in wf_dataset:
         id = int(data[0])
@@ -551,7 +461,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         wf_lon[id] = float(data[2])
         wf_lat[id] = float(data[3])
         wf_cap[id] = float(data[4])
-        wf_cost[id] = float(data[5])
+        wf_cost_1[id] = float(data[5])
+        wf_cost_2[id] = float(data[6])
+        wf_cost_3[id] = float(data[7])
 
     # Offshore substation data
     eh_iso, eh_lon, eh_lat, eh_wdepth, eh_icover, eh_pdist = {}, {}, {}, {}, {}, {}
@@ -593,8 +505,11 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     model.wf_lon = Param(model.wf_ids, initialize=wf_lon, within=NonNegativeReals)
     model.wf_lat = Param(model.wf_ids, initialize=wf_lat, within=NonNegativeReals)
     model.wf_cap = Param(model.wf_ids, initialize=wf_cap, within=NonNegativeIntegers)
-    model.wf_cost = Param(model.wf_ids, initialize=wf_cost, within=NonNegativeReals)
-
+    
+    model.wf_cost_1 = Param(model.wf_ids, initialize=wf_cost_1, within=NonNegativeReals)
+    model.wf_cost_2 = Param(model.wf_ids, initialize=wf_cost_2, within=NonNegativeReals)
+    model.wf_cost_3 = Param(model.wf_ids, initialize=wf_cost_3, within=NonNegativeReals)
+    
     # Offshore substation model parameters
     model.eh_iso = Param(model.eh_ids, initialize=eh_iso, within=NonNegativeIntegers)
     model.eh_lon = Param(model.eh_ids, initialize=eh_lon, within=NonNegativeReals)
@@ -616,10 +531,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     model.country_cf_3 = Param(model.country_ids, initialize=country_cf_3, within=NonNegativeReals)
     
     # Define the first years
-    model.first_year = Param(initialize=first_year_3, within=NonNegativeIntegers, mutable=True)
-    model.first_year_1 = Param(initialize=first_year_1, within=NonNegativeIntegers)
-    model.first_year_2 = Param(initialize=first_year_2, within=NonNegativeIntegers)
-    model.first_year_3 = Param(initialize=first_year_3, within=NonNegativeIntegers)
+    model.first_year = Param(initialize=first_year_sf_1, within=NonNegativeIntegers, mutable=True)
+    
+    model.first_year_sf_1 = Param(initialize=first_year_sf_1, within=NonNegativeIntegers)
+    
+    model.first_year_mf_1 = Param(initialize=first_year_mf_1, within=NonNegativeIntegers)
+    model.first_year_mf_2 = Param(initialize=first_year_mf_2, within=NonNegativeIntegers)
+    model.first_year_mf_3 = Param(initialize=first_year_mf_3, within=NonNegativeIntegers)
 
     """
     Define decision variables
