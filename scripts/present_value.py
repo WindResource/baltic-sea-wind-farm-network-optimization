@@ -11,6 +11,7 @@ def present_value(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
     Returns:
         float: Total present value of cost.
     """
+    first_year = int(first_year)
     current_year = 2024
     
     # Define years for installation, operational, and decommissioning
@@ -54,6 +55,7 @@ def present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, dec
         Returns:
             float: Total present value of cost.
         """
+        first_year = int(first_year)
         current_year = 2024
         
         # Define years for installation, operational, and decommissioning
