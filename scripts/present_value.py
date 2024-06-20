@@ -40,7 +40,7 @@ class PV:
 
         return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
     
-    def present_value_single(self, equip_cost, inst_cost, ope_cost_yearly, deco_cost):
+    def present_value_single(self, first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost):
             """
             Calculate the total present value of cable cost.
 
@@ -53,8 +53,10 @@ class PV:
             Returns:
                 float: Total present value of cost.
             """
+            current_year = 2024
+            
             # Define years for installation, operational, and decommissioning
-            inst_year = 0  # First year (installation year)
+            inst_year = (first_year - current_year) # First year (installation year)
             ope_year = inst_year + 5  # Operational costs start year
             dec_year = ope_year + 25  # Decommissioning year
             end_year = dec_year + 2  # End year
