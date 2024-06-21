@@ -880,26 +880,62 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
             7 : 'PL',  # Poland
             8 : 'SE'   # Sweden
         }
-        
-        selected_components = {
-            'wf_ids': {
-                'data': np.array([(wf, int_to_iso_mp[model.wf_iso[wf]], model.wf_lon[wf], model.wf_lat[wf], rnd_f(model.wf_cap[wf]), rnd_f(model.wf_cost[wf])) 
-                                for wf in model.viable_wf_ids if model.wf_bool_var[wf].value > 0.1], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', float)]),
-                'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
-            },
-            'eh_ids': {
-                'data': np.array([(eh, int_to_iso_mp[model.eh_iso[eh]], model.eh_lon[eh], model.eh_lat[eh], model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], rnd_f(model.eh_cap_var[eh]), rnd_f(model.eh_cost_exp[eh])) 
-                                for eh in model.viable_eh_ids if model.eh_cap_var[eh].value > 0.1], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
-                'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
-            },
-            'onss_ids': {
-                'data': np.array([(onss, int_to_iso_mp[model.onss_iso[onss]], model.onss_lon[onss], model.onss_lat[onss], model.onss_thold[onss], rnd_f(model.onss_cap_var[onss]), rnd_f(model.onss_cost_var[onss])) 
-                                for onss in model.viable_onss_ids if model.onss_cap_var[onss].value > 0.1], 
-                                dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
-                'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
-            }
+
+        selected_components = {}
+
+        # Define and aggregate data for wind farms
+        wf_data = []
+        for wf in model.viable_wf_ids:
+            if model.wf_bool_var[wf].value > 0.1:
+                wf_id = wf
+                wf_iso = int_to_iso_mp[model.wf_iso[wf]]
+                wf_lon = model.wf_lon[wf]
+                wf_lat = model.wf_lat[wf]
+                wf_capacity = rnd_f(model.wf_cap[wf])
+                wf_cost = rnd_f(model.wf_cost[wf])
+                wf_data.append((wf_id, wf_iso, wf_lon, wf_lat, wf_capacity, wf_cost))
+
+        selected_components['wf_ids'] = {
+            'data': np.array(wf_data, dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', float)]),
+            'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
+        }
+
+        # Define and aggregate data for energy hubs
+        eh_data = []
+        for eh in model.viable_eh_ids:
+            if model.eh_cap_var[eh].value > 0.1:
+                eh_id = eh
+                eh_iso = int_to_iso_mp[model.eh_iso[eh]]
+                eh_lon = model.eh_lon[eh]
+                eh_lat = model.eh_lat[eh]
+                eh_water_depth = model.eh_wdepth[eh]
+                eh_ice_cover = model.eh_icover[eh]
+                eh_port_dist = model.eh_pdist[eh]
+                eh_capacity = rnd_f(model.eh_cap_var[eh])
+                eh_cost = rnd_f(model.eh_cost_exp[eh])
+                eh_data.append((eh_id, eh_iso, eh_lon, eh_lat, eh_water_depth, eh_ice_cover, eh_port_dist, eh_capacity, eh_cost))
+
+        selected_components['eh_ids'] = {
+            'data': np.array(eh_data, dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('water_depth', int), ('ice_cover', int), ('port_dist', int), ('capacity', float), ('cost', float)]),
+            'headers': "ID, ISO, Longitude, Latitude, Water Depth, Ice Cover, Port Distance, Capacity, Cost"
+        }
+
+        # Define and aggregate data for onshore substations
+        onss_data = []
+        for onss in model.viable_onss_ids:
+            if model.onss_cap_var[onss].value > 0.1:
+                onss_id = onss
+                onss_iso = int_to_iso_mp[model.onss_iso[onss]]
+                onss_lon = model.onss_lon[onss]
+                onss_lat = model.onss_lat[onss]
+                onss_threshold = model.onss_thold[onss]
+                onss_capacity = rnd_f(model.onss_cap_var[onss])
+                onss_cost = rnd_f(model.onss_cost_var[onss])
+                onss_data.append((onss_id, onss_iso, onss_lon, onss_lat, onss_threshold, onss_capacity, onss_cost))
+
+        selected_components['onss_ids'] = {
+            'data': np.array(onss_data, dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
+            'headers': "ID, ISO, Longitude, Latitude, Threshold, Capacity, Cost"
         }
 
         # Export cable ID counter
@@ -975,45 +1011,6 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
 
         total_capacity_cost = []
 
-        for key, info in selected_components.items():
-            npy_file_path = os.path.join(results_dir, f'c_{key}_{year}.npy')
-            txt_file_path = os.path.join(results_dir, f'c_{key}_{year}.txt')
-
-            # Save as .npy file
-            np.save(npy_file_path, info['data'])
-
-            # Save as .txt file for easier viewing
-            with open(txt_file_path, 'w') as file:
-                file.write(info['headers'] + '\n')  # Write the headers
-                for entry in info['data']:
-                    file.write(', '.join(map(str, entry)) + '\n')
-            
-            print(f'Saved {key} in {npy_file_path} and {txt_file_path}')
-
-            # Calculate total capacity and cost for this component type
-            total_capacity = sum(info['data']['capacity'])
-            total_cost = sum(info['data']['cost'])
-            total_capacity_cost.append((key, round(total_capacity), round(total_cost, 3)))
-
-        # Calculate overall totals
-        overall_capacity = sum(item[1] for item in total_capacity_cost)
-        overall_cost = sum(item[2] for item in total_capacity_cost)
-        total_capacity_cost.append(("overall", round(overall_capacity), round(overall_cost, 3)))
-
-        # Create a structured array for total capacities and cost
-        total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
-
-        # Save the total capacities and cost in .npy and .txt files
-        total_txt_file_path = os.path.join(results_dir, f'c_total_{year}.txt')
-
-        # Save as .txt file
-        with open(total_txt_file_path, 'w') as file:
-            file.write("Component, Total Capacity, Total Cost\n")
-            for entry in total_capacity_cost_array:
-                file.write(f'{entry[0]}, {entry[1]}, {entry[2]}\n')
-
-        print(f'Saved total capacities and cost in {total_txt_file_path}')
-        
         # Initialize dictionary to hold per-country data
         country_data = {country: {'wf_ids': {'capacity': 0, 'cost': 0},
                                 'eh_ids': {'capacity': 0, 'cost': 0},
@@ -1031,13 +1028,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
                 country = entry['iso']
                 country_data[country][component]['capacity'] += entry['capacity']
                 country_data[country][component]['cost'] += entry['cost']
-        
-        # Calculate overall capacity and cost per country
-        for country in country_data:
-            for component in ['wf_ids', 'eh_ids', 'onss_ids', 'ec1_ids', 'ec2_ids', 'ec3_ids', 'onc_ids']:
-                country_data[country]['overall']['capacity'] += country_data[country][component]['capacity']
-                country_data[country]['overall']['cost'] += country_data[country][component]['cost']
-        
+                country_data[country]['overall']['capacity'] += entry['capacity']
+                country_data[country]['overall']['cost'] += entry['cost']
+
         # Save the aggregated data per country
         for country, data in country_data.items():
             country_txt_file_path = os.path.join(results_dir, f'c_total_{country}_{year}.txt')
@@ -1046,6 +1039,25 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
                 for component, values in data.items():
                     file.write(f"{component}, {round(values['capacity'])}, {round(values['cost'], 3)}\n")
             print(f'Saved total capacity and cost for {country} in {country_txt_file_path}')
+
+        # Calculate overall totals
+        overall_capacity = sum(data['overall']['capacity'] for data in country_data.values())
+        overall_cost = sum(data['overall']['cost'] for data in country_data.values())
+        total_capacity_cost.append(("overall", round(overall_capacity), round(overall_cost, 3)))
+
+        # Create a structured array for total capacities and cost
+        total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
+
+        # Save the total capacities and cost in .npy and .txt files
+        total_txt_file_path = os.path.join(results_dir, f'c_total_{year}.txt')
+
+        # Save as .txt file
+        with open(total_txt_file_path, 'w') as file:
+            file.write("Component, Total Capacity, Total Cost\n")
+            for entry in total_capacity_cost_array:
+                file.write(f'{entry[0]}, {entry[1]}, {entry[2]}\n')
+
+        print(f'Saved total capacities and cost in {total_txt_file_path}')
 
     def update_and_fix_variables(model):
         """
