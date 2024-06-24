@@ -103,7 +103,7 @@ def onss_cost_lin(first_year, capacity, threshold):
     
     return total_cost
 
-def ec1_cost_lin(first_year, distance, capacity):
+def ec1_cost_fun(first_year, distance, capacity, function="lin"):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -124,7 +124,10 @@ def ec1_cost_lin(first_year, distance, capacity):
     cable_inst_cost = 0.540 #Meu/km
     capacity_factor = 0.95
     
-    parallel_cables = capacity / (cable_capacity * capacity_factor)
+    if function == "lin":
+        parallel_cables = capacity / (cable_capacity * capacity_factor)
+    elif function == "ceil":
+        parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
     
     equip_cost = parallel_cables * cable_length * cable_equip_cost
     inst_cost = parallel_cables * cable_length * cable_inst_cost
@@ -138,7 +141,7 @@ def ec1_cost_lin(first_year, distance, capacity):
 
     return total_cost
 
-def ec2_cost_lin(first_year, distance, capacity):
+def ec2_cost_fun(first_year, distance, capacity, function="lin"):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -159,7 +162,10 @@ def ec2_cost_lin(first_year, distance, capacity):
     cable_inst_cost = 0.540 # Million EU/km
     capacity_factor = 0.95
     
-    parallel_cables = capacity / (cable_capacity * capacity_factor)
+    if function == "lin":
+        parallel_cables = capacity / (cable_capacity * capacity_factor)
+    elif function == "ceil":
+        parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
     
     equip_cost = parallel_cables * cable_length * cable_equip_cost
     inst_cost = parallel_cables * cable_length * cable_inst_cost
@@ -173,7 +179,7 @@ def ec2_cost_lin(first_year, distance, capacity):
 
     return total_cost
 
-def ec3_cost_lin(first_year, distance, capacity):
+def ec3_cost_fun(first_year, distance, capacity, function="lin"):
     """
     Calculate the cost associated with selecting export cables for a given length, desired capacity,
     and desired voltage.
@@ -194,7 +200,10 @@ def ec3_cost_lin(first_year, distance, capacity):
     cable_inst_cost = 0.540 # Million EU/km
     capacity_factor = 0.95
     
-    parallel_cables = capacity / (cable_capacity * capacity_factor)
+    if function == "lin":
+        parallel_cables = capacity / (cable_capacity * capacity_factor)
+    elif function == "ceil":
+        parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
     
     equip_cost = parallel_cables * cable_length * cable_equip_cost
     inst_cost = parallel_cables * cable_length * cable_inst_cost
@@ -208,7 +217,7 @@ def ec3_cost_lin(first_year, distance, capacity):
 
     return total_cost
 
-def onc_cost_lin(first_year, distance, capacity):
+def onc_cost_fun(first_year, distance, capacity, function="lin"):
     """
     Calculate the cost associated with selecting onshore substation cables for a given length and desired capacity.
 
@@ -225,7 +234,10 @@ def onc_cost_lin(first_year, distance, capacity):
     cable_inst_cost = 0.540  # Million EU/km
     capacity_factor = 0.95
     
-    parallel_cables = capacity / (cable_capacity * capacity_factor)
+    if function == "lin":
+        parallel_cables = capacity / (cable_capacity * capacity_factor)
+    elif function == "ceil":
+        parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
     
     equip_cost = parallel_cables * cable_length * cable_equip_cost
     inst_cost = parallel_cables * cable_length * cable_inst_cost
@@ -647,7 +659,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     model.ec1_dist_exp = Expression(model.viable_ec1_ids, rule=ec1_distance_rule)
 
     def ec1_cost_rule(model, wf, eh):
-        return ec1_cost_lin(value(model.first_year), model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh])
+        return ec1_cost_fun(value(model.first_year), model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh])
     model.ec1_cost_exp = Expression(model.viable_ec1_ids, rule=ec1_cost_rule)
 
     """
@@ -665,7 +677,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     model.ec2_dist_exp = Expression(model.viable_ec2_ids, rule=ec2_distance_rule)
 
     def ec2_cost_rule(model, eh, onss):
-        return ec2_cost_lin(value(model.first_year), model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss])
+        return ec2_cost_fun(value(model.first_year), model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss])
     model.ec2_cost_exp = Expression(model.viable_ec2_ids, rule=ec2_cost_rule)
 
     """
@@ -676,7 +688,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     model.ec3_dist_exp = Expression(model.viable_ec3_ids, rule=ec3_distance_rule)
 
     def ec3_cost_rule(model, wf, onss):
-        return ec3_cost_lin(value(model.first_year), model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
+        return ec3_cost_fun(value(model.first_year), model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
     model.ec3_cost_exp = Expression(model.viable_ec3_ids, rule=ec3_cost_rule)
 
     """
@@ -694,7 +706,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
     model.onc_dist_exp = Expression(model.viable_onc_ids, rule=onc_distance_rule)
 
     def onc_cost_rule(model, onss1, onss2):
-        return onc_cost_lin(value(model.first_year), model.onc_dist_exp[onss1, onss2], model.onc_cap_var[onss1, onss2])
+        return onc_cost_fun(value(model.first_year), model.onc_dist_exp[onss1, onss2], model.onc_cap_var[onss1, onss2])
     model.onc_cost_exp = Expression(model.viable_onc_ids, rule=onc_cost_rule)
 
     """
@@ -855,7 +867,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         'display/verblevel': 4           # Set verbosity level to display information about the solution
     }
 
-    def save_results(model, workspace_folder, year):
+    def save_results(model, workspace_folder, year, prev_capacity):
         """
         Save the IDs of selected components of the optimization model along with all their corresponding parameters,
         including directly retrieved capacity and cost from the model expressions, into both .npy and .txt files as structured arrays.
@@ -868,7 +880,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         """
         def rnd_f(e):
             return round(value(e), 3)
-        
+
         # Mapping ISO country codes of Baltic Sea countries to unique integers
         int_to_iso_mp = {
             1 : 'DE',  # Germany
@@ -929,9 +941,10 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
                 onss_lon = model.onss_lon[onss]
                 onss_lat = model.onss_lat[onss]
                 onss_threshold = model.onss_thold[onss]
-                onss_capacity = rnd_f(model.onss_cap_var[onss])
-                onss_cost = rnd_f(model.onss_cost_var[onss])
-                onss_data.append((onss_id, onss_iso, onss_lon, onss_lat, onss_threshold, onss_capacity, onss_cost))
+                onss_cap = rnd_f(model.onss_cap_var[onss])
+                onss_cap_diff = onss_cap - prev_capacity.get('onss_ids', {}).get(onss, 0)
+                onss_cost = rnd_f(onss_cost_lin(value(model.first_year), onss_cap_diff, model.onss_thold[onss]))
+                onss_data.append((onss_id, onss_iso, onss_lon, onss_lat, onss_threshold, onss_cap, onss_cost))
 
         selected_components['onss_ids'] = {
             'data': np.array(onss_data, dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
@@ -946,8 +959,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         for wf, eh in model.viable_ec1_ids:
             if model.ec1_cap_var[wf, eh].value > 0.1:
                 ec1_cap = rnd_f(model.ec1_cap_var[wf, eh])
-                ec1_cost = rnd_f(model.ec1_cost_exp[wf, eh])
                 dist1 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
+                ec1_cost = ec1_cost_fun(value(model.first_year), dist1, ec1_cap, "ceil")
                 ec1_data.append((ec_id_counter, wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost, int_to_iso_mp[model.eh_iso[eh]]))
                 ec_id_counter += 1
 
@@ -962,8 +975,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         for eh, onss in model.viable_ec2_ids:
             if model.ec2_cap_var[eh, onss].value > 0.1:
                 ec2_cap = rnd_f(model.ec2_cap_var[eh, onss])
-                ec2_cost = rnd_f(model.ec2_cost_exp[eh, onss])
                 dist2 = rnd_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
+                ec2_cost = ec2_cost_fun(value(model.first_year), dist2, ec2_cap, "ceil")
                 ec2_data.append((ec_id_counter, eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost, int_to_iso_mp[model.onss_iso[onss]]))
                 ec_id_counter += 1
 
@@ -978,8 +991,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         for wf, onss in model.viable_ec3_ids:
             if model.ec3_cap_var[wf, onss].value > 0.1:
                 ec3_cap = rnd_f(model.ec3_cap_var[wf, onss])
-                ec3_cost = rnd_f(model.ec3_cost_exp[wf, onss])
                 dist3 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
+                ec3_cost = ec3_cost_fun(value(model.first_year), dist3, ec3_cap, "ceil")
                 ec3_data.append((ec_id_counter, wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost, int_to_iso_mp[model.onss_iso[onss]]))
                 ec_id_counter += 1
 
@@ -994,8 +1007,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         for onss1, onss2 in model.viable_onc_ids:
             if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0.1:
                 onc_cap = rnd_f(model.onc_cap_var[onss1, onss2])
-                onc_cost = rnd_f(model.onc_cost_exp[onss1, onss2])
                 dist4 = rnd_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
+                onc_cost = onc_cost_fun(value(model.first_year), dist4, onc_cap, "ceil")
                 onc_data.append((onc_id_counter, onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost, model.onss_iso[onss1]))
                 onc_id_counter += 1
 
@@ -1104,6 +1117,10 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         print(f"Solver log for {year_param} saved to {os.path.join(workspace_folder, 'results', 'combined', 'c_solverlog_2050.txt')}")
     
     def solve_multi_stage(model, workspace_folder):
+        
+        def rnd_f(e):
+            return round(value(e), 3)
+        
         # Define the country_cf parameters for each stage
         country_cf_params = {
             first_year_mf_1: model.country_cf_1,
@@ -1116,6 +1133,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
             first_year_mf_1: model.wf_cost_1,
             first_year_mf_2: model.wf_cost_2,
             first_year_mf_3: model.wf_cost_3
+        }
+        
+        # Initialize previous capacities dictionary
+        prev_capacity = {
+            'onss_ids': {},
+            'onc_ids': {}
         }
         
         for year in [first_year_mf_1, first_year_mf_2, first_year_mf_3]:
@@ -1133,7 +1156,10 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
                 if results.solver.termination_condition == TerminationCondition.optimal:
                     print(f"Solver found an optimal solution for {year}.")
                     print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
-                    save_results(model, workspace_folder, year)
+                    save_results(model, workspace_folder, year, prev_capacity)
+                    # Update prev_capacity with current capacities for the next stage
+                    prev_capacity['onss_ids'] = {onss: rnd_f(model.onss_cap_var[onss]) for onss in model.viable_onss_ids}
+                    prev_capacity['onc_ids'] = {(onss1, onss2): rnd_f(model.onc_cap_var[onss1, onss2]) for onss1, onss2 in model.viable_onc_ids}
                     if year < first_year_mf_3:
                         update_and_fix_variables(model)
                 elif results.solver.termination_condition == TerminationCondition.infeasible:
@@ -1152,12 +1178,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
             # Optionally, print a message about where the solver log was saved
             print(f"Solver log for {year} saved to {os.path.join(workspace_folder, 'results', 'combined', f'c_solverlog_{year}.txt')}")
 
-    # Decide whether to run single stage or multistage optimization
-    if multi_stage == 0:
-        print(f"Performing single stage optimization for {first_year_sf_1}...")
-        solve_single_stage(model, workspace_folder)
-    elif multi_stage == 1:
-        print(f"Performing multistage optimization for {first_year_mf_1}, {first_year_mf_2}, and {first_year_mf_3}...")
+        # Decide whether to run single stage or multistage optimization
+        if multi_stage == 0:
+            print(f"Performing single stage optimization for {first_year_sf_1}...")
+            solve_single_stage(model, workspace_folder)
+        elif multi_stage == 1:
+            print(f"Performing multistage optimization for {first_year_mf_1}, {first_year_mf_2}, and {first_year_mf_3}...")
         solve_multi_stage(model, workspace_folder)
 
     return None
