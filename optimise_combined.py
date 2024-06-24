@@ -1007,8 +1007,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         for onss1, onss2 in model.viable_onc_ids:
             if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0.1:
                 onc_cap = rnd_f(model.onc_cap_var[onss1, onss2])
+                onc_cap_diff = onc_cap - prev_capacity.get('onc_ids', {}).get((onss1, onss2), 0)
                 dist4 = rnd_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
-                onc_cost = onc_cost_fun(value(model.first_year), dist4, onc_cap, "ceil")
+                onc_cost = onc_cost_fun(value(model.first_year), dist4, onc_cap_diff, "ceil")
                 onc_data.append((onc_id_counter, onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost, model.onss_iso[onss1]))
                 onc_id_counter += 1
 
@@ -1072,6 +1073,23 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
 
         print(f'Saved total capacities and cost in {total_txt_file_path}')
 
+    def enforce_increase_variables(model, prev_capacity):
+        """
+        Ensure that the capacities of onshore substations (onss) and onshore cables (onc) 
+        only increase and not decrease between stages by adding constraints.
+        """
+        # Add constraints to ensure onss capacities do not decrease if above 0.1
+        for onss in model.viable_onss_ids:
+            prev_cap = prev_capacity['onss_ids'].get(onss, 0)
+            if prev_cap > 0.1:
+                model.onss_cap_var[onss].setlb(prev_cap)
+        
+        # Add constraints to ensure onc capacities do not decrease if above 0.1
+        for onss1, onss2 in model.viable_onc_ids:
+            prev_cap = prev_capacity['onc_ids'].get((onss1, onss2), 0)
+            if prev_cap > 0.1:
+                model.onc_cap_var[onss1, onss2].setlb(prev_cap)
+
     def update_and_fix_variables(model):
         """
         Fix decision variables if their values are above 0.1.
@@ -1087,9 +1105,15 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         year_param = model.first_year_sf_1
         wf_cost_param = model.wf_cost_3
         
-        model.country_cf.store_values(country_cf_param) # Update country_cf for the single stage optimization for 2050
-        model.first_year.store_values(year_param) # Update first_year
+        model.country_cf.store_values(country_cf_param)  # Update country_cf for the single stage optimization for 2050
+        model.first_year.store_values(year_param)  # Update first_year
         model.wf_cost.store_values(wf_cost_param)
+        
+        # Initialize previous capacities dictionary with zero capacities (needed for save_results function)
+        prev_capacity = {
+            'onss_ids': {onss: 0 for onss in model.viable_onss_ids},
+            'onc_ids': {(onss1, onss2): 0 for onss1, onss2 in model.viable_onc_ids}
+        }
         
         # Solve the model
         results = solver.solve(model, tee=True, logfile=os.path.join(workspace_folder, "results", "combined", "c_solverlog_2050.txt"), options=solver_options)
@@ -1099,7 +1123,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
             if results.solver.termination_condition == TerminationCondition.optimal:
                 print(f"Solver found an optimal solution for {year_param}.")
                 print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
-                save_results(model, workspace_folder, year_param)
+                save_results(model, workspace_folder, year_param, prev_capacity)
             elif results.solver.termination_condition == TerminationCondition.infeasible:
                 print(f"Problem is infeasible for {year_param}. Check model constraints and data.")
             elif results.solver.termination_condition == TerminationCondition.unbounded:
@@ -1111,13 +1135,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         elif results.solver.status == SolverStatus.warning:
             print(f"Solver finished with warnings for {year_param}. Results may not be reliable.")
         else:
-            print(f"Unexpected solver status for : {results.solver.status}. Check solver log for details.")
+            print(f"Unexpected solver status for {year_param}: {results.solver.status}. Check solver log for details.")
         
         # Optionally, print a message about where the solver log was saved
         print(f"Solver log for {year_param} saved to {os.path.join(workspace_folder, 'results', 'combined', 'c_solverlog_2050.txt')}")
-    
+
     def solve_multi_stage(model, workspace_folder):
-        
         def rnd_f(e):
             return round(value(e), 3)
         
@@ -1137,15 +1160,15 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
         
         # Initialize previous capacities dictionary
         prev_capacity = {
-            'onss_ids': {},
-            'onc_ids': {}
+            'onss_ids': {onss: 0 for onss in model.viable_onss_ids},
+            'onc_ids': {(onss1, onss2): 0 for onss1, onss2 in model.viable_onc_ids}
         }
         
         for year in [first_year_mf_1, first_year_mf_2, first_year_mf_3]:
             print(f"Solving for {year}...")
             
-            model.country_cf.store_values(country_cf_params[year]) # Update country_cf for the multistage optimization
-            model.first_year.store_values(year) # Update first_year
+            model.country_cf.store_values(country_cf_params[year])  # Update country_cf for the multistage optimization
+            model.first_year.store_values(year)  # Update first_year
             model.wf_cost.store_values(wf_cost_params[year])
             
             # Solve the model
@@ -1160,6 +1183,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
                     # Update prev_capacity with current capacities for the next stage
                     prev_capacity['onss_ids'] = {onss: rnd_f(model.onss_cap_var[onss]) for onss in model.viable_onss_ids}
                     prev_capacity['onc_ids'] = {(onss1, onss2): rnd_f(model.onc_cap_var[onss1, onss2]) for onss1, onss2 in model.viable_onc_ids}
+                    # Enforce capacity increase constraints
+                    enforce_increase_variables(model, prev_capacity)
+                    # Fix variables
                     if year < first_year_mf_3:
                         update_and_fix_variables(model)
                 elif results.solver.termination_condition == TerminationCondition.infeasible:
@@ -1178,12 +1204,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
             # Optionally, print a message about where the solver log was saved
             print(f"Solver log for {year} saved to {os.path.join(workspace_folder, 'results', 'combined', f'c_solverlog_{year}.txt')}")
 
-        # Decide whether to run single stage or multistage optimization
-        if multi_stage == 0:
-            print(f"Performing single stage optimization for {first_year_sf_1}...")
-            solve_single_stage(model, workspace_folder)
-        elif multi_stage == 1:
-            print(f"Performing multistage optimization for {first_year_mf_1}, {first_year_mf_2}, and {first_year_mf_3}...")
+    # Decide whether to run single stage or multistage optimization
+    if multi_stage == 0:
+        print(f"Performing single stage optimization for {first_year_sf_1}...")
+        solve_single_stage(model, workspace_folder)
+    elif multi_stage == 1:
+        print(f"Performing multistage optimization for {first_year_mf_1}, {first_year_mf_2}, and {first_year_mf_3}...")
         solve_multi_stage(model, workspace_folder)
 
     return None
