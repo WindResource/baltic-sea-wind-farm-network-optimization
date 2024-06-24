@@ -770,17 +770,18 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=1):
 
     def onss_cap_connect_rule(model, onss):
         """
-        Ensure the capacity of each onshore substation is at least the total incoming capacity from connected energy hubs or wind farms.
+        Ensure the capacity of each onshore substation is at least the total incoming capacity from connected energy hubs or wind farms,
+        considering only national connections for transfers to and from other onshore substations.
         """
         country = model.onss_iso[onss]
         connect_from_eh = sum(model.ec2_cap_var[eh, onss] for eh in model.viable_eh_ids if (eh, onss) in model.viable_ec2_ids)
         connect_from_wf = sum(model.ec3_cap_var[wf, onss] for wf in model.viable_wf_ids if (wf, onss) in model.viable_ec3_ids)
         distribute_to_others = sum(model.onc_cap_var[onss, other_onss] for other_onss in model.viable_onss_ids if (onss, other_onss) in model.viable_onc_ids and model.onss_iso[other_onss] == country)
-        receive_from_others = sum(model.onc_cap_var[other_onss, onss] for other_onss in model.viable_onss_ids if (other_onss, onss) in model.viable_onc_ids)
+        receive_from_others = sum(model.onc_cap_var[other_onss, onss] for other_onss in model.viable_onss_ids if (other_onss, onss) in model.viable_onc_ids and model.onss_iso[other_onss] == country)
         
         return model.onss_cap_var[onss] >= connect_from_eh + connect_from_wf + receive_from_others - distribute_to_others
     model.onss_cap_connect_con = Constraint(model.viable_onss_ids, rule=onss_cap_connect_rule)
-    
+
     print("Defining capacity limit constraints...")
     
     def max_eh_cap_rule(model, eh):
