@@ -365,7 +365,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
+def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -389,13 +389,13 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     # Select countries to be included in the optimization
     select_countries = {
         'DE': 1,  # Germany
-        'DK': 0,  # Denmark
-        'EE': 0,  # Estonia
-        'FI': 0,  # Finland
-        'LV': 0,  # Latvia
-        'LT': 0,  # Lithuania
-        'PL': 0,  # Poland
-        'SE': 0   # Sweden
+        'DK': 1,  # Denmark
+        'EE': 1,  # Estonia
+        'FI': 1,  # Finland
+        'LV': 1,  # Latvia
+        'LT': 1,  # Lithuania
+        'PL': 1,  # Poland
+        'SE': 1   # Sweden
     }
     
     # Define the base capacity fractions for 2030, 2040, and 2050
@@ -847,8 +847,8 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     
     solver_options = {
         'numerics/scaling': 1,  # Enable scaling
-        'tolerances/feasibility': 1e-5,  # Tolerance for feasibility checks
-        'tolerances/optimality': 1e-5,   # Tolerance for optimality conditions
+        'tolerances/feasibility': 1e-4,  # Tolerance for feasibility checks
+        'tolerances/optimality': 1e-4,   # Tolerance for optimality conditions
         'tolerances/integrality': 1e-5,  # Tolerance for integer variable constraints
         'presolving/maxrounds': -1,      # Max presolve iterations to simplify the model
         'propagating/maxrounds': -1,     # Max constraint propagation rounds
@@ -870,6 +870,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         'display/verblevel': 4           # Set verbosity level to display information about the solution
     }
 
+    def rnd_f(e):
+            return round(value(e), 3)
+        
     def save_results(model, workspace_folder, year, prev_capacity):
         """
         Save the IDs of selected components of the optimization model along with all their corresponding parameters,
@@ -881,8 +884,6 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         - workspace_folder: The path to the directory where results will be saved.
         - year: The year for which the results are being saved.
         """
-        def rnd_f(e):
-            return round(value(e), 3)
 
         # Mapping ISO country codes of Baltic Sea countries to unique integers
         int_to_iso_mp = {
@@ -963,7 +964,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             if model.ec1_cap_var[wf, eh].value > 0.1:
                 ec1_cap = rnd_f(model.ec1_cap_var[wf, eh])
                 dist1 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
-                ec1_cost = ec1_cost_fun(value(model.first_year), dist1, ec1_cap, "ceil")
+                ec1_cost = rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap, "ceil"))
                 ec1_data.append((ec_id_counter, wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost, int_to_iso_mp[int(model.eh_iso[eh])]))
                 ec_id_counter += 1
 
@@ -979,7 +980,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             if model.ec2_cap_var[eh, onss].value > 0.1:
                 ec2_cap = rnd_f(model.ec2_cap_var[eh, onss])
                 dist2 = rnd_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
-                ec2_cost = ec2_cost_fun(value(model.first_year), dist2, ec2_cap, "ceil")
+                ec2_cost = rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap, "ceil"))
                 ec2_data.append((ec_id_counter, eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost, int_to_iso_mp[int(model.onss_iso[onss])]))
                 ec_id_counter += 1
 
@@ -995,7 +996,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             if model.ec3_cap_var[wf, onss].value > 0.1:
                 ec3_cap = rnd_f(model.ec3_cap_var[wf, onss])
                 dist3 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
-                ec3_cost = ec3_cost_fun(value(model.first_year), dist3, ec3_cap, "ceil")
+                ec3_cost = rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap, "ceil"))
                 ec3_data.append((ec_id_counter, wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost, int_to_iso_mp[int(model.onss_iso[onss])]))
                 ec_id_counter += 1
 
@@ -1012,7 +1013,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
                 onc_cap = rnd_f(model.onc_cap_var[onss1, onss2])
                 onc_cap_diff = onc_cap - prev_capacity.get('onc_ids', {}).get((onss1, onss2), 0)
                 dist4 = rnd_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
-                onc_cost = onc_cost_fun(value(model.first_year), dist4, onc_cap_diff, "ceil")
+                onc_cost = rnd_f(onc_cost_fun(value(model.first_year), dist4, onc_cap_diff, "ceil"))
                 onc_data.append((onc_id_counter, onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost, int_to_iso_mp[int(model.onss_iso[onss1])]))
                 onc_id_counter += 1
 
@@ -1025,8 +1026,6 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         results_dir = os.path.join(workspace_folder, "results", "combined")
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
-
-        total_capacity_cost = []
 
         # Initialize dictionary to hold per-country data
         country_data = {country: {'wf_ids': {'capacity': 0, 'cost': 0},
@@ -1054,27 +1053,48 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             with open(country_txt_file_path, 'w') as file:
                 file.write("Component, Total Capacity, Total Cost\n")
                 for component, values in data.items():
-                    file.write(f"{component}, {round(values['capacity'])}, {round(values['cost'], 3)}\n")
+                    file.write(f"{component}, {rnd_f(values['capacity'])}, {rnd_f(values['cost'])}\n")
             print(f'Saved total capacity and cost for {country} in {country_txt_file_path}')
 
+        # Save the .npy and .txt files for each component
+        for component, data in selected_components.items():
+            # Save as .npy file
+            npy_file_path = os.path.join(results_dir, f'c_{component}_{year}.npy')
+            np.save(npy_file_path, data['data'])
+            print(f'Saved {component} data in {npy_file_path}')
+            
+            # Save as .txt file
+            txt_file_path = os.path.join(results_dir, f'c_{component}_{year}.txt')
+            with open(txt_file_path, 'w') as file:
+                file.write(data['headers'] + "\n")
+                for entry in data['data']:
+                    file.write(", ".join(map(str, entry)) + "\n")
+            print(f'Saved {component} data in {txt_file_path}')
+
         # Calculate overall totals
-        overall_capacity = sum(data['overall']['capacity'] for data in country_data.values())
-        overall_cost = sum(data['overall']['cost'] for data in country_data.values())
-        total_capacity_cost.append(("overall", round(overall_capacity), round(overall_cost, 3)))
+        overall_totals = {'wf_ids': {'capacity': 0, 'cost': 0},
+                        'eh_ids': {'capacity': 0, 'cost': 0},
+                        'onss_ids': {'capacity': 0, 'cost': 0},
+                        'ec1_ids': {'capacity': 0, 'cost': 0},
+                        'ec2_ids': {'capacity': 0, 'cost': 0},
+                        'ec3_ids': {'capacity': 0, 'cost': 0},
+                        'onc_ids': {'capacity': 0, 'cost': 0},
+                        'overall': {'capacity': 0, 'cost': 0}}
 
-        # Create a structured array for total capacities and cost
-        total_capacity_cost_array = np.array(total_capacity_cost, dtype=[('component', 'U10'), ('total_capacity', int), ('total_cost', float)])
+        for component, data in selected_components.items():
+            for entry in data['data']:
+                overall_totals[component]['capacity'] += entry['capacity']
+                overall_totals[component]['cost'] += entry['cost']
+            overall_totals['overall']['capacity'] += overall_totals[component]['capacity']
+            overall_totals['overall']['cost'] += overall_totals[component]['cost']
 
-        # Save the total capacities and cost in .npy and .txt files
+        # Save the overall totals in the c_total file
         total_txt_file_path = os.path.join(results_dir, f'c_total_{year}.txt')
-
-        # Save as .txt file
         with open(total_txt_file_path, 'w') as file:
             file.write("Component, Total Capacity, Total Cost\n")
-            for entry in total_capacity_cost_array:
-                file.write(f'{entry[0]}, {entry[1]}, {entry[2]}\n')
-
-        print(f'Saved total capacities and cost in {total_txt_file_path}')
+            for component, values in overall_totals.items():
+                file.write(f"{component}, {rnd_f(values['capacity'])}, {rnd_f(values['cost'])}\n")
+        print(f'Saved overall total capacities and cost in {total_txt_file_path}')
 
     def enforce_increase_variables(model, prev_capacity):
         """
@@ -1105,7 +1125,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     def solve_single_stage(model, workspace_folder):
         # Use country_cf_2050 for the single stage optimization
         country_cf_param = model.country_cf_3
-        year_param = model.first_year_sf_1
+        year_param = value(model.first_year_sf_1)
         wf_cost_param = model.wf_cost_3
         
         model.country_cf.store_values(country_cf_param)  # Update country_cf for the single stage optimization for 2050
@@ -1125,7 +1145,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         if results.solver.status == SolverStatus.ok:
             if results.solver.termination_condition == TerminationCondition.optimal:
                 print(f"Solver found an optimal solution for {year_param}.")
-                print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
+                print(f"Objective value: {rnd_f(model.global_cost_obj.expr())}")
                 save_results(model, workspace_folder, year_param, prev_capacity)
             elif results.solver.termination_condition == TerminationCondition.infeasible:
                 print(f"Problem is infeasible for {year_param}. Check model constraints and data.")
@@ -1144,9 +1164,6 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         print(f"Solver log for {year_param} saved to {os.path.join(workspace_folder, 'results', 'combined', 'c_solverlog_2050.txt')}")
 
     def solve_multi_stage(model, workspace_folder):
-        def rnd_f(e):
-            return round(value(e), 3)
-        
         # Define the country_cf parameters for each stage
         country_cf_params = {
             first_year_mf_1: model.country_cf_1,
@@ -1181,7 +1198,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             if results.solver.status == SolverStatus.ok:
                 if results.solver.termination_condition == TerminationCondition.optimal:
                     print(f"Solver found an optimal solution for {year}.")
-                    print(f"Objective value: {round(model.global_cost_obj.expr(), 3)}")
+                    print(f"Objective value: {rnd_f(model.global_cost_obj.expr())}")
                     save_results(model, workspace_folder, year, prev_capacity)
                     # Update prev_capacity with current capacities for the next stage
                     prev_capacity['onss_ids'] = {onss: rnd_f(model.onss_cap_var[onss]) for onss in model.viable_onss_ids}
