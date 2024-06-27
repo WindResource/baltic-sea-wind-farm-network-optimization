@@ -250,6 +250,21 @@ def onc_cost_fun(first_year, distance, capacity, function="lin"):
 
     return total_cost
 
+def wf_cost_lin(wf_cost, wf_total_cap, wf_cap):
+    """
+    Calculate the cost of selecting and operating each wind farm based on the selected capacity.
+    The cost is proportional to the selected capacity.
+    
+    Parameters:
+    - wf_cost (float): The cost of the wind farm.
+    - wf_total_cap (float): The total available capacity of the wind farm.
+    - wf_cap (float): The selected capacity of the wind farm.
+    
+    Returns:
+    - float: The calculated cost for the selected capacity.
+    """
+    return value(wf_cost) * (wf_cap / wf_total_cap)
+
 def haversine(lon1, lat1, lon2, lat2):
     """
     Calculate the great-circle distance between two points
@@ -365,7 +380,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
+def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -378,6 +393,8 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     Returns:
     - model: Pyomo ConcreteModel object representing the optimization model.
     """
+    wt_cap = 15  # Define the wind turbine capacity as 15 MW
+    
     # Define the year to be optimized for single stage
     first_year_sf_1 = 2050
     
@@ -587,7 +604,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     model.viable_wf_ids, model.viable_eh_ids, model.viable_onss_ids = get_viable_entities(viable_ec1, viable_ec2, viable_ec3)
     
     # Initialize variables without time index for capacity
-    model.wf_bool_var = Var(model.viable_wf_ids, within=Binary)
+    model.wf_cap_var = Var(model.viable_wf_ids, within=NonNegativeReals)
     model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     model.onc_cap_var = Var(model.viable_onc_ids, within=NonNegativeReals)
     
@@ -626,7 +643,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     
     # Define a dictionary containing variable names and their respective lengths
     print_variables = {
-        "select_wf": model.wf_bool_var,
+        "select_wf": model.wf_cap_var,
         "select_eh": model.eh_cap_var,
         "select_onss": model.onss_cap_var,
         "select_ec1": model.ec1_cap_var,
@@ -648,7 +665,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     Define expressions for wind farms (WF)
     """
     def wf_cost_rule(model, wf):
-        return value(model.wf_cost[wf]) * model.wf_bool_var[wf]
+        return wf_cost_lin(model.wf_cost[wf], model.wf_cap[wf], model.wf_cap_var[wf])
     model.wf_cost_exp = Expression(model.viable_wf_ids, rule=wf_cost_rule)
 
     """
@@ -737,15 +754,26 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     
     def wf_alloc_rule(model, wf):
         """
-        Ensure the allocated capacity of each wind farm equals its total capacity when selected.
+        Ensure the allocated capacity of each wind farm equals the total capacity based on the selected capacity.
+        Each wind farm's capacity allocation must match the selected capacity.
         """
-        return sum(model.wf_country_alloc_var[wf, country] for country in model.country_ids) == model.wf_cap[wf] * model.wf_bool_var[wf]
+        return sum(model.wf_country_alloc_var[wf, country] for country in model.country_ids) == model.wf_cap_var[wf]
     model.wf_alloc_con = Constraint(model.viable_wf_ids, rule=wf_alloc_rule)
+
+    def wf_cap_rule(model, wf):
+        """
+        Ensure the capacity of each wind farm does not exceed the wind farm's total available capacity.
+        """
+        return model.wf_cap_var[wf] <= model.wf_cap[wf]
+    model.wf_cap_con = Constraint(model.viable_wf_ids, rule=wf_cap_rule)
 
     print("Defining network constraints...")
     
     def wf_connection_rule(model, wf, country):
-        """Ensure allocated capacity is connected to the energy hub or onshore substation of the corresponding country."""
+        """
+        Ensure the allocated capacity of each wind farm is properly connected to the energy hub or onshore substation 
+        of the corresponding country. The capacity connected must be at least the allocated capacity for the country.
+        """
         connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids and model.eh_iso[eh] == country)
         connect_to_onss = sum(model.ec3_cap_var[wf, onss] for onss in model.viable_onss_ids if (wf, onss) in model.viable_ec3_ids and model.onss_iso[onss] == country)
         return connect_to_eh + connect_to_onss >= model.wf_country_alloc_var[wf, country]
@@ -849,7 +877,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         'numerics/scaling': 1,  # Enable scaling
         'tolerances/feasibility': 1e-4,  # Tolerance for feasibility checks
         'tolerances/optimality': 1e-4,   # Tolerance for optimality conditions
-        'tolerances/integrality': 1e-5,  # Tolerance for integer variable constraints
+        'tolerances/integrality': 1e-4,  # Tolerance for integer variable constraints
         'presolving/maxrounds': -1,      # Max presolve iterations to simplify the model
         'propagating/maxrounds': -1,     # Max constraint propagation rounds
         'parallel/threads': -1,          # Use all CPU cores for parallel processing
@@ -872,7 +900,13 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
 
     def rnd_f(e):
             return round(value(e), 3)
-        
+    
+    def nearest_wt_cap(cap):
+        """
+        Round up the capacity to the nearest multiple of the wind turbine capacity.
+        """
+        return int(np.ceil(value(cap) / wt_cap)) * wt_cap
+    
     def save_results(model, workspace_folder, year, prev_capacity):
         """
         Save the IDs of selected components of the optimization model along with all their corresponding parameters,
@@ -898,22 +932,23 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         }
 
         selected_components = {}
-
+        
         # Define and aggregate data for wind farms
         wf_data = []
         for wf in model.viable_wf_ids:
-            if model.wf_bool_var[wf].value > 0.1:
+            if model.wf_cap_var[wf].value > 0.1:
                 wf_id = wf
                 wf_iso = int_to_iso_mp[int(model.wf_iso[wf])]
                 wf_lon = model.wf_lon[wf]
                 wf_lat = model.wf_lat[wf]
-                wf_capacity = rnd_f(model.wf_cap[wf])
-                wf_cost = rnd_f(model.wf_cost[wf])
-                wf_data.append((wf_id, wf_iso, wf_lon, wf_lat, wf_capacity, wf_cost))
+                wf_capacity = rnd_f(model.wf_cap_var[wf])
+                wf_rate = rnd_f(value(wf_capacity) / value(model.wf_cap[wf]))
+                wf_cost = rnd_f(nearest_wt_cap(wf_capacity) / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
+                wf_data.append((wf_id, wf_iso, wf_lon, wf_lat, wf_capacity, wf_cost, wf_rate))
 
         selected_components['wf_ids'] = {
-            'data': np.array(wf_data, dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', float)]),
-            'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost"
+            'data': np.array(wf_data, dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('capacity', int), ('cost', float), ('rate', float)]),
+            'headers': "ID, ISO, Longitude, Latitude, Capacity, Cost, Rate"
         }
 
         # Define and aggregate data for energy hubs
@@ -965,12 +1000,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
                 ec1_cap = rnd_f(model.ec1_cap_var[wf, eh])
                 dist1 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
                 ec1_cost = rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap, "ceil"))
-                ec1_data.append((ec_id_counter, wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost, int_to_iso_mp[int(model.eh_iso[eh])]))
+                ec1_data.append((ec_id_counter, int_to_iso_mp[int(model.eh_iso[eh])], wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost))
                 ec_id_counter += 1
 
         selected_components['ec1_ids'] = {
-            'data': np.array(ec1_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
-            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+            'data': np.array(ec1_data, dtype=[('ec_id', int), ('iso', 'U2'), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, ISO, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
         # Create ec2_ids with export cable ID, single row for each cable
@@ -981,12 +1016,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
                 ec2_cap = rnd_f(model.ec2_cap_var[eh, onss])
                 dist2 = rnd_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
                 ec2_cost = rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap, "ceil"))
-                ec2_data.append((ec_id_counter, eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost, int_to_iso_mp[int(model.onss_iso[onss])]))
+                ec2_data.append((ec_id_counter, int_to_iso_mp[int(model.onss_iso[onss])], eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost))
                 ec_id_counter += 1
 
         selected_components['ec2_ids'] = {
-            'data': np.array(ec2_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
-            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+            'data': np.array(ec2_data, dtype=[('ec_id', int), ('iso', 'U2'), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, ISO, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
         # Create ec3_ids with export cable ID, single row for each cable
@@ -997,12 +1032,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
                 ec3_cap = rnd_f(model.ec3_cap_var[wf, onss])
                 dist3 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
                 ec3_cost = rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap, "ceil"))
-                ec3_data.append((ec_id_counter, wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost, int_to_iso_mp[int(model.onss_iso[onss])]))
+                ec3_data.append((ec_id_counter, int_to_iso_mp[int(model.onss_iso[onss])], wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost))
                 ec_id_counter += 1
 
         selected_components['ec3_ids'] = {
-            'data': np.array(ec3_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
-            'headers': "EC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+            'data': np.array(ec3_data, dtype=[('ec_id', int), ('iso', 'U2'), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "EC_ID, ISO, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
         # Create onc_ids with onshore cable ID, single row for each cable
@@ -1014,12 +1049,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
                 onc_cap_diff = onc_cap - prev_capacity.get('onc_ids', {}).get((onss1, onss2), 0)
                 dist4 = rnd_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
                 onc_cost = rnd_f(onc_cost_fun(value(model.first_year), dist4, onc_cap_diff, "ceil"))
-                onc_data.append((onc_id_counter, onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost, int_to_iso_mp[int(model.onss_iso[onss1])]))
+                onc_data.append((onc_id_counter, int_to_iso_mp[int(model.onss_iso[onss1])], onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost))
                 onc_id_counter += 1
 
         selected_components['onc_ids'] = {
-            'data': np.array(onc_data, dtype=[('ec_id', int), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float), ('iso', 'U2')]),
-            'headers': "ONC_ID, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, ISO"
+            'data': np.array(onc_data, dtype=[('ec_id', int), ('iso', 'U2'), ('comp_1_id', int), ('comp_2_id', int), ('lon_1', float), ('lat_1', float), ('lon_2', float), ('lat_2', float), ('distance', float), ('capacity', float), ('cost', float)]),
+            'headers': "ONC_ID, ISO, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost"
         }
 
         # Ensure the results directory exists
@@ -1117,7 +1152,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         """
         Fix decision variables if their values are above 0.1.
         """
-        for var in [model.wf_bool_var, model.eh_cap_var, model.ec1_cap_var, model.ec2_cap_var, model.ec3_cap_var]:
+        for var in [model.wf_cap_var, model.eh_cap_var, model.ec1_cap_var, model.ec2_cap_var, model.ec3_cap_var]:
             for index in var:
                 if var[index].value > 0.1:
                     var[index].fix(round(var[index].value))
