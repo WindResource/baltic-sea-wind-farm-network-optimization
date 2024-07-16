@@ -33,19 +33,15 @@ def generate_offshore_substation_areas(output_folder):
     if eez_layer is None:
         arcpy.AddError("No EEZ layer found. Ensure a layer starting with 'eez_v12' is loaded in the map.")
         return
-
-    # Find the first WFA layer in the current map
-    wfa_layer = None
-    for layer in map.listLayers():
-        if layer.name.startswith('WFA'):
-            wfa_layer = layer
-            break
-    if wfa_layer is None:
-        arcpy.AddError("No layer starting with 'WFA' found in the current map.")
+    
+    # Get the first layer in the map that starts with 'windfarmspoly'
+    wf_layer = next((layer for layer in map.listLayers() if layer.name.startswith('windfarmspoly')), None)
+    if wf_layer is None:
+        arcpy.AddError("No layer starting with 'windfarmspoly' found in the current map.")
         return
 
     # Create a feature layer from the WFA layer
-    wfa_feature_layer = arcpy.management.MakeFeatureLayer(wfa_layer, "wfa_feature_layer").getOutput(0)
+    wfa_feature_layer = arcpy.management.MakeFeatureLayer(wf_layer, "wfa_feature_layer").getOutput(0)
     
     # Select the countries for the specified ISO codes
     countries_layer = arcpy.management.MakeFeatureLayer(countries_feature_layer_url, "countries_layer").getOutput(0)

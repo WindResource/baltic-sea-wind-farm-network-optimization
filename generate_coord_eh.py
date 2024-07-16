@@ -11,7 +11,7 @@ def generate_offshore_substation_coordinates(output_folder: str) -> None:
     - output_folder: Path where the output shapefile will be saved.
     - spacing: Desired spacing between substations, in kilometers.
     """
-    spacing = 10 #km
+    spacing = 5 #km
     
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
     utm33 = arcpy.SpatialReference(32633)

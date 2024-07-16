@@ -2,6 +2,7 @@ import arcpy
 import pandas as pd
 import time
 import os
+from datetime import datetime
 
 def identify_countries(point_features):
     """
@@ -55,32 +56,44 @@ def identify_countries(point_features):
                                 join_type="KEEP_ALL", match_option="WITHIN")
     
     # Perform the second spatial join between the points with null country values and country polygons within a certain distance using "CLOSEST" criteria
-    arcpy.analysis.SpatialJoin("in_memory\\point_features", "in_memory\\eez_layer", "in_memory\\point_country_join_second",
+    arcpy.analysis.SpatialJoin("in_memory\\point_country_join_first", "in_memory\\eez_layer", "in_memory\\point_country_join_second",
                                 join_type="KEEP_ALL", match_option="CLOSEST", search_radius="2 Kilometers")
     
     # Add the Country and ISO fields to the original point features
     arcpy.management.AddFields("in_memory\\point_features", [("Country", "TEXT"),("ISO", "TEXT"),("OnSS_ID", "TEXT")])
+
+    # Determine the unique identifier field in the point features
+    point_features_fields = [f.name for f in arcpy.ListFields("in_memory\\point_features")]
+    unique_id_field = "OBJECTID" if "OBJECTID" in point_features_fields else arcpy.Describe("in_memory\\point_features").OIDFieldName
     
     # Update the "Country" and "ISO" fields from the first spatial join
-    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO"]) as update_cursor:
-        with arcpy.da.SearchCursor("in_memory\\point_country_join_first", ["COUNTRY", "ISO"]) as search_cursor:
-            for update_row, (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
-                update_row[0] = country_value if country_value else "Unknown"
-                update_row[1] = iso_cc_value if iso_cc_value else "Unknown"
+    with arcpy.da.UpdateCursor("in_memory\\point_country_join_first", [unique_id_field, "COUNTRY", "ISO_CC"]) as update_cursor_first:
+        country_iso_mapping_first = {row[0]: (row[1], row[2]) for row in update_cursor_first}
+
+    with arcpy.da.UpdateCursor("in_memory\\point_features", [unique_id_field, "Country", "ISO"]) as update_cursor:
+        for update_row in update_cursor:
+            if update_row[0] in country_iso_mapping_first:
+                country_value, iso_cc_value = country_iso_mapping_first[update_row[0]]
+                update_row[1] = country_value if country_value else "Unknown"
+                update_row[2] = iso_cc_value if iso_cc_value else "Unknown"
                 update_cursor.updateRow(update_row)
 
     # Update the "Country" and "ISO" fields from the second spatial join  
-    with arcpy.da.UpdateCursor("in_memory\\point_features", ["Country", "ISO", "Type"]) as update_cursor:
-        with arcpy.da.SearchCursor("in_memory\\point_country_join_second", ["TERRITORY1", "ISO_TER1"]) as search_cursor:
-            for (country, ISO, type), (country_value, iso_cc_value) in zip(update_cursor, search_cursor):
-                if (country == "Unknown" or ISO == "Unknown"):  # Check if Country or ISO is Unknown
-                    if type in ['Station', 'Substation', 'Sub_station'] and (country_value or iso_cc_value):
-                        country = country_value
-                        ISO = iso_mp.get(iso_cc_value, "Unknown")
-                        update_cursor.updateRow((country, ISO, 'Substation'))
+    with arcpy.da.UpdateCursor("in_memory\\point_country_join_second", [unique_id_field, "TERRITORY1", "ISO_TER1"]) as update_cursor_second:
+        country_iso_mapping_second = {row[0]: (row[1], row[2]) for row in update_cursor_second}
+
+    with arcpy.da.UpdateCursor("in_memory\\point_features", [unique_id_field, "Country", "ISO", "Type"]) as update_cursor:
+        for update_row in update_cursor:
+            if update_row[0] in country_iso_mapping_second:
+                country_value, iso_cc_value = country_iso_mapping_second[update_row[0]]
+                if (update_row[1] == "Unknown" or update_row[2] == "Unknown"):  # Check if Country or ISO is Unknown
+                    if update_row[3] in ['Station', 'Substation', 'Sub_station'] and (country_value or iso_cc_value):
+                        update_row[1] = country_value
+                        update_row[2] = iso_mp.get(iso_cc_value, "Unknown")
+                        update_cursor.updateRow(update_row)
                     else:
                         update_cursor.deleteRow()
-                elif type not in ['Station', 'Substation', 'Sub_station']:
+                elif update_row[3] not in ['Station', 'Substation', 'Sub_station']:
                     update_cursor.deleteRow()
                     
     # Generate OnSS_ID for substations
@@ -112,13 +125,15 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
     # Read Excel data using pandas
     df = pd.read_excel(excel_file)
 
+    # Generate a timestamp to include in the output shapefile name
+    timestamp = datetime.now().strftime(f"%y%m%d_%H%M%S")
+    output_shapefile_name = f"OnSS_BalticSea_{timestamp}.shp"
+
     # Create a new shapefile to store the point features with EPSG:4326 spatial reference
-    output_shapefile = os.path.join(highvoltage_vertices_folder, "OnSS_BalticSea.shp")
-    # Check if the shapefile already exists, delete it if it does
-    if arcpy.Exists(output_shapefile):
-        arcpy.Delete_management(output_shapefile)
+    output_shapefile = os.path.join(highvoltage_vertices_folder, output_shapefile_name)
+    
     # Create the shapefile
-    arcpy.management.CreateFeatureclass(highvoltage_vertices_folder, "OnSS_BalticSea.shp", "POINT", spatial_reference=spatial_ref)
+    arcpy.management.CreateFeatureclass(highvoltage_vertices_folder, output_shapefile_name, "POINT", spatial_reference=spatial_ref)
 
     # Define fields to store attributes
     fields = [
@@ -146,8 +161,10 @@ def excel_to_shapefile(excel_file: str, highvoltage_vertices_folder: str) -> Non
             if pd.isnull(frequency):
                 frequency = ""
 
-            # Insert the row with the geometry and attributes
-            cursor.insertRow([(longitude, latitude), longitude, latitude, typ, voltage, frequency])
+            # Filter for station, substation, and sub_station types
+            if typ.lower() in ['station', 'substation', 'sub_station']:
+                # Insert the row with the geometry and attributes
+                cursor.insertRow([(longitude, latitude), longitude, latitude, typ, voltage, frequency])
 
     arcpy.AddMessage("Identifying countries...")
     # Identify countries and add the country field to the point features
