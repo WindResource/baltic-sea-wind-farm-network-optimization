@@ -3,45 +3,30 @@ import numpy as np
 from scipy.interpolate import interp1d
 from scipy.stats import weibull_min
 
-def calculate_aep_and_capacity_factor(weibullA, weibullK):
+def calculate_aep_and_capacity_factor_precomputed(weibullA, weibullK, power_output, wind_speed_array):
     """
     Calculate the Annual Energy Production (AEP) and Capacity Factor of a wind turbine.
 
     Args:
         weibullA (float): Weibull scale parameter (m/s).
         weibullK (float): Weibull shape parameter.
+        power_output (ndarray): Precomputed power output array.
+        wind_speed_array (ndarray): Precomputed wind speed array.
 
     Returns:
         tuple: A tuple containing the AEP (in kWh) and the Capacity Factor (as a percentage).
     """
     alpha = 0.11  # Exponent of the power law for scaling wind speed
-    hub_height = 112 # Wind turbine hub height
+    hub_height = 150  # Wind turbine hub height
 
     # Average number of hours in a year
     hours_per_year = 365.25 * 24
-    
+
     # Wind turbine availability factor
-    ava_factor = 0.94
-    
-    # Define wind speed range
-    speed_min = 0
-    speed_max = 50
-    
-    turbine_rating = 8 * 1e3  # Turbine rating (kW)
-    cutoff_wind_speed = 25  # Cut-off wind speed (m/s)
+    avail_factor = 0.94
+    wake_factor = 0.85
 
-    # Power curve of the NREL Reference 8MW wind turbine
-    power_curve_data = {
-        1: 0, 2: 0, 3: 0, 4: 359, 4.5: 561, 5: 812, 5.5: 1118, 6: 1483, 6.5: 1911, 7: 2407,
-        7.5: 2974, 8: 3616, 8.5: 4336, 9: 5135, 9.5: 6015, 10: 6976, 10.5: 7518, 11: 7813,
-        12: 8000, 13: 8000, 14: 8000, 15: 8000, 16: 8000, 17: 8000, 18: 8000, 19: 8000,
-        20: 8000, 21: 8000, 22: 8000, 23: 8000, 24: 8000, 25: 8000
-    }
-
-    # Create interpolation function for power curve
-    wind_speeds = np.array(list(power_curve_data.keys()))
-    power_values = np.array(list(power_curve_data.values()))  # Power values are already in kW
-    power_curve_func = interp1d(wind_speeds, power_values, kind='linear', fill_value='extrapolate')
+    turbine_rating = 15 * 1e3  # Turbine rating (kW)
 
     # Scale the Weibull parameters to hub height using the power law
     weibullA_hh = weibullA * (hub_height / 100) ** alpha
@@ -49,20 +34,14 @@ def calculate_aep_and_capacity_factor(weibullA, weibullK):
     # Define the Weibull distribution with the scaled parameters
     weibull_dist = weibull_min(weibullK, scale=weibullA_hh)
 
-    # Create wind speed array for integration
-    wind_speed_array = np.linspace(speed_min, speed_max, num=1000)
-
     # Calculate probability density function (PDF) of Weibull distribution at each wind speed
     pdf_array = weibull_dist.pdf(wind_speed_array)
 
-    # Adjusting the power output considering the cutoff wind speed
-    power_output = np.array([power_curve_func(wind_speed) if wind_speed <= cutoff_wind_speed else 0 for wind_speed in wind_speed_array])
-
-    # Calculate AEP by summing the product of power output and interpolated PDF over wind speeds
-    aep = np.sum(power_output * pdf_array) * hours_per_year * ava_factor # Convert to kWh per year
+    # Calculate AEP by integrating the product of power output and PDF over wind speeds
+    aep = np.trapz(power_output * pdf_array, wind_speed_array) * hours_per_year * avail_factor * wake_factor # kWh per year
 
     # Calculate capacity factor
-    capacity_factor = (aep / (turbine_rating * hours_per_year)) * 100  # Convert to percentage
+    capacity_factor = aep / (turbine_rating * hours_per_year)
 
     return aep, capacity_factor
 
@@ -100,13 +79,41 @@ def update_fields():
         if field not in existing_fields:
             arcpy.AddField_management(turbine_layer, field, "DOUBLE")
 
-    # Retrieve WeibullA and WeibullK values for each wind turbine
-    with arcpy.da.UpdateCursor(turbine_layer, ['WeibullA', 'WeibullK', 'AEP', 'Cap_Factor']) as cursor:
+    # Define wind speed range
+    speed_min = 0
+    speed_max = 50
+    cutoff_wind_speed = 25  # Cut-off wind speed (m/s)
+
+    # Create wind speed array for integration
+    wind_speed_array = np.linspace(speed_min, speed_max, num=1000)
+
+    # Power curve of the NREL Reference 15MW wind turbine
+    power_curve_data = {
+        3: 0, 4: 720, 5: 1239, 6: 2271, 7: 3817, 8: 5661, 9: 7758, 10: 10000, 11: 12503,
+        12: 15000, 13: 15000, 14: 15000, 15: 15000, 16: 15000, 17: 15000, 18: 15000,
+        19: 15000, 20: 15000, 21: 15000, 22: 15000, 23: 15000, 24: 15000, 25: 15000
+    }
+
+    # Create interpolation function for power curve
+    wind_speeds = np.array(list(power_curve_data.keys()))
+    power_values = np.array(list(power_curve_data.values()))  # Power values are already in kW
+    power_curve_func = interp1d(wind_speeds, power_values, kind='linear', fill_value='extrapolate')
+
+    # Calculate the power output at each wind speed considering the cut-off wind speed
+    power_output = np.array([power_curve_func(wind_speed) if wind_speed <= cutoff_wind_speed else 0 for wind_speed in wind_speed_array])
+
+    # Read WeibullA and WeibullK values and calculate AEP and Capacity Factor
+    aep_cf_values = []
+    with arcpy.da.SearchCursor(turbine_layer, ['WeibullA', 'WeibullK']) as cursor:
         for row in cursor:
-            weibullA, weibullK = row[:2]
-            aep, capacity_factor = calculate_aep_and_capacity_factor(weibullA, weibullK)
-            row[2] = round(aep / int(1e6), 4) # AEP in GWh
-            row[3] = round(capacity_factor, 2)
+            weibullA, weibullK = row
+            aep, capacity_factor = calculate_aep_and_capacity_factor_precomputed(weibullA, weibullK, power_output, wind_speed_array)
+            aep_cf_values.append((round(aep / int(1e6), 3), round(capacity_factor, 2)))  # AEP in GWh
+
+    # Update the attribute table with the calculated values
+    with arcpy.da.UpdateCursor(turbine_layer, ['AEP', 'Cap_Factor']) as cursor:
+        for idx, row in enumerate(cursor):
+            row[0], row[1] = aep_cf_values[idx]
             cursor.updateRow(row)
 
     arcpy.AddMessage("AEP and capacity factor calculations completed and added to the attribute table.")

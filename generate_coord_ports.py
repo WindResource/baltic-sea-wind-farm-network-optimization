@@ -65,10 +65,6 @@ def process_feature_service(output_folder: str, country_name: str = None) -> Non
         # Create a new shapefile in the output folder
         output_shapefile = os.path.join(output_folder, "BalticSea_SelectedPorts.shp")
 
-        # Check if the output shapefile already exists and delete it
-        if arcpy.Exists(output_shapefile):
-            arcpy.management.Delete(output_shapefile)        
-
         # Save the projected point features from the in-memory workspace to the specified output shapefile.
         arcpy.management.CopyFeatures("in_memory\\BalticSea_Points_Projected", output_shapefile)
 
