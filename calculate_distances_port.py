@@ -30,7 +30,7 @@ def calculate_distances_oss_port():
     # Fetch feature layers from the active map
     for layer in map.listLayers():
         if layer.isFeatureLayer:
-            if "SelectedPorts" in layer.name and not port_layer:
+            if "Port" in layer.name and not port_layer:
                 port_layer = layer
             elif layer.name.startswith('OSSC') or layer.name.startswith('EHC'):
                 substation_layers.append(layer)
