@@ -1,3 +1,8 @@
+"""
+As a result, the cumulative EU offshore goals have the following ranges: 109-112 GW by 2030, 215-248 GW by 2040, and 281-354 GW by 2050. 
+The installed offshore wind capacity in the EU was 19.38 GW in 2023.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline
