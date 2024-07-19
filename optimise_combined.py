@@ -403,8 +403,11 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     
     "Define General Parameters"
     
-    wt_cap = 15  # Define the wind turbine capacity as 15 MW
     zero_th = 0.01 # Define the zero threshold parameter
+    
+    wt_cap = 15  # Define the wind turbine capacity (MW)
+    eh_cap_lim = 2500 # Define the energy hub capacity limit (MW)
+    onss_cap_lim_fac= 2.5 # Define the onshore substation capacity limit factor
     
     # Select countries to be included in the optimization
     select_countries = {
@@ -831,16 +834,16 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     
     def max_eh_cap_rule(model, eh):
         """
-        Ensure the capacity of each energy hub does not exceed 2500 MW.
+        Ensure the capacity of each energy hub does not exceed a certain capacity in MW.
         """
-        return model.eh_cap_var[eh] <= 2500
+        return model.eh_cap_var[eh] <= eh_cap_lim
     model.max_eh_cap_con = Constraint(model.viable_eh_ids, rule=max_eh_cap_rule)
 
     def max_onss_cap_rule(model, onss):
         """
         Ensure the capacity of each onshore substation does not exceed twice the threshold value.
         """
-        return model.onss_cap_var[onss] <= 2.5 * model.onss_thold[onss]
+        return model.onss_cap_var[onss] <= onss_cap_lim_fac * model.onss_thold[onss]
     model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
     
     print("Defining cost constraints...")
