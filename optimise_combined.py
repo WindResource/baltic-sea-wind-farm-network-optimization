@@ -438,16 +438,16 @@ def opt_model(workspace_folder, model_type=1, cross_border=1, multi_stage=0):
     # Define the year to be optimized for single stage
     first_year_sf = 2040
     
-    # Define the base capacity fractions for the final year (2050)
+    # Define the base capacity fractions for the final year
     base_country_cf_sf = {
-        'DE': 1,  # Germany
-        'DK': 1,  # Denmark
-        'EE': 1,  # Estonia
-        'FI': 1,  # Finland
-        'LV': 1,  # Latvia
-        'LT': 1,  # Lithuania
-        'PL': 1,  # Poland
-        'SE': 1   # Sweden
+        'DE': 0,  # Germany
+        'DK': 0,  # Denmark
+        'EE': 0,  # Estonia
+        'FI': 0,  # Finland
+        'LV': 0,  # Latvia
+        'LT': 0,  # Lithuania
+        'PL': 0,  # Poland
+        'SE': 0   # Sweden
     }
     
     # Adjust base capacity fractions for each country based on a selection parameter (select_countries)
@@ -589,14 +589,14 @@ def opt_model(workspace_folder, model_type=1, cross_border=1, multi_stage=0):
     # Define parameters for capacity fractions for each year
     model.country_cf = Param(model.country_ids, initialize=country_cf_sf, within=NonNegativeReals, mutable=True)
     # Single stage
-    model.country_cf_sf = Param(model.country_ids, initialize=country_cf_mf_1, within=NonNegativeReals)
+    model.country_cf_sf = Param(model.country_ids, initialize=country_cf_sf, within=NonNegativeReals)
     # Multi stage
     model.country_cf_mf_1 = Param(model.country_ids, initialize=country_cf_mf_1, within=NonNegativeReals)
     model.country_cf_mf_2 = Param(model.country_ids, initialize=country_cf_mf_2, within=NonNegativeReals)
     model.country_cf_mf_3 = Param(model.country_ids, initialize=country_cf_mf_3, within=NonNegativeReals)
     
     # Define the first years
-    model.first_year = Param(initialize=first_year_mf_1, within=NonNegativeIntegers, mutable=True)
+    model.first_year = Param(initialize=first_year_sf, within=NonNegativeIntegers, mutable=True)
     # Single stage
     model.first_year_sf = Param(initialize=first_year_sf, within=NonNegativeIntegers)
     # Multi stage
@@ -818,12 +818,13 @@ def opt_model(workspace_folder, model_type=1, cross_border=1, multi_stage=0):
         return model.eh_cap_var[eh] <= model.eh_active_bin_var[eh] * eh_cap_lim + zero_th
     model.eh_cap_to_active_con = Constraint(model.viable_eh_ids, rule=eh_active_rule)
 
-    # def eh_inactive_rule(model, eh):
-    #     """
-    #     Ensures that the capacity of the energy hub (eh_cap_var) is zero when the energy hub is inactive (eh_active_var is 0).
-    #     """
-    #     return model.eh_cap_var[eh] + zero_th >= model.eh_active_bin_var[eh]
-    # model.eh_inactive_cap_zero_con = Constraint(model.viable_eh_ids, rule=eh_inactive_rule)
+    def eh_inactive_rule(model, eh):
+        """
+        Ensures that the capacity of the energy hub (eh_cap_var) is zero when the energy hub is inactive (eh_active_var is 0). 
+        A small value (zero_th) is added to account for potential rounding errors, allowing for numerical stability in the constraint.
+        """
+        return model.eh_cap_var[eh] + zero_th >= model.eh_active_bin_var[eh]
+    model.eh_inactive_cap_zero_con = Constraint(model.viable_eh_ids, rule=eh_inactive_rule)
 
     def eh_to_onss_connection_rule(model, eh):
         """
