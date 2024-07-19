@@ -393,15 +393,18 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     Returns:
     - model: Pyomo ConcreteModel object representing the optimization model.
     """
+    """
+    Initialise model
+    """
+    print("Initialising model...")
+    
+    # Create a Pyomo model
+    model = ConcreteModel()
+    
+    "Define General Parameters"
+    
     wt_cap = 15  # Define the wind turbine capacity as 15 MW
-    
-    # Define the year to be optimized for single stage
-    first_year_sf_1 = 2050
-    
-    # Define the years to be optimized for multi stage
-    first_year_mf_1 = 2030
-    first_year_mf_2 = 2040
-    first_year_mf_3 = 2050
+    zero_th = 0.01 # Define the zero threshold parameter
     
     # Select countries to be included in the optimization
     select_countries = {
@@ -415,40 +418,6 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         'SE': 1   # Sweden
     }
     
-    # Define the base capacity fractions for 2030, 2040, and 2050
-    base_country_cf_1 = {
-        'DE': 0.7,  # Germany
-        'DK': 0.6,  # Denmark
-        'EE': 0.65, # Estonia
-        'FI': 0.5,  # Finland
-        'LV': 0.55, # Latvia
-        'LT': 0.6,  # Lithuania
-        'PL': 0.65, # Poland
-        'SE': 0.7   # Sweden
-    }
-
-    base_country_cf_2 = {
-        'DE': 0.8,  # Germany
-        'DK': 0.7,  # Denmark
-        'EE': 0.75, # Estonia
-        'FI': 0.6,  # Finland
-        'LV': 0.65, # Latvia
-        'LT': 0.7,  # Lithuania
-        'PL': 0.75, # Poland
-        'SE': 0.8   # Sweden
-    }
-
-    base_country_cf_3 = {
-        'DE': 0.9,  # Germany
-        'DK': 0.8,  # Denmark
-        'EE': 0.85, # Estonia
-        'FI': 0.7,  # Finland
-        'LV': 0.75, # Latvia
-        'LT': 0.8,  # Lithuania
-        'PL': 0.85, # Poland
-        'SE': 0.9   # Sweden
-    }
-
     # Mapping ISO country codes of Baltic Sea countries to unique integers
     iso_to_int_mp = {
         'DE': 1,  # Germany
@@ -461,23 +430,66 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         'SE': 8   # Sweden
     }
     
-    # Adjust base capacity fractions based on selection parameter
-    adj_country_cf_1 = {iso: base_country_cf_1[iso] * select_countries[iso] for iso in base_country_cf_1}
-    adj_country_cf_2 = {iso: base_country_cf_2[iso] * select_countries[iso] for iso in base_country_cf_2}
-    adj_country_cf_3 = {iso: base_country_cf_3[iso] * select_countries[iso] for iso in base_country_cf_3}
+    "Define Single Stage Optimization Parameters"
+    
+    # Define the year to be optimized for single stage
+    first_year_sf = 2040
+    
+    # Define the base capacity fractions for the final year (2050)
+    base_country_cf_sf = {
+        'DE': 1,  # Germany
+        'DK': 1,  # Denmark
+        'EE': 1,  # Estonia
+        'FI': 1,  # Finland
+        'LV': 1,  # Latvia
+        'LT': 1,  # Lithuania
+        'PL': 1,  # Poland
+        'SE': 1   # Sweden
+    }
+    
+    # Adjust base capacity fractions for each country based on a selection parameter (select_countries)
+    adj_country_cf_sf = {iso: base_country_cf_sf[iso] * select_countries[iso] for iso in base_country_cf_sf}
 
-    # Convert adjusted country CF to use integer keys for each year
-    country_cf_1 = {int(iso_to_int_mp[iso]): adj_country_cf_1[iso] for iso in adj_country_cf_1}
-    country_cf_2 = {int(iso_to_int_mp[iso]): adj_country_cf_2[iso] for iso in adj_country_cf_2}
-    country_cf_3 = {int(iso_to_int_mp[iso]): adj_country_cf_3[iso] for iso in adj_country_cf_3}
+    # Convert adjusted country capacity fractions to use integer keys instead of ISO country codes
+    country_cf_sf = {int(iso_to_int_mp[iso]): adj_country_cf_sf[iso] for iso in adj_country_cf_sf}
     
-    """
-    Initialise model
-    """
-    print("Initialising model...")
+    "Define Multi Stage Optimization Parameters"
     
-    # Create a Pyomo model
-    model = ConcreteModel()
+    # Define the years to be optimized for multi-stage
+    first_year_mf_1 = 2030
+    first_year_mf_2 = 2040
+    first_year_mf_3 = 2050
+
+    # Define the development fractions for each year
+    dev_frac_mf_1 = 0.3056
+    dev_frac_mf_2 = 0.7115
+    dev_frac_mf_3 = 1.00
+
+    # Define the base capacity fractions for the final year
+    base_country_cf_mf_3 = {
+        'DE': 1,  # Germany
+        'DK': 1,  # Denmark
+        'EE': 1,  # Estonia
+        'FI': 1,  # Finland
+        'LV': 1,  # Latvia
+        'LT': 1,  # Lithuania
+        'PL': 1,  # Poland
+        'SE': 1   # Sweden
+    }
+
+    # Calculate base capacity fractions for 2030 and 2040 using development fractions
+    base_country_cf_mf_1 = {country: dev_frac_mf_1 * cf for country, cf in base_country_cf_mf_3.items()}
+    base_country_cf_mf_2 = {country: dev_frac_mf_2 * cf for country, cf in base_country_cf_mf_3.items()}
+
+    # Adjust base capacity fractions for each country based on a selection parameter (select_countries)
+    adj_country_cf_mf_1 = {iso: base_country_cf_mf_1[iso] * select_countries[iso] for iso in base_country_cf_mf_1}
+    adj_country_cf_mf_2 = {iso: base_country_cf_mf_2[iso] * select_countries[iso] for iso in base_country_cf_mf_2}
+    adj_country_cf_mf_3 = {iso: base_country_cf_mf_3[iso] * select_countries[iso] for iso in base_country_cf_mf_3}
+
+    # Convert adjusted country capacity fractions to use integer keys instead of ISO country codes
+    country_cf_mf_1 = {int(iso_to_int_mp[iso]): adj_country_cf_mf_1[iso] for iso in adj_country_cf_mf_1}
+    country_cf_mf_2 = {int(iso_to_int_mp[iso]): adj_country_cf_mf_2[iso] for iso in adj_country_cf_mf_2}
+    country_cf_mf_3 = {int(iso_to_int_mp[iso]): adj_country_cf_mf_3[iso] for iso in adj_country_cf_mf_3}
 
     """
     Process data
@@ -552,7 +564,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     model.wf_lat = Param(model.wf_ids, initialize=wf_lat, within=NonNegativeReals)
     model.wf_cap = Param(model.wf_ids, initialize=wf_cap, within=NonNegativeIntegers)
 
-    model.wf_cost = Param(model.wf_ids, initialize=wf_cost_3, within=NonNegativeReals, mutable=True)
+    model.wf_cost = Param(model.wf_ids, initialize=wf_cost_1, within=NonNegativeReals, mutable=True)
     model.wf_cost_1 = Param(model.wf_ids, initialize=wf_cost_1, within=NonNegativeReals)
     model.wf_cost_2 = Param(model.wf_ids, initialize=wf_cost_2, within=NonNegativeReals)
     model.wf_cost_3 = Param(model.wf_ids, initialize=wf_cost_3, within=NonNegativeReals)
@@ -572,14 +584,19 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     model.onss_thold = Param(model.onss_ids, initialize=onss_thold, within=NonNegativeIntegers)
 
     # Define parameters for capacity fractions for each year
-    model.country_cf = Param(model.country_ids, initialize=country_cf_3, within=NonNegativeReals, mutable=True)
-    model.country_cf_1 = Param(model.country_ids, initialize=country_cf_1, within=NonNegativeReals)
-    model.country_cf_2 = Param(model.country_ids, initialize=country_cf_2, within=NonNegativeReals)
-    model.country_cf_3 = Param(model.country_ids, initialize=country_cf_3, within=NonNegativeReals)
+    model.country_cf = Param(model.country_ids, initialize=country_cf_sf, within=NonNegativeReals, mutable=True)
+    # Single stage
+    model.country_cf_sf = Param(model.country_ids, initialize=country_cf_mf_1, within=NonNegativeReals)
+    # Multi stage
+    model.country_cf_mf_1 = Param(model.country_ids, initialize=country_cf_mf_1, within=NonNegativeReals)
+    model.country_cf_mf_2 = Param(model.country_ids, initialize=country_cf_mf_2, within=NonNegativeReals)
+    model.country_cf_mf_3 = Param(model.country_ids, initialize=country_cf_mf_3, within=NonNegativeReals)
     
     # Define the first years
-    model.first_year = Param(initialize=first_year_sf_1, within=NonNegativeIntegers, mutable=True)
-    model.first_year_sf_1 = Param(initialize=first_year_sf_1, within=NonNegativeIntegers)
+    model.first_year = Param(initialize=first_year_mf_1, within=NonNegativeIntegers, mutable=True)
+    # Single stage
+    model.first_year_sf = Param(initialize=first_year_sf, within=NonNegativeIntegers)
+    # Multi stage
     model.first_year_mf_1 = Param(initialize=first_year_mf_1, within=NonNegativeIntegers)
     model.first_year_mf_2 = Param(initialize=first_year_mf_2, within=NonNegativeIntegers)
     model.first_year_mf_3 = Param(initialize=first_year_mf_3, within=NonNegativeIntegers)
@@ -608,17 +625,17 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     model.onss_cap_var = Var(model.viable_onss_ids, within=NonNegativeReals)
     model.onc_cap_var = Var(model.viable_onc_ids, within=NonNegativeReals)
     
-    if model_type == 0:
+    if model_type == 0: # Point-to-point connections
         model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals, bounds=(0, 0))
         model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals, bounds=(0, 0))
         model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals, bounds=(0, 0))
         model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
-    elif model_type == 1:
+    elif model_type == 1: # Hub-and-spoke connections
         model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals)
         model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
         model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
         model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals, bounds=(0, 0))
-    elif model_type == 2:
+    elif model_type == 2: # Combined connections
         model.eh_cap_var = Var(model.viable_eh_ids, within=NonNegativeReals)
         model.ec1_cap_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
         model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
@@ -936,7 +953,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         # Define and aggregate data for wind farms
         wf_data = []
         for wf in model.viable_wf_ids:
-            if model.wf_cap_var[wf].value > 0.1:
+            if model.wf_cap_var[wf].value > zero_th:
                 wf_id = wf
                 wf_iso = int_to_iso_mp[int(model.wf_iso[wf])]
                 wf_lon = model.wf_lon[wf]
@@ -954,7 +971,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         # Define and aggregate data for energy hubs
         eh_data = []
         for eh in model.viable_eh_ids:
-            if model.eh_cap_var[eh].value > 0.1:
+            if model.eh_cap_var[eh].value > zero_th:
                 eh_id = eh
                 eh_iso = int_to_iso_mp[int(model.eh_iso[eh])]
                 eh_lon = model.eh_lon[eh]
@@ -974,7 +991,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         # Define and aggregate data for onshore substations
         onss_data = []
         for onss in model.viable_onss_ids:
-            if model.onss_cap_var[onss].value > 0.1:
+            if model.onss_cap_var[onss].value > zero_th:
                 onss_id = onss
                 onss_iso = int_to_iso_mp[int(model.onss_iso[onss])]
                 onss_lon = model.onss_lon[onss]
@@ -996,7 +1013,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         # Create ec1_ids with export cable ID, single row for each cable
         ec1_data = []
         for wf, eh in model.viable_ec1_ids:
-            if model.ec1_cap_var[wf, eh].value > 0.1:
+            if model.ec1_cap_var[wf, eh].value > zero_th:
                 ec1_cap = rnd_f(model.ec1_cap_var[wf, eh])
                 dist1 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
                 ec1_cost = rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap, "ceil"))
@@ -1012,7 +1029,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         ec2_data = []
         ec_id_counter = 1
         for eh, onss in model.viable_ec2_ids:
-            if model.ec2_cap_var[eh, onss].value > 0.1:
+            if model.ec2_cap_var[eh, onss].value > zero_th:
                 ec2_cap = rnd_f(model.ec2_cap_var[eh, onss])
                 dist2 = rnd_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
                 ec2_cost = rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap, "ceil"))
@@ -1028,7 +1045,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         ec3_data = []
         ec_id_counter = 1
         for wf, onss in model.viable_ec3_ids:
-            if model.ec3_cap_var[wf, onss].value > 0.1:
+            if model.ec3_cap_var[wf, onss].value > zero_th:
                 ec3_cap = rnd_f(model.ec3_cap_var[wf, onss])
                 dist3 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
                 ec3_cost = rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap, "ceil"))
@@ -1044,7 +1061,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         onc_data = []
         onc_id_counter = 1
         for onss1, onss2 in model.viable_onc_ids:
-            if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > 0.1:
+            if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > zero_th:
                 onc_cap = rnd_f(model.onc_cap_var[onss1, onss2])
                 onc_cap_diff = onc_cap - prev_capacity.get('onc_ids', {}).get((onss1, onss2), 0)
                 dist4 = rnd_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
@@ -1159,9 +1176,15 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     
     def solve_single_stage(model, workspace_folder):
         # Use country_cf_2050 for the single stage optimization
-        country_cf_param = model.country_cf_3
-        year_param = value(model.first_year_sf_1)
-        wf_cost_param = model.wf_cost_3
+        country_cf_param = model.country_cf_sf
+        year_param = value(model.first_year_sf)
+        
+        if year_param == 2030:
+            wf_cost_param = model.wf_cost_1
+        if year_param == 2040:     
+            wf_cost_param = model.wf_cost_2
+        if year_param == 2050:
+            wf_cost_param = model.wf_cost_3     
         
         model.country_cf.store_values(country_cf_param)  # Update country_cf for the single stage optimization for 2050
         model.first_year.store_values(year_param)  # Update first_year
@@ -1201,9 +1224,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     def solve_multi_stage(model, workspace_folder):
         # Define the country_cf parameters for each stage
         country_cf_params = {
-            first_year_mf_1: model.country_cf_1,
-            first_year_mf_2: model.country_cf_2,
-            first_year_mf_3: model.country_cf_3
+            first_year_mf_1: model.country_cf_mf_1,
+            first_year_mf_2: model.country_cf_mf_2,
+            first_year_mf_3: model.country_cf_mf_3
         }
         
         # Define the wf_cost parameters for each stage
@@ -1261,7 +1284,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
 
     # Decide whether to run single stage or multistage optimization
     if multi_stage == 0:
-        print(f"Performing single stage optimization for {first_year_sf_1}...")
+        print(f"Performing single stage optimization for {first_year_sf}...")
         solve_single_stage(model, workspace_folder)
     elif multi_stage == 1:
         print(f"Performing multistage optimization for {first_year_mf_1}, {first_year_mf_2}, and {first_year_mf_3}...")

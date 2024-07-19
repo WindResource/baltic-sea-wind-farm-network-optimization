@@ -16,7 +16,7 @@ def create_wind_turbine_shapefile(output_folder: str) -> None:
 
     turbine_capacity = 15 # MW
     turbine_diameter = 240 # m
-    turbine_spacing = 7 # turbine diameters
+    turbine_spacing = 6 # turbine diameters
     
     # Set the spatial reference to a UTM Zone using its Well-Known ID (WKID)
     utm33 = arcpy.SpatialReference(32633)  # Example: UTM Zone 33N
