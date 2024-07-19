@@ -380,7 +380,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
+def opt_model(workspace_folder, model_type=1, cross_border=1, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -403,7 +403,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     
     "Define General Parameters"
     
-    zero_th = 0.01 # Define the zero threshold parameter
+    zero_th = 1e-2 # Define the zero threshold parameter
     
     wt_cap = 15  # Define the wind turbine capacity (MW)
     eh_cap_lim = 2500 # Define the energy hub capacity limit (MW)
@@ -655,6 +655,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     
     model.wf_country_alloc_var = Var(model.viable_wf_ids, model.country_ids, within=NonNegativeReals)
     
+    # Define the binary variable for each energy hub
+    model.eh_active_bin_var = Var(model.viable_eh_ids, within=Binary)
+    
     # Print total available wind farm capacity per country
     print("Total available wind farm capacity per country:")
     for country, country_code in iso_to_int_mp.items():
@@ -702,9 +705,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     """
     Define expressions for the Energy Hub (EH) capacity
     """
-    def eh_cost_rule(model, eh):
-        return eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh])
-    model.eh_cost_exp = Expression(model.viable_eh_ids, rule=eh_cost_rule)
+    def eh_cost_rule_with_binary(model, eh):
+        return model.eh_active_bin_var[eh] * eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh])
+    model.eh_cost_exp = Expression(model.viable_eh_ids, rule=eh_cost_rule_with_binary)
 
     """
     Define distance and capacity expressions for Export Cables (EC)
@@ -807,6 +810,21 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         return model.eh_cap_var[eh] >= connect_from_wf
     model.eh_cap_connect_con = Constraint(model.viable_eh_ids, rule=eh_cap_connect_rule)
 
+    def eh_active_rule(model, eh):
+        """
+        Ensures that the capacity of the energy hub (eh_cap_var) can only be greater than zero if the energy hub is active (eh_active_var is 1). 
+        A small value (zero_th) is added to account for potential rounding errors, allowing for numerical stability in the constraint.
+        """
+        return model.eh_cap_var[eh] <= model.eh_active_bin_var[eh] * eh_cap_lim + zero_th
+    model.eh_cap_to_active_con = Constraint(model.viable_eh_ids, rule=eh_active_rule)
+
+    # def eh_inactive_rule(model, eh):
+    #     """
+    #     Ensures that the capacity of the energy hub (eh_cap_var) is zero when the energy hub is inactive (eh_active_var is 0).
+    #     """
+    #     return model.eh_cap_var[eh] + zero_th >= model.eh_active_bin_var[eh]
+    # model.eh_inactive_cap_zero_con = Constraint(model.viable_eh_ids, rule=eh_inactive_rule)
+
     def eh_to_onss_connection_rule(model, eh):
         """
         Ensure the capacity of each energy hub is connected to an onshore substation of the corresponding country.
@@ -886,37 +904,32 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     """
     print("Solving the model...")
     
-    # Set the path to the Scip solver executable
+    # Set the path to the SCIP solver executable
     scip_path = "C:\\Program Files\\SCIPOptSuite 9.0.0\\bin\\scip.exe"
-
-    # Create a solver object and specify the solver executable path
-    solver = SolverFactory('scip')
-    solver.options['executable'] = scip_path
+    
+    # Write options to a parameter file
+    param_file_path = os.path.join(workspace_folder, "scip_params.set")
+    
+    # Create solver object and specify the solver executable path
+    solver = SolverFactory('scip', executable=scip_path)
     
     solver_options = {
-        'numerics/scaling': 1,  # Enable scaling
-        'tolerances/feasibility': 1e-4,  # Tolerance for feasibility checks
-        'tolerances/optimality': 1e-4,   # Tolerance for optimality conditions
-        'tolerances/integrality': 1e-4,  # Tolerance for integer variable constraints
-        'presolving/maxrounds': -1,      # Max presolve iterations to simplify the model
-        'propagating/maxrounds': -1,     # Max constraint propagation rounds
-        'parallel/threads': -1,          # Use all CPU cores for parallel processing
-        'nodeselection': 'hybrid',       # Hybrid node selection in branch and bound
-        'branching/varsel': 'pscost',    # Pseudocost variable selection in branching
-        'separating/aggressive': 1,      # Enable aggressive separation
-        'conflict/enable': 1,            # Activate conflict analysis
-        'heuristics/rens/freq': 10,      # Frequency of RENS heuristic
-        'heuristics/diving/freq': 10,    # Frequency of diving heuristic
-        'propagating/maxroundsroot': 15, # Propagation rounds at root node
-        'limits/nodes': 1e5,             # Maximum nodes in search tree
-        'limits/totalnodes': 1e5,        # Total node limit across threads
-        'emphasis/optimality': 1,        # Emphasize optimality
-        'emphasis/memory': 1,            # Emphasize memory
-        'separating/maxrounds': 10,      # Limit cut rounds at non-root nodes
-        'heuristics/feaspump/freq': 10,  # Frequency of feasibility pump heuristic
-        'tol': 0.01,                     # Set the relative optimality gap tolerance to 1%
-        'display/verblevel': 4           # Set verbosity level to display information about the solution
+        'limits/gap': 0.01,                  # Stop when the relative optimality gap is 0.6%
+        'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
+        'limits/solutions': -1,             # Limit on the number of solutions found
+        'limits/time': 3600,                 # Time limit for the solver in seconds (1 hour)
+        'numerics/feastol': 1e-5,           # Feasibility tolerance for constraints
+        'numerics/dualfeastol': 1e-5,       # Tolerance for dual feasibility conditions
+        'presolving/maxrounds': -1,          # Maximum number of presolve iterations (-1 for no limit)
+        'propagating/maxrounds': -1,         # Maximum number of propagation rounds (-1 for no limit)
+        'propagating/maxroundsroot': -1,     # Propagation rounds at the root node
+        'separating/maxrounds': -1,          # Maximum cut rounds at non-root nodes
+        'display/verblevel': 4               # Verbosity level to display detailed information about the solution process
     }
+
+    with open(param_file_path, 'w') as param_file:
+        for key, val in solver_options.items():
+            param_file.write(f"{key} = {val}\n")
 
     def rnd_f(e):
             return round(value(e), 3)
@@ -953,10 +966,27 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
 
         selected_components = {}
         
+        if model_type == 0:
+            tpe = "pp"
+        if model_type == 1:
+            tpe = "hs"
+        if model_type == 2:
+            tpe = "c"
+        
+        if cross_border == 0:
+            crb = "n"
+        if cross_border == 1:
+            crb = "in"
+        
+        if multi_stage == 0:
+            stg = "sf"
+        if multi_stage == 1:
+            stg = "mf"
+        
         # Define and aggregate data for wind farms
         wf_data = []
         for wf in model.viable_wf_ids:
-            if model.wf_cap_var[wf].value > zero_th:
+            if value(model.wf_cap_var[wf]) > zero_th:
                 wf_id = wf
                 wf_iso = int_to_iso_mp[int(model.wf_iso[wf])]
                 wf_lon = model.wf_lon[wf]
@@ -974,7 +1004,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         # Define and aggregate data for energy hubs
         eh_data = []
         for eh in model.viable_eh_ids:
-            if model.eh_cap_var[eh].value > zero_th:
+            if value(model.eh_cap_var[eh]) > zero_th:
                 eh_id = eh
                 eh_iso = int_to_iso_mp[int(model.eh_iso[eh])]
                 eh_lon = model.eh_lon[eh]
@@ -994,7 +1024,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         # Define and aggregate data for onshore substations
         onss_data = []
         for onss in model.viable_onss_ids:
-            if model.onss_cap_var[onss].value > zero_th:
+            if value(model.onss_cap_var[onss]) > zero_th:
                 onss_id = onss
                 onss_iso = int_to_iso_mp[int(model.onss_iso[onss])]
                 onss_lon = model.onss_lon[onss]
@@ -1016,7 +1046,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         # Create ec1_ids with export cable ID, single row for each cable
         ec1_data = []
         for wf, eh in model.viable_ec1_ids:
-            if model.ec1_cap_var[wf, eh].value > zero_th:
+            if value(model.ec1_cap_var[wf, eh]) > zero_th:
                 ec1_cap = rnd_f(model.ec1_cap_var[wf, eh])
                 dist1 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
                 ec1_cost = rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap, "ceil"))
@@ -1032,7 +1062,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         ec2_data = []
         ec_id_counter = 1
         for eh, onss in model.viable_ec2_ids:
-            if model.ec2_cap_var[eh, onss].value > zero_th:
+            if value(model.ec2_cap_var[eh, onss]) > zero_th:
                 ec2_cap = rnd_f(model.ec2_cap_var[eh, onss])
                 dist2 = rnd_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
                 ec2_cost = rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap, "ceil"))
@@ -1048,7 +1078,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         ec3_data = []
         ec_id_counter = 1
         for wf, onss in model.viable_ec3_ids:
-            if model.ec3_cap_var[wf, onss].value > zero_th:
+            if value(model.ec3_cap_var[wf, onss]) > zero_th:
                 ec3_cap = rnd_f(model.ec3_cap_var[wf, onss])
                 dist3 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
                 ec3_cost = rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap, "ceil"))
@@ -1064,7 +1094,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         onc_data = []
         onc_id_counter = 1
         for onss1, onss2 in model.viable_onc_ids:
-            if model.onc_cap_var[onss1, onss2].value is not None and model.onc_cap_var[onss1, onss2].value > zero_th:
+            if value(model.onc_cap_var[onss1, onss2]) is not None and value(model.onc_cap_var[onss1, onss2]) > zero_th:
                 onc_cap = rnd_f(model.onc_cap_var[onss1, onss2])
                 onc_cap_diff = onc_cap - prev_capacity.get('onc_ids', {}).get((onss1, onss2), 0)
                 dist4 = rnd_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
@@ -1081,6 +1111,21 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
         results_dir = os.path.join(workspace_folder, "results", "combined")
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
+
+        # Save the .npy and .txt files for each component
+        for component, data in selected_components.items():
+            # Save as .npy file
+            npy_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.npy')
+            np.save(npy_file_path, data['data'])
+            print(f'Saved {component} data in {npy_file_path}')
+            
+            # Save as .txt file
+            txt_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.txt')
+            with open(txt_file_path, 'w') as file:
+                file.write(data['headers'] + "\n")
+                for entry in data['data']:
+                    file.write(", ".join(map(str, entry)) + "\n")
+            print(f'Saved {component} data in {txt_file_path}')
 
         # Initialize dictionary to hold per-country data
         country_data = {country: {'wf_ids': {'capacity': 0, 'cost': 0},
@@ -1104,27 +1149,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
 
         # Save the aggregated data per country
         for country, data in country_data.items():
-            country_txt_file_path = os.path.join(results_dir, f'c_total_{country}_{year}.txt')
+            country_txt_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_country_{country}_{year}.txt')
             with open(country_txt_file_path, 'w') as file:
                 file.write("Component, Total Capacity, Total Cost\n")
                 for component, values in data.items():
                     file.write(f"{component}, {rnd_f(values['capacity'])}, {rnd_f(values['cost'])}\n")
             print(f'Saved total capacity and cost for {country} in {country_txt_file_path}')
-
-        # Save the .npy and .txt files for each component
-        for component, data in selected_components.items():
-            # Save as .npy file
-            npy_file_path = os.path.join(results_dir, f'c_{component}_{year}.npy')
-            np.save(npy_file_path, data['data'])
-            print(f'Saved {component} data in {npy_file_path}')
-            
-            # Save as .txt file
-            txt_file_path = os.path.join(results_dir, f'c_{component}_{year}.txt')
-            with open(txt_file_path, 'w') as file:
-                file.write(data['headers'] + "\n")
-                for entry in data['data']:
-                    file.write(", ".join(map(str, entry)) + "\n")
-            print(f'Saved {component} data in {txt_file_path}')
 
         # Calculate overall totals
         overall_totals = {'wf_ids': {'capacity': 0, 'cost': 0},
@@ -1144,7 +1174,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             overall_totals['overall']['cost'] += overall_totals[component]['cost']
 
         # Save the overall totals in the c_total file
-        total_txt_file_path = os.path.join(results_dir, f'c_total_{year}.txt')
+        total_txt_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_global_{year}.txt')
         with open(total_txt_file_path, 'w') as file:
             file.write("Component, Total Capacity, Total Cost\n")
             for component, values in overall_totals.items():
@@ -1198,9 +1228,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             'onss_ids': {onss: 0 for onss in model.viable_onss_ids},
             'onc_ids': {(onss1, onss2): 0 for onss1, onss2 in model.viable_onc_ids}
         }
+
+        # Path to the log file
+        logfile_path = os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year_param}.txt")
         
-        # Solve the model
-        results = solver.solve(model, tee=True, logfile=os.path.join(workspace_folder, "results", "combined", "c_solverlog_2050.txt"), options=solver_options)
+        # Solve the model, passing the parameter file as an option
+        results = solver.solve(model, tee=True, logfile=logfile_path, options=solver_options)
             
         # Detailed checking of solver results
         if results.solver.status == SolverStatus.ok:
@@ -1251,9 +1284,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
             model.country_cf.store_values(country_cf_params[year])  # Update country_cf for the multistage optimization
             model.first_year.store_values(year)  # Update first_year
             model.wf_cost.store_values(wf_cost_params[year])
+                        
+            # Path to the log file
+            logfile_path = os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year}.txt")
             
-            # Solve the model
-            results = solver.solve(model, tee=True, logfile=os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year}.txt"), options=solver_options)
+            # Solve the model, passing the parameter file as an option
+            results = solver.solve(model, tee=True, logfile=logfile_path, options=solver_options)
             
             # Detailed checking of solver results
             if results.solver.status == SolverStatus.ok:
