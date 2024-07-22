@@ -14,7 +14,6 @@ def iac_cost_fun(distance, capacity):
     Returns:
         float: Total cost associated with the selected HVAC cables in millions of euros.
     """
-
     equip_cost, inst_cost = iac_cost_ceil(distance, capacity)
     
     ope_cost_yearly = 0.2 * 1e-2 * equip_cost
@@ -52,7 +51,7 @@ def update_inter_array_cable_costs():
             distance = row[0]
             capacity = row[1]
             total_cost = iac_cost_fun(distance, capacity)
-            row[2] = round(total_cost * 1e-6, 3) # Cost in millions of EU
+            row[2] = round(total_cost, 3) # Cost in millions of EU
             cursor.updateRow(row)
 
 if __name__ == "__main__":

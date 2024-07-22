@@ -58,7 +58,6 @@ def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     Returns:
     - float: Estimated total cost of the energy hub.
     """
-
     # Determine support structure
     supp_structure = check_supp(water_depth)
     
@@ -267,7 +266,7 @@ def wf_cost_lin(wf_cost, wf_total_cap, wf_cap):
 
 def haversine(lon1, lat1, lon2, lat2):
     """
-    Calculate the great-circle distance between two points
+    Calculate the great-circle distance between two points in kilometers
     on the Earth (specified in decimal degrees) using NumPy for calculations.
     """
     # Convert decimal degrees to radians
@@ -469,7 +468,7 @@ def opt_model(workspace_folder, model_type=1, cross_border=1, multi_stage=0):
     dev_frac_mf_3 = 1.00
 
     # Define the base capacity fractions for the final year
-    base_country_cf_mf_3 = {
+    base_country_cf_mf = {
         'DE': 1,  # Germany
         'DK': 1,  # Denmark
         'EE': 1,  # Estonia
@@ -481,8 +480,9 @@ def opt_model(workspace_folder, model_type=1, cross_border=1, multi_stage=0):
     }
 
     # Calculate base capacity fractions for 2030 and 2040 using development fractions
-    base_country_cf_mf_1 = {country: dev_frac_mf_1 * cf for country, cf in base_country_cf_mf_3.items()}
-    base_country_cf_mf_2 = {country: dev_frac_mf_2 * cf for country, cf in base_country_cf_mf_3.items()}
+    base_country_cf_mf_1 = {country: dev_frac_mf_1 * cf for country, cf in base_country_cf_mf.items()}
+    base_country_cf_mf_2 = {country: dev_frac_mf_2 * cf for country, cf in base_country_cf_mf.items()}
+    base_country_cf_mf_3 = {country: dev_frac_mf_3 * cf for country, cf in base_country_cf_mf.items()}
 
     # Adjust base capacity fractions for each country based on a selection parameter (select_countries)
     adj_country_cf_mf_1 = {iso: base_country_cf_mf_1[iso] * select_countries[iso] for iso in base_country_cf_mf_1}

@@ -77,7 +77,7 @@ def update_fields():
         for row in cursor:
             water_depth = row[0]
             turbine_capacity = row[1]
-            port_distance = row[2] * 1e-3 # port distance in km
+            port_distance = row[2]
             ice_cover = 1 if row[3] == 'Yes' else 0
 
             total_cost_2030 = calculate_costs(2030, water_depth, ice_cover, port_distance, turbine_capacity)

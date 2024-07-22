@@ -11,6 +11,8 @@ def iac_cost_ceil(distance, capacity):
     Returns:
         float: Total cost associated with the selected HVAC cables in millions of euros.
     """
+    distance *= 1e-3 # Distance in km
+    
     cable_length = 1.05 * distance
     cable_capacity = 80 # MW
     cable_equip_cost = 0.152 # MEU/km

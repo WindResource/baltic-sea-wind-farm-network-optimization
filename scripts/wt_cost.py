@@ -79,6 +79,8 @@ def calc_inst_deco_cost(water_depth, port_distance, turbine_capacity, operation)
     Returns:
         float: Calculated cost in Euros.
     """
+    port_distance *= 1e-3 # Port distance in km
+    
     inst_coeff = {
         'PSIV': ((40 / turbine_capacity), 18.5, 24, 144, 200),
         'Tug': ((1/3), 7.5, 5, 0, 2.5),

@@ -55,6 +55,8 @@ def inst_deco_cost_lin(supp_structure, port_distance, operation):
     Returns:
     - float: Calculated installation or decommissioning cost.
     """
+    port_distance *= 1e-3 # Port distance in km
+    
     # Installation coefficients for different vehicles
     inst_coeff = {
         ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
