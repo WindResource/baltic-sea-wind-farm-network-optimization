@@ -434,11 +434,11 @@ def opt_model(workspace_folder, model_type=1, cross_border=0, multi_stage=0):
     
     solver_options = {
         'limits/gap': 0.006,                  # Stop when the relative optimality gap is 0.6%
-        'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
+        'limits/nodes': 1e5,                 # Maximum number of nodes in the search tree
         'limits/solutions': -1,             # Limit on the number of solutions found
         'limits/time': 3600,                 # Set a time limit of 3600 seconds (1 hour)
-        'numerics/feastol': 1e-4,           # Feasibility tolerance for constraints
-        'numerics/dualfeastol': 1e-4,       # Tolerance for dual feasibility conditions
+        'numerics/feastol': 1e-5,           # Feasibility tolerance for constraints
+        'numerics/dualfeastol': 1e-5,       # Tolerance for dual feasibility conditions
         'presolving/maxrounds': -1,          # Maximum number of presolve iterations (-1 for no limit)
         'propagating/maxrounds': -1,         # Maximum number of propagation rounds (-1 for no limit)
         'propagating/maxroundsroot': -1,     # Propagation rounds at the root node
