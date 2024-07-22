@@ -379,7 +379,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=1, cross_border=0, multi_stage=0):
+def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -433,7 +433,7 @@ def opt_model(workspace_folder, model_type=1, cross_border=0, multi_stage=0):
     }
     
     solver_options = {
-        'limits/gap': 0.006,                  # Stop when the relative optimality gap is 0.6%
+        'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
         'limits/nodes': 1e5,                 # Maximum number of nodes in the search tree
         'limits/solutions': -1,             # Limit on the number of solutions found
         'limits/time': 3600,                 # Set a time limit of 3600 seconds (1 hour)
@@ -968,7 +968,7 @@ def opt_model(workspace_folder, model_type=1, cross_border=0, multi_stage=0):
         selected_components = {}
         
         if model_type == 0:
-            tpe = "pp"
+            tpe = "d"
         if model_type == 1:
             tpe = "hs"
         if model_type == 2:
