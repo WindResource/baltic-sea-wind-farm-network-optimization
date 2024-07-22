@@ -46,7 +46,7 @@ def identify_countries(point_features):
     arcpy.management.Project("in_memory\\countries_polygon", "in_memory\\countries_projected", wgs84)
 
     # Create a buffer around the EEZ layer boundary
-    arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "150 Kilometers")
+    arcpy.analysis.PairwiseBuffer("in_memory\\eez_layer", "in_memory\\eez_buffer", "200 Kilometers")
 
     # Select point features within the buffer
     arcpy.analysis.PairwiseClip(point_features, "in_memory\\eez_buffer", "in_memory\\point_features")

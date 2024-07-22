@@ -1,158 +1,28 @@
 import arcpy
 import numpy as np
+from scripts.present_value import present_value_single
+from scripts.eh_cost import check_supp, equip_cost_lin, inst_deco_cost_lin
 
-def present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost):
+def oss_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     """
-    Calculate the total present value of cable cost.
+    Estimate the cost associated with an energy hub based on various parameters.
 
     Parameters:
-        equip_cost (float): Equipment cost.
-        inst_cost (float): Installation cost.
-        ope_cost_yearly (float): Yearly operational cost.
-        deco_cost (float): Decommissioning cost.
-
-    Returns:
-        float: Total present value of cost.
-    """
-    # Define years for installation, operational, and decommissioning
-    inst_year = 0  # First year (installation year)
-    ope_year = inst_year + 5  # Operational costs start year
-    dec_year = ope_year + 25  # Decommissioning year
-    end_year = dec_year + 2  # End year
-
-    # Discount rate
-    discount_rate = 0.05
-
-    # Initialize total operational cost
-    total_ope_cost = 0
-
-    # Adjust cost for each year
-    for year in range(inst_year, end_year + 1):
-        discount_factor = (1 + discount_rate) ** -year  # Calculate the discount factor for the year
-        if year == inst_year:
-            equip_cost *= discount_factor  # Discount equipment cost for the installation year
-            inst_cost *= discount_factor  # Discount installation cost for the installation year
-        elif ope_year <= year < dec_year:
-            total_ope_cost += ope_cost_yearly * discount_factor  # Accumulate discounted operational cost for each year
-        elif year == dec_year:
-            deco_cost *= discount_factor  # Discount decommissioning cost for the decommissioning year
-
-    # Calculate total present value of cost
-    total_cost = equip_cost + inst_cost + total_ope_cost + deco_cost
-
-    return total_cost
-
-def oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity):
-    """
-    Estimate the cost associated with an offshore substation based on various parameters.
-
-    Parameters:
-    - water_depth (float): Water depth at the location of the offshore substation.
+    - water_depth (float): Water depth at the location of the energy hub.
     - ice_cover (int): Indicator of ice cover presence (1 for presence, 0 for absence).
     - port_distance (float): Distance from the offshore location to the nearest port.
-    - oss_capacity (float): Capacity of the offshore substation.
+    - eh_capacity (float): Capacity of the energy hub.
     - polarity (str, optional): Polarity of the substation ('AC' or 'DC'). Defaults to 'AC'.
 
     Returns:
-    - float: Estimated total cost of the offshore substation.
+    - float: Estimated total cost of the energy hub.
     """
-    
-    def supp_struct_cond(water_depth):
-        """
-        Determines the support structure type based on water depth.
-
-        Returns:
-        - str: Support structure type ('monopile', 'jacket', 'floating', or 'default').
-        """
-        # Define depth ranges for different support structures
-        if water_depth < 150:
-            return "jacket"
-        elif 150 <= water_depth:
-            return "floating"
-
-    def equip_cost_lin(water_depth, support_structure, ice_cover, oss_capacity):
-        """
-        Calculates the offshore substation equipment cost based on water depth, capacity, and export cable type.
-
-        Returns:
-        - float: Calculated equipment cost.
-        """
-        # Coefficients for equipment cost calculation based on the support structure and year
-        support_structure_coeff = {
-            'jacket': (233, 47, 309, 62),
-            'floating': (87, 68, 116, 91)
-        }
-
-        equip_coeff = (22.87, 7.06)
-        
-        # Define parameters
-        c1, c2, c3, c4 = support_structure_coeff[support_structure]
-        
-        c5, c6 = equip_coeff
-        
-        # Define equivalent electrical power
-        equiv_capacity = 0.5 * oss_capacity
-
-        # Calculate foundation cost for jacket/floating
-        supp_cost = (c1 * water_depth + c2 * 1000) * equiv_capacity + (c3 * water_depth + c4 * 1000)
-        
-        # Add support structure cost for ice cover adaptation
-        supp_cost = 1.10 * supp_cost if ice_cover == 1 else supp_cost
-        
-        # Power converter cost
-        conv_cost = c5 * oss_capacity * int(1e3) + c6 * int(1e6) #* int(1e3)
-        
-        # Calculate equipment cost
-        equip_cost = supp_cost + conv_cost
-        
-        return conv_cost, equip_cost
-
-    def inst_deco_cost_lin(support_structure, port_distance, operation):
-        """
-        Calculate installation or decommissioning cost of offshore substations based on the water depth, and port distance.
-
-        Returns:
-        - float: Calculated installation or decommissioning cost.
-        """
-        # Installation coefficients for different vehicles
-        inst_coeff = {
-            ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
-            ('floating','HLCV'): (1, 22.5, 10, 0, 40),
-            ('floating','AHV'): (3, 18.5, 30, 90, 40)
-        }
-
-        # Decommissioning coefficients for different vehicles
-        deco_coeff = {
-            ('jacket' 'PSIV'): (1, 18.5, 24, 96, 200),
-            ('floating','HLCV'): (1, 22.5, 10, 0, 40),
-            ('floating','AHV'): (3, 18.5, 30, 30, 40)
-        }
-
-        # Choose the appropriate coefficients based on the operation type
-        coeff = inst_coeff if operation == 'inst' else deco_coeff
-            
-        if support_structure == 'jacket':
-            c1, c2, c3, c4, c5 = coeff[('jacket' 'PSIV')]
-            # Calculate installation cost for jacket
-            total_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-        elif support_structure == 'floating':
-            total_cost = 0
-            
-            # Iterate over the coefficients for floating (HLCV and AHV)
-            for vessel_type in [('floating', 'HLCV'), ('floating', 'AHV')]:
-                c1, c2, c3, c4, c5 = coeff[vessel_type]
-                # Calculate installation cost for the current vessel type
-                vessel_cost = ((1 / c1) * ((2 * port_distance) / c2 + c3) + c4) * (c5 * 1000) / 24
-                # Add the cost for the current vessel type to the total cost
-                total_cost += vessel_cost
-        
-        return total_cost
 
     # Determine support structure
-    supp_structure = supp_struct_cond(water_depth)
+    supp_structure = check_supp(water_depth)
     
     # Calculate equipment cost
-    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, oss_capacity)
+    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity)
 
     # Calculate installation and decommissioning cost
     inst_cost = inst_deco_cost_lin(supp_structure, port_distance, "inst")
@@ -162,10 +32,7 @@ def oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity):
     ope_cost_yearly = 0.03 * conv_cost
     
     # Calculate present value of cost    
-    oss_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
-    
-    # Offshore substation cost in million Euros
-    oss_cost *= 1e-6
+    oss_cost = present_value_single(first_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
     
     return oss_cost
 
