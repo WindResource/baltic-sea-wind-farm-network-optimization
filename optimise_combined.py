@@ -306,7 +306,7 @@ def find_viable_ec2(eh_lon, eh_lat, onss_lon, onss_lat):
     for eh_id, onss_id in product(eh_lon.keys(), onss_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(eh_lon[eh_id], eh_lat[eh_id], onss_lon[onss_id], onss_lat[onss_id])
-        if distance <= 150:  # Check if the distance is within 300 km
+        if distance <= 250:  # Check if the distance is within 300 km
             connections.append((int(eh_id), int(onss_id)))
     return connections
 
@@ -320,7 +320,7 @@ def find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat):
     connections = []
     for wf_id, onss_id in product(wf_lon.keys(), onss_lon.keys()):
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], onss_lon[onss_id], onss_lat[onss_id])
-        if distance <= 300:  # Check if the distance is within 450 km
+        if distance <= 400:  # Check if the distance is within 450 km
             connections.append((int(wf_id), int(onss_id)))
     return connections
 
@@ -379,7 +379,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
+def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -399,6 +399,18 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
     
     # Create a Pyomo model
     model = ConcreteModel()
+    
+    # Mapping ISO country codes of Baltic Sea countries to unique integers
+    iso_to_int_mp = {
+        'DE': 1,  # Germany
+        'DK': 2,  # Denmark
+        'EE': 3,  # Estonia
+        'FI': 4,  # Finland
+        'LV': 5,  # Latvia
+        'LT': 6,  # Lithuania
+        'PL': 7,  # Poland
+        'SE': 8   # Sweden
+    }
     
     "Define General Parameters"
     
@@ -420,16 +432,17 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
         'SE': 1   # Sweden
     }
     
-    # Mapping ISO country codes of Baltic Sea countries to unique integers
-    iso_to_int_mp = {
-        'DE': 1,  # Germany
-        'DK': 2,  # Denmark
-        'EE': 3,  # Estonia
-        'FI': 4,  # Finland
-        'LV': 5,  # Latvia
-        'LT': 6,  # Lithuania
-        'PL': 7,  # Poland
-        'SE': 8   # Sweden
+    solver_options = {
+        'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
+        'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
+        'limits/solutions': -1,             # Limit on the number of solutions found
+        'numerics/feastol': 1e-4,           # Feasibility tolerance for constraints
+        'numerics/dualfeastol': 1e-4,       # Tolerance for dual feasibility conditions
+        'presolving/maxrounds': -1,          # Maximum number of presolve iterations (-1 for no limit)
+        'propagating/maxrounds': -1,         # Maximum number of propagation rounds (-1 for no limit)
+        'propagating/maxroundsroot': -1,     # Propagation rounds at the root node
+        'separating/maxrounds': -1,          # Maximum cut rounds at non-root nodes
+        'display/verblevel': 4               # Verbosity level to display detailed information about the solution process
     }
     
     "Define Single Stage Optimization Parameters"
@@ -914,19 +927,6 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
     # Create solver object and specify the solver executable path
     solver = SolverFactory('scip', executable=scip_path)
     
-    solver_options = {
-        'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
-        'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
-        'limits/solutions': -1,             # Limit on the number of solutions found
-        'numerics/feastol': 1e-5,           # Feasibility tolerance for constraints
-        'numerics/dualfeastol': 1e-5,       # Tolerance for dual feasibility conditions
-        'presolving/maxrounds': -1,          # Maximum number of presolve iterations (-1 for no limit)
-        'propagating/maxrounds': -1,         # Maximum number of propagation rounds (-1 for no limit)
-        'propagating/maxroundsroot': -1,     # Propagation rounds at the root node
-        'separating/maxrounds': -1,          # Maximum cut rounds at non-root nodes
-        'display/verblevel': 4               # Verbosity level to display detailed information about the solution process
-    }
-
     with open(param_file_path, 'w') as param_file:
         for key, val in solver_options.items():
             param_file.write(f"{key} = {val}\n")
