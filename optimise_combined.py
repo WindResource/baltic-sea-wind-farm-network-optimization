@@ -227,7 +227,7 @@ def onc_cost_fun(first_year, distance, capacity, function="lin"):
     Returns:
         float: The total cost associated with the selected onshore substation cables.
     """
-    cable_length = 1.15 * distance  # Adjusted length with safety factor
+    cable_length = 1.10 * distance
     cable_capacity = 348  # MW (assuming same as export cable capacity)
     cable_equip_cost = 0.860  # Million EU/km
     cable_inst_cost = 0.540  # Million EU/km
@@ -291,7 +291,7 @@ def find_viable_ec1(wf_lon, wf_lat, eh_lon, eh_lat):
     for wf_id, eh_id in product(wf_lon.keys(), eh_lon.keys()):
         # Calculate the distance first to see if they are within the viable range
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], eh_lon[eh_id], eh_lat[eh_id])
-        if distance <= 150:  # Check if the distance is within 150 km
+        if distance <= 250:  # Check if the distance is within 150 km
             connections.append((int(wf_id), int(eh_id)))
     return connections
 
@@ -320,7 +320,7 @@ def find_viable_ec3(wf_lon, wf_lat, onss_lon, onss_lat):
     connections = []
     for wf_id, onss_id in product(wf_lon.keys(), onss_lon.keys()):
         distance = haversine(wf_lon[wf_id], wf_lat[wf_id], onss_lon[onss_id], onss_lat[onss_id])
-        if distance <= 400:  # Check if the distance is within 450 km
+        if distance <= 500:  # Check if the distance is within 450 km
             connections.append((int(wf_id), int(onss_id)))
     return connections
 
@@ -335,7 +335,7 @@ def find_viable_onc(onss_lon, onss_lat):
     for onss_id1, onss_id2 in product(onss_lon.keys(), repeat=2):
         if onss_id1 != onss_id2:  # Prevent self-connections
             distance = haversine(onss_lon[onss_id1], onss_lat[onss_id1], onss_lon[onss_id2], onss_lat[onss_id2])
-            if distance <= 150:  # Check if the distance is within 100 km
+            if distance <= 250:  # Check if the distance is within 100 km
                 connections.append((int(onss_id1), int(onss_id2)))
     return connections
 
@@ -379,7 +379,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=0):
+def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -433,8 +433,8 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=0):
     }
     
     solver_options = {
-        'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
-        'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
+        'limits/gap': 0.006,                  # Stop when the relative optimality gap is 0.6%
+        'limits/nodes': 1e5,                 # Maximum number of nodes in the search tree
         'limits/solutions': -1,             # Limit on the number of solutions found
         'numerics/feastol': 1e-4,           # Feasibility tolerance for constraints
         'numerics/dualfeastol': 1e-4,       # Tolerance for dual feasibility conditions
