@@ -1,8 +1,9 @@
 import arcpy
 import numpy as np
 from scripts.present_value import present_value_single
+from scripts.iac_cost import iac_cost_ceil
 
-def iac_cost_lin(distance, capacity):
+def iac_cost_ceil(distance, capacity):
     """
     Calculate the total cost of an inter array cable section for a given distance and desired capacity.
 
@@ -13,23 +14,15 @@ def iac_cost_lin(distance, capacity):
     Returns:
         float: Total cost associated with the selected HVAC cables in millions of euros.
     """
-    cable_length = 1.05 * distance
-    cable_capacity = 80 # MW
-    cable_equip_cost = 152 # eu/m
-    cable_inst_cost = 114 # eu/m
-    capacity_factor = 0.98
-    
-    parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
-    
-    equip_cost = parallel_cables * cable_length * cable_equip_cost
-    inst_cost = parallel_cables * cable_length * cable_inst_cost
+
+    equip_cost, inst_cost = iac_cost_ceil(distance, capacity)
     
     ope_cost_yearly = 0.2 * 1e-2 * equip_cost
     
     deco_cost = 0.5 * inst_cost
-
+    
     # Calculate present value
-    total_cost = present_value_single(equip_cost, inst_cost, ope_cost_yearly, deco_cost)
+    total_cost = present_value_single(2040, equip_cost, inst_cost, ope_cost_yearly, deco_cost)
 
     return total_cost
 
@@ -58,7 +51,7 @@ def update_inter_array_cable_costs():
         for row in cursor:
             distance = row[0]
             capacity = row[1]
-            total_cost = iac_cost_lin(distance, capacity)
+            total_cost = iac_cost_ceil(distance, capacity)
             row[2] = round(total_cost * 1e-6, 3) # Cost in millions of EU
             cursor.updateRow(row)
 

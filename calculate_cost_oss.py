@@ -115,7 +115,7 @@ def update_fields():
             oss_capacity = wf_id_to_capacity.get(wf_id, 0)
 
             # Calculate the total cost using the oss_cost_lin function if oss_capacity is not zero
-            total_cost = oss_cost_lin(water_depth, ice_cover, port_distance, oss_capacity) if oss_capacity > 0 else 0
+            total_cost = oss_cost_lin(2040, water_depth, ice_cover, port_distance, oss_capacity) if oss_capacity > 0 else 0
 
             # Update the TotalCapacity and TotalCost fields
             row[4] = oss_capacity
