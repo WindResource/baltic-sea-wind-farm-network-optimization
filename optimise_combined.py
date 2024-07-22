@@ -379,7 +379,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=0):
+def opt_model(workspace_folder, model_type=1, cross_border=0, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -433,16 +433,16 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=0):
     }
     
     solver_options = {
-        'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
+        'limits/gap': 0.006,                  # Stop when the relative optimality gap is 0.6%
         'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
-        'limits/solutions': 10,             # Limit on the number of solutions found
+        'limits/solutions': -1,             # Limit on the number of solutions found
         'limits/time': 3600,                 # Set a time limit of 3600 seconds (1 hour)
         'numerics/feastol': 1e-4,           # Feasibility tolerance for constraints
         'numerics/dualfeastol': 1e-4,       # Tolerance for dual feasibility conditions
-        'presolving/maxrounds': 10,          # Maximum number of presolve iterations (-1 for no limit)
-        'propagating/maxrounds': 10,         # Maximum number of propagation rounds (-1 for no limit)
-        'propagating/maxroundsroot': 10,     # Propagation rounds at the root node
-        'separating/maxrounds': 10,          # Maximum cut rounds at non-root nodes
+        'presolving/maxrounds': -1,          # Maximum number of presolve iterations (-1 for no limit)
+        'propagating/maxrounds': -1,         # Maximum number of propagation rounds (-1 for no limit)
+        'propagating/maxroundsroot': -1,     # Propagation rounds at the root node
+        'separating/maxrounds': -1,          # Maximum cut rounds at non-root nodes
         'display/verblevel': 4               # Verbosity level to display detailed information about the solution process
     }
     
