@@ -69,7 +69,7 @@ def gen_dataset(output_folder: str):
             ('Latitude', 'f8'), 
             ('WaterDepth', 'i4'), 
             ('IceCover', 'i4'), 
-            ('PortDistance', 'f8')]
+            ('PortDistance', 'i8')]
 
     # Create the structured array directly from the existing array, ensuring it fits the defined dtype
     data_array = np.array(list(zip(array['EH_ID'], array['ISO'], array['Longitude'], array['Latitude'], array['WaterDepth'], array['IceCover'], array['Distance'])), dtype=dtype)

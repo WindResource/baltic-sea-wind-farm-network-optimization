@@ -55,12 +55,24 @@ def gen_dataset(output_folder: str):
     # Define data dictionary structure
     dtype = [
         ('OnSS_ID', int),
-        ('ISO', 'U10'),
+        ('ISO', 'U2'),  # Changed to 'U2' for 2-letter country codes
         ('Longitude', float),
         ('Latitude', float),
         ('TotalCapacity', int),
     ]
     
+    # 3-letter to 2-letter ISO code mapping
+    iso_mapping = {
+        'DNK': 'DK',
+        'EST': 'EE',
+        'FIN': 'FI',
+        'DEU': 'DE',
+        'LVA': 'LV',
+        'LTU': 'LT',
+        'POL': 'PL',
+        'SWE': 'SE'
+    }
+
     # Initialize an empty list to store data dictionaries
     data_list = []
 
@@ -68,7 +80,7 @@ def gen_dataset(output_folder: str):
     for row in array_onss:
         data_dict = {
             'OnSS_ID': row['OnSS_ID'],
-            'ISO': row['ISO'],
+            'ISO': iso_mapping.get(row['ISO'], row['ISO']),  # Convert to 2-letter code
             'Longitude': round(row['Longitude'], 6),
             'Latitude': round(row['Latitude'], 6),
             'TotalCapacity': round(750)
