@@ -3,7 +3,7 @@ import numpy as np
 from scripts.present_value import present_value_single
 from scripts.iac_cost import iac_cost_ceil
 
-def iac_cost(distance, capacity):
+def iac_cost_fun(distance, capacity):
     """
     Calculate the total cost of an inter array cable section for a given distance and desired capacity.
 
@@ -51,7 +51,7 @@ def update_inter_array_cable_costs():
         for row in cursor:
             distance = row[0]
             capacity = row[1]
-            total_cost = iac_cost(distance, capacity)
+            total_cost = iac_cost_fun(distance, capacity)
             row[2] = round(total_cost * 1e-6, 3) # Cost in millions of EU
             cursor.updateRow(row)
 
