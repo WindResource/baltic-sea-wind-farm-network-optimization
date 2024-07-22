@@ -24,8 +24,8 @@ def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity):
         'floating': (87, 68, 116, 91)
     }
 
-    equip_coeff = (22.87, 7.06)
-    
+    equip_coeff = (22.87 * 1e3, 7.06 * 1e6)
+        
     # Define parameters
     c1, c2, c3, c4 = support_structure_coeff[support_structure]
     
@@ -38,7 +38,7 @@ def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity):
     supp_cost = (c1 * water_depth + c2 * 1e3) * equiv_capacity + (c3 * water_depth + c4 * 1e3)
     
     # Power converter cost
-    conv_cost = (c5 * 1e3) * eh_capacity + (c6 * 1e6)
+    conv_cost = c5 * eh_capacity + c6
     
     if ice_cover == 1:
         conv_cost *= 1.5714
