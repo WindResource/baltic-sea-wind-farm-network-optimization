@@ -434,7 +434,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
     
     solver_options = {
         'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
-        'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
+        'limits/nodes': 1e5,                 # Maximum number of nodes in the search tree
         'limits/solutions': -1,             # Limit on the number of solutions found
         'limits/time': 3600,                 # Set a time limit of 3600 seconds (1 hour)
         'numerics/feastol': 1e-5,           # Feasibility tolerance for constraints
@@ -959,22 +959,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
 
         selected_components = {}
         
-        if model_type == 0:
-            tpe = "d"
-        if model_type == 1:
-            tpe = "hs"
-        if model_type == 2:
-            tpe = "c"
-        
-        if cross_border == 0:
-            crb = "n"
-        if cross_border == 1:
-            crb = "in"
-        
-        if multi_stage == 0:
-            stg = "sf"
-        if multi_stage == 1:
-            stg = "mf"
+        tpe = ["d", "hs", "c"][model_type]
+        crb = ["n", "in"][cross_border]
+        stg = ["sf", "mf"][multi_stage]
         
         # Define and aggregate data for wind farms
         wf_data = []
@@ -985,8 +972,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
                 wf_lon = model.wf_lon[wf]
                 wf_lat = model.wf_lat[wf]
                 wf_capacity = rnd_f(model.wf_cap_var[wf])
+                wf_cap_diff = wf_capacity - prev_capacity.get('wf_cap_var', {}).get(wf, 0)
                 wf_rate = rnd_f(value(wf_capacity) / value(model.wf_cap[wf]))
-                wf_cost = rnd_f(nearest_wt_cap(wf_capacity) / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
+                wf_cost = rnd_f(nearest_wt_cap(wf_cap_diff) / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
                 wf_data.append((wf_id, wf_iso, wf_lon, wf_lat, wf_capacity, wf_cost, wf_rate))
 
         selected_components['wf_ids'] = {
@@ -1006,7 +994,8 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
                 eh_ice_cover = model.eh_icover[eh]
                 eh_port_dist = model.eh_pdist[eh]
                 eh_capacity = rnd_f(model.eh_cap_var[eh])
-                eh_cost = rnd_f(model.eh_cost_exp[eh])
+                eh_cap_diff = eh_capacity - prev_capacity.get('eh_cap_var', {}).get(eh, 0)
+                eh_cost = rnd_f(eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], eh_cap_diff, model.eh_active_bin_var[eh]))
                 eh_data.append((eh_id, eh_iso, eh_lon, eh_lat, eh_water_depth, eh_ice_cover, eh_port_dist, eh_capacity, eh_cost))
 
         selected_components['eh_ids'] = {
@@ -1023,10 +1012,10 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
                 onss_lon = model.onss_lon[onss]
                 onss_lat = model.onss_lat[onss]
                 onss_threshold = model.onss_thold[onss]
-                onss_cap = rnd_f(model.onss_cap_var[onss])
-                onss_cap_diff = onss_cap - prev_capacity.get('onss_ids', {}).get(onss, 0)
+                onss_capacity = rnd_f(model.onss_cap_var[onss])
+                onss_cap_diff = onss_capacity - prev_capacity.get('onss_ids', {}).get(onss, 0)
                 onss_cost = rnd_f(max(0, onss_cost_lin(value(model.first_year), onss_cap_diff, model.onss_thold[onss])))
-                onss_data.append((onss_id, onss_iso, onss_lon, onss_lat, onss_threshold, onss_cap, onss_cost))
+                onss_data.append((onss_id, onss_iso, onss_lon, onss_lat, onss_threshold, onss_capacity, onss_cost))
 
         selected_components['onss_ids'] = {
             'data': np.array(onss_data, dtype=[('id', int), ('iso', 'U2'), ('lon', float), ('lat', float), ('threshold', int), ('capacity', float), ('cost', float)]),
@@ -1041,8 +1030,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
         for wf, eh in model.viable_ec1_ids:
             if value(model.ec1_cap_var[wf, eh]) > zero_th:
                 ec1_cap = rnd_f(model.ec1_cap_var[wf, eh])
+                ec1_cap_diff = ec1_cap - prev_capacity.get('ec1_cap_var', {}).get((wf, eh), 0)
                 dist1 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
-                ec1_cost = rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap, "ceil"))
+                ec1_cost = rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap_diff, "ceil"))
                 ec1_data.append((ec_id_counter, int_to_iso_mp[int(model.eh_iso[eh])], wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost))
                 ec_id_counter += 1
 
@@ -1057,8 +1047,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
         for eh, onss in model.viable_ec2_ids:
             if value(model.ec2_cap_var[eh, onss]) > zero_th:
                 ec2_cap = rnd_f(model.ec2_cap_var[eh, onss])
+                ec2_cap_diff = ec2_cap - prev_capacity.get('ec2_cap_var', {}).get((eh, onss), 0)
                 dist2 = rnd_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
-                ec2_cost = rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap, "ceil"))
+                ec2_cost = rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap_diff, "ceil"))
                 ec2_data.append((ec_id_counter, int_to_iso_mp[int(model.onss_iso[onss])], eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost))
                 ec_id_counter += 1
 
@@ -1073,8 +1064,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
         for wf, onss in model.viable_ec3_ids:
             if value(model.ec3_cap_var[wf, onss]) > zero_th:
                 ec3_cap = rnd_f(model.ec3_cap_var[wf, onss])
+                ec3_cap_diff = ec3_cap - prev_capacity.get('ec3_cap_var', {}).get((wf, onss), 0)
                 dist3 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
-                ec3_cost = rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap, "ceil"))
+                ec3_cost = rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap_diff, "ceil"))
                 ec3_data.append((ec_id_counter, int_to_iso_mp[int(model.onss_iso[onss])], wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost))
                 ec_id_counter += 1
 
@@ -1110,7 +1102,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
             # Save as .npy file
             npy_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.npy')
             np.save(npy_file_path, data['data'])
-            print(f'Saved {component} data in {npy_file_path}')
+            print(f'Saved {component} data')
             
             # Save as .txt file
             txt_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.txt')
@@ -1118,7 +1110,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
                 file.write(data['headers'] + "\n")
                 for entry in data['data']:
                     file.write(", ".join(map(str, entry)) + "\n")
-            print(f'Saved {component} data in {txt_file_path}')
+            print(f'Saved {component} data')
 
         # Initialize dictionary to hold per-country data
         country_data = {country: {'wf_ids': {'capacity': 0, 'cost': 0},
@@ -1147,7 +1139,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
                 file.write("Component, Total Capacity, Total Cost\n")
                 for component, values in data.items():
                     file.write(f"{component}, {rnd_f(values['capacity'])}, {rnd_f(values['cost'])}\n")
-            print(f'Saved total capacity and cost for {country} in {country_txt_file_path}')
+            print(f'Saved total capacity and cost for {country}')
 
         # Calculate overall totals
         overall_totals = {'wf_ids': {'capacity': 0, 'cost': 0},
@@ -1172,8 +1164,9 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
             file.write("Component, Total Capacity, Total Cost\n")
             for component, values in overall_totals.items():
                 file.write(f"{component}, {rnd_f(values['capacity'])}, {rnd_f(values['cost'])}\n")
-        print(f'Saved overall total capacities and cost in {total_txt_file_path}')
-    
+        print(f'Saved overall total capacities and cost')
+
+
     def solve_single_stage(model, workspace_folder):
         # Use country_cf_2050 for the single stage optimization
         country_cf_param = model.country_cf_sf
@@ -1222,89 +1215,76 @@ def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
 
     def enforce_increase_variables(model, prev_capacity):
         """
-        Ensure that the capacities of onshore substations (onss) and onshore cables (onc) 
-        only increase and not decrease between stages by adding constraints.
+        Ensure that capacities only increase and not decrease between stages by adding constraints.
         """
-        # Add constraints to ensure onss capacities do not decrease if above the zero threshold
-        for onss in model.viable_onss_ids:
-            prev_cap = prev_capacity['onss_ids'].get(onss, 0)
-            if prev_cap > zero_th:
-                model.onss_cap_var[onss].setlb(prev_cap)
+        capacity_vars = {
+            'onss_cap_var': model.onss_cap_var,
+            'onc_cap_var': model.onc_cap_var,
+            'wf_cap_var': model.wf_cap_var,
+            'eh_cap_var': model.eh_cap_var,
+            'ec1_cap_var': model.ec1_cap_var,
+            'ec2_cap_var': model.ec2_cap_var,
+            'ec3_cap_var': model.ec3_cap_var
+        }
         
-        # Add constraints to ensure onc capacities do not decrease if above the zero threshold
-        for onss1, onss2 in model.viable_onc_ids:
-            prev_cap = prev_capacity['onc_ids'].get((onss1, onss2), 0)
-            if prev_cap > zero_th:
-                model.onc_cap_var[onss1, onss2].setlb(prev_cap)
-
-    def update_and_fix_variables(model):
-        """
-        Fix decision variables if their values are above 0.1.
-        """
-        for var in [model.wf_cap_var, model.eh_cap_var, model.ec1_cap_var, model.ec2_cap_var, model.ec3_cap_var]:
+        for var_name, var in capacity_vars.items():
             for index in var:
-                if var[index].value > zero_th:
-                    var[index].fix(round(var[index].value))
+                prev_cap = prev_capacity[var_name].get(index, 0)
+                if prev_cap > zero_th:
+                    var[index].setlb(prev_cap)
 
     def solve_multi_stage(model, workspace_folder):
-        # Define the country_cf parameters for each stage
+        """
+        Solve the model for multiple stages ensuring capacities only increase.
+        """
+        # Parameters for each stage
         country_cf_params = {
             first_year_mf_1: model.country_cf_mf_1,
             first_year_mf_2: model.country_cf_mf_2,
             first_year_mf_3: model.country_cf_mf_3
         }
-        
-        # Define the wf_cost parameters for each stage
         wf_cost_params = {
             first_year_mf_1: model.wf_cost_1,
             first_year_mf_2: model.wf_cost_2,
             first_year_mf_3: model.wf_cost_3
         }
         
-        # Initialize previous capacities dictionary
+        # Initial capacities
         prev_capacity = {
-            'onss_ids': {onss: 0 for onss in model.viable_onss_ids},
-            'onc_ids': {(onss1, onss2): 0 for onss1, onss2 in model.viable_onc_ids}
+            'onss_cap_var': {onss: 0 for onss in model.viable_onss_ids},
+            'onc_cap_var': {(onss1, onss2): 0 for onss1, onss2 in model.viable_onc_ids},
+            'wf_cap_var': {wf: 0 for wf in model.viable_wf_ids},
+            'eh_cap_var': {eh: 0 for eh in model.viable_eh_ids},
+            'ec1_cap_var': {index: 0 for index in model.ec1_cap_var},
+            'ec2_cap_var': {index: 0 for index in model.ec2_cap_var},
+            'ec3_cap_var': {index: 0 for index in model.ec3_cap_var}
         }
         
         for year in [first_year_mf_1, first_year_mf_2, first_year_mf_3]:
             print(f"Solving for {year}...")
             
-            model.country_cf.store_values(country_cf_params[year])  # Update country_cf for the multistage optimization
-            model.first_year.store_values(year)  # Update first_year
+            model.country_cf.store_values(country_cf_params[year])
+            model.first_year.store_values(year)
             model.wf_cost.store_values(wf_cost_params[year])
-                        
-            # Path to the log file
-            logfile_path = os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year}.txt")
             
-            # Solve the model, passing the parameter file as an option
+            logfile_path = os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year}.txt")
             results = solver.solve(model, tee=True, logfile=logfile_path, options=solver_options)
             
-            # Detailed checking of solver results
             if results.solver.status == SolverStatus.ok:
-                if results.solver.termination_condition == TerminationCondition.optimal:
-                    print(f"Solver found an optimal solution for {year}.")
-                    print(f"Objective value: {rnd_f(model.global_cost_obj.expr())}")
-                else:
-                    print(f"Solver stopped due to limit for {year}.")
-                    print(f"Objective value: {rnd_f(model.global_cost_obj.expr())}")
+                status_msg = "optimal solution" if results.solver.termination_condition == TerminationCondition.optimal else "stopped due to limit"
+                print(f"Solver found an {status_msg} for {year}. Objective value: {rnd_f(model.global_cost_obj.expr())}")
                 save_results(model, workspace_folder, year, prev_capacity)
-                # Update prev_capacity with current capacities for the next stage
-                prev_capacity['onss_ids'] = {onss: rnd_f(model.onss_cap_var[onss]) for onss in model.viable_onss_ids}
-                prev_capacity['onc_ids'] = {(onss1, onss2): rnd_f(model.onc_cap_var[onss1, onss2]) for onss1, onss2 in model.viable_onc_ids}
-                # Enforce capacity increase constraints
+                
+                for var_name in prev_capacity.keys():
+                    var = getattr(model, var_name)
+                    prev_capacity[var_name] = {index: round(var[index].value) for index in var if var[index].value > zero_th}
+                
                 enforce_increase_variables(model, prev_capacity)
-                # Fix variables
-                if year < first_year_mf_3:
-                    update_and_fix_variables(model)
-            elif results.solver.status == SolverStatus.error:
-                print(f"Solver error occurred for {year}. Check solver log for more details.")
-            elif results.solver.status == SolverStatus.warning:
-                print(f"Solver finished with warnings for {year}. Results may not be reliable.")
             else:
-                print(f"Unexpected solver status for {year}: {results.solver.status}. Check solver log for details.")
-
-            print(f"Solver log for {year} saved to {os.path.join(workspace_folder, 'results', 'combined', f'c_solverlog_{year}.txt')}")
+                status_msg = "error" if results.solver.status == SolverStatus.error else "warnings"
+                print(f"Solver finished with {status_msg} for {year}. Results may not be reliable. Check solver log for more details.")
+            
+            print(f"Solver log for {year} saved to {logfile_path}")
 
     # Decide whether to run single stage or multistage optimization
     if multi_stage == 0:
