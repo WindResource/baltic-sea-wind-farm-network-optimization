@@ -379,7 +379,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=0, multi_stage=1):
+def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
