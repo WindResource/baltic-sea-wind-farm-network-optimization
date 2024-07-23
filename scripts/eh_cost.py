@@ -38,7 +38,7 @@ def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity, eh_ac
     supp_cost = equiv_capacity * (c1 * water_depth + c2 * 1e3) + eh_active * (c3 * water_depth + c4 * 1e3)
     
     # Power converter cost
-    conv_cost = (c5 * eh_capacity + eh_active * c6)
+    conv_cost = (c5 * eh_capacity + c6 * eh_active)
     
     if ice_cover == 1:
         conv_cost *= 1.5714
