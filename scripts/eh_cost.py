@@ -11,7 +11,7 @@ def check_supp(water_depth):
         elif 120 <= water_depth:
             return "floating"
 
-def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity):
+def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity, eh_active=1):
     """
     Calculates the energy hub equipment cost based on water depth, capacity, and export cable type.
 
@@ -35,10 +35,10 @@ def equip_cost_lin(water_depth, support_structure, ice_cover, eh_capacity):
     equiv_capacity = 0.5 * eh_capacity
 
     # Calculate foundation cost for jacket/floating
-    supp_cost = (c1 * water_depth + c2 * 1e3) * equiv_capacity + (c3 * water_depth + c4 * 1e3)
+    supp_cost = equiv_capacity * (c1 * water_depth + c2 * 1e3) + eh_active * (c3 * water_depth + c4 * 1e3)
     
     # Power converter cost
-    conv_cost = c5 * eh_capacity + c6
+    conv_cost = (c5 * eh_capacity + eh_active * c6)
     
     if ice_cover == 1:
         conv_cost *= 1.5714

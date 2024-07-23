@@ -44,7 +44,7 @@ from itertools import product
 from scripts.present_value import present_value_single
 from scripts.eh_cost import check_supp, equip_cost_lin, inst_deco_cost_lin
 
-def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
+def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity, eh_active):
     """
     Estimate the cost associated with an energy hub based on various parameters.
 
@@ -62,11 +62,11 @@ def eh_cost_lin(first_year, water_depth, ice_cover, port_distance, eh_capacity):
     supp_structure = check_supp(water_depth)
     
     # Calculate equipment cost
-    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity)
+    conv_cost, equip_cost = equip_cost_lin(water_depth, supp_structure, ice_cover, eh_capacity, eh_active)
 
     # Calculate installation and decommissioning cost
-    inst_cost = inst_deco_cost_lin(supp_structure, port_distance, "inst")
-    deco_cost = inst_deco_cost_lin(supp_structure, port_distance, "deco")
+    inst_cost = eh_active * inst_deco_cost_lin(supp_structure, port_distance, "inst")
+    deco_cost = eh_active * inst_deco_cost_lin(supp_structure, port_distance, "deco")
 
     # Calculate yearly operational cost
     ope_cost_yearly = 0.03 * conv_cost
@@ -379,7 +379,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
+def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -720,7 +720,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
     Define expressions for the Energy Hub (EH) capacity
     """
     def eh_cost_rule_with_binary(model, eh):
-        return model.eh_active_bin_var[eh] * eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh])
+        return eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh], model.eh_active_bin_var[eh])
     model.eh_cost_exp = Expression(model.viable_eh_ids, rule=eh_cost_rule_with_binary)
 
     """
@@ -832,13 +832,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
         return model.eh_cap_var[eh] <= model.eh_active_bin_var[eh] * eh_cap_lim + zero_th
     model.eh_cap_to_active_con = Constraint(model.viable_eh_ids, rule=eh_active_rule)
 
-    def eh_inactive_rule(model, eh):
-        """
-        Ensures that the capacity of the energy hub (eh_cap_var) is zero when the energy hub is inactive (eh_active_var is 0). 
-        A small value (zero_th) is added to account for potential rounding errors, allowing for numerical stability in the constraint.
-        """
-        return model.eh_cap_var[eh] + zero_th >= model.eh_active_bin_var[eh]
-    model.eh_inactive_cap_zero_con = Constraint(model.viable_eh_ids, rule=eh_inactive_rule)
+    # def eh_inactive_rule(model, eh):
+    #     """
+    #     Ensures that the capacity of the energy hub (eh_cap_var) is zero when the energy hub is inactive (eh_active_var is 0). 
+    #     A small value (zero_th) is added to account for potential rounding errors, allowing for numerical stability in the constraint.
+    #     """
+    #     return model.eh_cap_var[eh] + zero_th >= model.eh_active_bin_var[eh]
+    # model.eh_inactive_cap_zero_con = Constraint(model.viable_eh_ids, rule=eh_inactive_rule)
 
     def eh_to_onss_connection_rule(model, eh):
         """
