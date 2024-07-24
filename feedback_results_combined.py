@@ -32,6 +32,14 @@ def create_polyline_feature_layer(npy_file_path, workspace_folder, layer_name):
     - workspace_folder: The path to the workspace folder where the feature class will be stored.
     - layer_name: The name of the layer to be created in the current map.
     """
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
+
+    # Check if the layer already exists in the map
+    if any(layer.name == layer_name for layer in map.listLayers()):
+        print(f'Layer {layer_name} already exists in the map. Skipping creation.')
+        return
+
     # Load the cable data from the .npy file
     cable_data = np.load(npy_file_path)
     
@@ -73,8 +81,6 @@ def create_polyline_feature_layer(npy_file_path, workspace_folder, layer_name):
             insert_cursor.insertRow(row_data + [polyline])
 
     # Add the feature class to the current map
-    aprx = arcpy.mp.ArcGISProject("CURRENT")
-    map = aprx.activeMap
     map.addDataFromPath(lines_path)
 
     print(f'Feature layer {layer_name} added successfully to the current map.')
@@ -88,6 +94,14 @@ def create_point_feature_layer(npy_file_path, workspace_folder, layer_name):
     - workspace_folder: The path to the workspace folder where the feature class will be stored.
     - layer_name: The name of the layer to be created in the current map.
     """
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
+
+    # Check if the layer already exists in the map
+    if any(layer.name == layer_name for layer in map.listLayers()):
+        print(f'Layer {layer_name} already exists in the map. Skipping creation.')
+        return
+
     # Load the point data from the .npy file
     point_data = np.load(npy_file_path)
     
@@ -119,11 +133,56 @@ def create_point_feature_layer(npy_file_path, workspace_folder, layer_name):
             insert_cursor.insertRow((point, id, iso, capacity, cost))
 
     # Add the feature class to the current map
-    aprx = arcpy.mp.ArcGISProject("CURRENT")
-    map = aprx.activeMap
     map.addDataFromPath(points_path)
 
     print(f'Feature layer {layer_name} added successfully to the current map.')
+
+def create_polygon_feature_layer_from_points(wfa_layer, wf_layer, workspace_folder, layer_name):
+    """
+    Creates a new polygon feature layer from WFA polygons containing WF points within them.
+
+    Parameters:
+    - wfa_layer: The WFA polygon layer.
+    - wf_layer: The WF point layer.
+    - workspace_folder: The path to the workspace folder where the feature class will be stored.
+    - layer_name: The name of the new polygon layer to be created.
+    """
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
+
+    # Check if the layer already exists in the map
+    if any(layer.name == layer_name for layer in map.listLayers()):
+        print(f'Layer {layer_name} already exists in the map. Skipping creation.')
+        return
+
+    # Path for the new feature class
+    polygons_path = os.path.join(workspace_folder, f"{layer_name}.shp")
+    if arcpy.Exists(polygons_path):
+        arcpy.Delete_management(polygons_path)
+    arcpy.management.CreateFeatureclass(workspace_folder, layer_name, 'POLYGON', spatial_reference=4326)
+    
+    # Copy WFA polygons to the new feature class
+    arcpy.management.CopyFeatures(wfa_layer, polygons_path)
+    
+    # Get the OID field name
+    oid_field = arcpy.Describe(polygons_path).OIDFieldName
+    
+    # Find WFA polygons that contain WF points
+    with arcpy.da.UpdateCursor(polygons_path, ['SHAPE@', oid_field]) as cursor:
+        for row in cursor:
+            polygon = row[0]
+            # Create a temporary layer for the points within the current polygon
+            arcpy.management.MakeFeatureLayer(wf_layer, "temp_wf_layer")
+            arcpy.management.SelectLayerByLocation("temp_wf_layer", "WITHIN", polygon)
+            # If no points are found within the polygon, delete the polygon
+            if int(arcpy.management.GetCount("temp_wf_layer").getOutput(0)) == 0:
+                cursor.deleteRow()
+            arcpy.management.Delete("temp_wf_layer")
+
+    # Add the new feature class to the current map
+    map.addDataFromPath(polygons_path)
+
+    print(f'Feature layer {layer_name} created successfully with polygons containing WF points.')
 
 def process_feature_layers(npy_file_paths, feature_layer_folder):
     """
@@ -140,6 +199,22 @@ def process_feature_layers(npy_file_paths, feature_layer_folder):
             create_point_feature_layer(file_path, feature_layer_folder, file_name)
         elif any(identifier in file_name for identifier in ['ec1', 'ec2', 'ec3', 'onc']):
             create_polyline_feature_layer(file_path, feature_layer_folder, file_name)
+
+    # Additional processing for creating WFA polygon layer
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map = aprx.activeMap
+    
+    # Get the first layer in the map that starts with 'WFA'
+    wfa_layer = next((layer for layer in map.listLayers() if layer.name.startswith('WFA')), None)
+    if wfa_layer is None:
+        arcpy.AddError("No layer starting with 'WFA' found in the current map.")
+        return
+    
+    # Process each WF layer and create corresponding WFA layer
+    wf_layers = [layer for layer in map.listLayers() if 'wf' in layer.name.lower()]
+    for wf_layer in wf_layers:
+        new_layer_name = wf_layer.name.replace('wf', 'wfa')
+        create_polygon_feature_layer_from_points(wfa_layer, wf_layer, feature_layer_folder, new_layer_name)
 
 if __name__ == "__main__":
     # Define the paths to the workspace and folders
