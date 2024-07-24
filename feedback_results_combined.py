@@ -6,7 +6,7 @@ import time
 def add_fields_with_retry(feature_class, fields, max_retries=3, wait_time=0.5):
     """
     Adds fields to a feature class with a retry mechanism in case of failure.
-    
+
     Parameters:
     - feature_class: The feature class to which fields will be added.
     - fields: The fields to be added.
@@ -25,9 +25,8 @@ def add_fields_with_retry(feature_class, fields, max_retries=3, wait_time=0.5):
 
 def create_polyline_feature_layer(npy_file_path, workspace_folder, layer_name):
     """
-    Create a feature layer with polylines connecting the coordinates using the .npy data directly
-    and add it to the current project map.
-    
+    Creates a polyline feature layer from .npy data and adds it to the current project map.
+
     Parameters:
     - npy_file_path: The path to the .npy file containing cable data.
     - workspace_folder: The path to the workspace folder where the feature class will be stored.
@@ -82,8 +81,8 @@ def create_polyline_feature_layer(npy_file_path, workspace_folder, layer_name):
 
 def create_point_feature_layer(npy_file_path, workspace_folder, layer_name):
     """
-    Create a point feature layer from the .npy data and add it to the current project map.
-    
+    Creates a point feature layer from .npy data and adds it to the current project map.
+
     Parameters:
     - npy_file_path: The path to the .npy file containing point data.
     - workspace_folder: The path to the workspace folder where the feature class will be stored.
@@ -126,90 +125,35 @@ def create_point_feature_layer(npy_file_path, workspace_folder, layer_name):
 
     print(f'Feature layer {layer_name} added successfully to the current map.')
 
-def process_feature_layers(years, npy_file_paths, feature_layer_folder):
+def process_feature_layers(npy_file_paths, feature_layer_folder):
     """
-    Process the feature layers for given years and file paths.
+    Processes and adds all .npy files in the given folder as feature layers.
 
     Parameters:
-    - years: List of years to process.
-    - npy_file_paths: Dictionary with keys as file identifiers and values as lists of file paths for each year.
+    - npy_file_paths: List of paths to .npy files.
     - feature_layer_folder: The base folder where feature layers will be saved.
     """
-    for year, npy_files in zip(years, zip(*npy_file_paths.values())):
-        year_folder = os.path.join(feature_layer_folder, year)
-        if not os.path.exists(year_folder):
-            os.makedirs(year_folder)
-        
-        # Generate point feature layers for wind farms, offshore substations, and onshore substations
-        create_point_feature_layer(npy_files[4], year_folder, f'C_WindFarms_{year}')
-        create_point_feature_layer(npy_files[5], year_folder, f'C_EnergyHubs_{year}')
-        create_point_feature_layer(npy_files[6], year_folder, f'C_OnshoreSubstations_{year}')
-        
-        # Generate feature layer for export cables 1
-        create_polyline_feature_layer(npy_files[0], year_folder, f'C_ExportCables1_{year}')
-
-        # Generate feature layer for export cables 2
-        create_polyline_feature_layer(npy_files[1], year_folder, f'C_ExportCables2_{year}')
-
-        # Generate feature layer for export cables 3
-        create_polyline_feature_layer(npy_files[2], year_folder, f'C_ExportCables3_{year}')
-
-        # Generate feature layer for onshore cables
-        create_polyline_feature_layer(npy_files[3], year_folder, f'C_OnshoreCables_{year}')
+    for file_path in npy_file_paths:
+        file_name = os.path.basename(file_path).split('.')[0]
+        # Determine if the file should be processed as point or polyline based on its name
+        if any(identifier in file_name for identifier in ['eh', 'onss', 'wf']):
+            create_point_feature_layer(file_path, feature_layer_folder, file_name)
+        elif any(identifier in file_name for identifier in ['ec1', 'ec2', 'ec3', 'onc']):
+            create_polyline_feature_layer(file_path, feature_layer_folder, file_name)
 
 if __name__ == "__main__":
-    workspace_folder = "C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets"
-    combined_folder = os.path.join(workspace_folder, 'results', 'combined')
+    # Define the paths to the workspace and folders
+    workspace_folder = f"C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets\\results\\combined\\process"
+    combined_folder = os.path.join(workspace_folder)
     feature_layer_folder = os.path.join(combined_folder, 'features')
 
-    # List of possible years for single-stage optimization
-    single_stage_years = ['2030', '2040', '2050']
+    # List all .npy files in the combined folder
+    npy_file_paths = [os.path.join(combined_folder, f) for f in os.listdir(combined_folder) if f.endswith('.npy')]
     
-    # Check for multistage results
-    if all(os.path.exists(os.path.join(combined_folder, f'c_ec1_ids_{year}.npy')) for year in single_stage_years):
-        # Multistage results
-        years = single_stage_years
-        npy_file_paths = {
-            'ec1': [os.path.join(combined_folder, f'c_ec1_ids_{year}.npy') for year in years],
-            'ec2': [os.path.join(combined_folder, f'c_ec2_ids_{year}.npy') for year in years],
-            'ec3': [os.path.join(combined_folder, f'c_ec3_ids_{year}.npy') for year in years],
-            'onc': [os.path.join(combined_folder, f'c_onc_ids_{year}.npy') for year in years],
-            'wf': [os.path.join(combined_folder, f'c_wf_ids_{year}.npy') for year in years],
-            'eh': [os.path.join(combined_folder, f'c_eh_ids_{year}.npy') for year in years],
-            'onss': [os.path.join(combined_folder, f'c_onss_ids_{year}.npy') for year in years]
-        }
-        process_feature_layers(years, npy_file_paths, feature_layer_folder)
+    # Process the files if any are found
+    if npy_file_paths:
+        if not os.path.exists(feature_layer_folder):
+            os.makedirs(feature_layer_folder)
+        process_feature_layers(npy_file_paths, feature_layer_folder)
     else:
-        # Check for single-stage results for any year
-        for year in single_stage_years:
-            if os.path.exists(os.path.join(combined_folder, f'c_ec1_ids_{year}.npy')):
-                npy_file_paths = {
-                    'ec1': [os.path.join(combined_folder, f'c_ec1_ids_{year}.npy')],
-                    'ec2': [os.path.join(combined_folder, f'c_ec2_ids_{year}.npy')],
-                    'ec3': [os.path.join(combined_folder, f'c_ec3_ids_{year}.npy')],
-                    'onc': [os.path.join(combined_folder, f'c_onc_ids_{year}.npy')],
-                    'wf': [os.path.join(combined_folder, f'c_wf_ids_{year}.npy')],
-                    'eh': [os.path.join(combined_folder, f'c_eh_ids_{year}.npy')],
-                    'onss': [os.path.join(combined_folder, f'c_onss_ids_{year}.npy')]
-                }
-                year_folder = os.path.join(feature_layer_folder, year)
-                if not os.path.exists(year_folder):
-                    os.makedirs(year_folder)
-                
-                # Generate point feature layers for wind farms, offshore substations, and onshore substations
-                create_point_feature_layer(npy_file_paths['wf'][0], year_folder, f'C_WindFarms_{year}')
-                create_point_feature_layer(npy_file_paths['eh'][0], year_folder, f'C_EnergyHubs_{year}')
-                create_point_feature_layer(npy_file_paths['onss'][0], year_folder, f'C_OnshoreSubstations_{year}')
-                
-                # Generate feature layer for export cables 1
-                create_polyline_feature_layer(npy_file_paths['ec1'][0], year_folder, f'C_ExportCables1_{year}')
-
-                # Generate feature layer for export cables 2
-                create_polyline_feature_layer(npy_file_paths['ec2'][0], year_folder, f'C_ExportCables2_{year}')
-
-                # Generate feature layer for export cables 3
-                create_polyline_feature_layer(npy_file_paths['ec3'][0], year_folder, f'C_ExportCables3_{year}')
-
-                # Generate feature layer for onshore cables
-                create_polyline_feature_layer(npy_file_paths['onc'][0], year_folder, f'C_OnshoreCables_{year}')
-                break
+        print("No .npy files found in the combined folder.")
