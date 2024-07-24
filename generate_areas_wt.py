@@ -57,6 +57,9 @@ def generate_turbine_areas(windfarm_folder: str):
     arcpy.management.AddField("in_memory\\non_overlapping_wf_layer", "AREA", "DOUBLE")
     arcpy.management.CalculateGeometryAttributes("in_memory\\non_overlapping_wf_layer", [["AREA", "AREA_GEODESIC"]])
 
+    # Remove duplicate features
+    arcpy.management.DeleteIdentical("in_memory\\non_overlapping_wf_layer", ["SHAPE"])
+
     # Make feature layers for selection
     arcpy.management.MakeFeatureLayer("in_memory\\non_overlapping_wf_layer", "layer_to_check")
     arcpy.management.MakeFeatureLayer("in_memory\\other_singlepart", "other_layer")
