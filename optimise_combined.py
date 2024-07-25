@@ -381,7 +381,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
+def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -691,26 +691,46 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
     # Define the binary variable for each energy hub
     model.eh_active_bin_var = Var(model.viable_eh_ids, within=Binary)
     
+    # Ensure the results directory exists
+    results_dir = os.path.join(workspace_folder, "results", "combined")
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    
     # Print total available wind farm capacity per country
     print("Total available wind farm capacity per country:")
     for country, country_code in iso_to_int_mp.items():
         total_capacity = sum(wf_cap[wf] for wf in wf_ids if wf_iso[wf] == country_code)
         print(f"{country}: {total_capacity} MW")
     
-    # Define a dictionary containing variable names and their respective lengths
-    print_variables = {
-        "select_wf": model.wf_cap_var,
-        "select_eh": model.eh_cap_var,
-        "select_onss": model.onss_cap_var,
-        "select_ec1": model.ec1_cap_var,
-        "select_ec2": model.ec2_cap_var,
-        "select_ec3": model.ec3_cap_var
-    }
+    # Create a DataFrame for variable counts
+    variable_counts_df = pd.DataFrame({
+        "Variable": [
+            "wf_cost_var", 
+            "eh_cost_var", 
+            "onss_cost_var", 
+            "ec1_cost_var", 
+            "ec2_cost_var", 
+            "ec3_cost_var", 
+            "onc_cost_var", 
+            "wf_country_alloc_var", 
+            "eh_active_bin_var"
+        ],
+        "Count": [
+            len(model.viable_wf_ids),
+            len(model.viable_eh_ids),
+            len(model.viable_onss_ids),
+            len(model.viable_ec1_ids),
+            len(model.viable_ec2_ids),
+            len(model.viable_ec3_ids),
+            len(model.viable_onc_ids),
+            len(model.viable_wf_ids) * len(model.country_ids),
+            len(model.viable_eh_ids)
+        ]
+    })
 
-    # Iterate over the dictionary and print variable ids and their lengths
-    for name, var in print_variables.items():
-        print(f"{name} ids:", list(var)[:20])  # Print variable ids
-        print(f"Number of {name} indices:", len(var))  # Print number of indices
+    # Define file path and save to Excel
+    variable_counts_df.to_excel(os.path.join(results_dir, f'r_variable_counts.xlsx'), index=False)
+    print(f'Saved variable counts as .xlsx')
 
     """
     Define Expressions
@@ -1118,11 +1138,6 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
             'headers': "ONC_ID, ISO, Comp_1_ID, Comp_2_ID, Lon_1, Lat_1, Lon_2, Lat_2, Distance, Capacity, Cost, Cost SF"
         }
 
-        # Ensure the results directory exists
-        results_dir = os.path.join(workspace_folder, "results", "combined")
-        if not os.path.exists(results_dir):
-            os.makedirs(results_dir)
-
         # Save the .npy files and Excel files for each component
         for component, data in selected_components.items():
             # Save as .npy file
@@ -1187,7 +1202,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
         total_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_global_{year}.xlsx')
         overall_df.to_excel(total_excel_file_path, index=False)
         print(f'Saved overall total capacities and cost as .xlsx')
-
+        
+        # Save the objective value in a separate Excel file
+        objective_value = rnd_f(model.global_cost_obj.expr())
+        objective_df = pd.DataFrame([["Objective Value", objective_value]], columns=["Metric", "Value"])
+        objective_excel_file_path = os.path.join(results_dir, f'r_objective_value.xlsx')
+        objective_df.to_excel(objective_excel_file_path, index=False)
+        print(f'Saved objective value as .xlsx')
 
     def solve_single_stage(model, workspace_folder):
         # Use country_cf_2050 for the single stage optimization
@@ -1212,7 +1233,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
         }
 
         # Path to the log file
-        logfile_path = os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year_param}.txt")
+        logfile_path = os.path.join(workspace_folder, "results", "combined", f"r_solverlog_{year_param}.txt")
         
         # Solve the model, passing the parameter file as an option
         results = solver.solve(model, tee=True, logfile=logfile_path, options=solver_options)
@@ -1289,7 +1310,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0):
             model.first_year.store_values(year)
             model.wf_cost.store_values(wf_cost_params[year])
             
-            logfile_path = os.path.join(workspace_folder, "results", "combined", f"c_solverlog_{year}.txt")
+            logfile_path = os.path.join(workspace_folder, "results", "combined", f"r_solverlog_{year}.txt")
             results = solver.solve(model, tee=True, logfile=logfile_path, options=solver_options)
             
             if results.solver.status == SolverStatus.ok:
