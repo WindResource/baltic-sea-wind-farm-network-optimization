@@ -381,7 +381,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
+def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -467,7 +467,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     
     # Define the base capacity fractions for the final year (international connections)
     base_country_cf_sf_i = {
-        'DE': 500 * 1e-2,  # Germany, limited to 500%
+        'DE': 800 * 1e-2,  # Germany, limited to 800%
         'DK': 5.63 * 1e-2,  # Denmark
         'EE': 12.19 * 1e-2,  # Estonia
         'FI': 7.92 * 1e-2,  # Finland
