@@ -696,6 +696,10 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
     
+    tpe = ["d", "hs", "c"][model_type]
+    crb = ["n", "in"][cross_border]
+    stg = ["sf", "mf"][multi_stage]
+    
     # Print total available wind farm capacity per country
     print("Total available wind farm capacity per country:")
     for country, country_code in iso_to_int_mp.items():
@@ -729,7 +733,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     })
 
     # Define file path and save to Excel
-    variable_counts_df.to_excel(os.path.join(results_dir, f'r_variable_counts.xlsx'), index=False)
+    variable_counts_df.to_excel(os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_variable_counts.xlsx'), index=False)
     print(f'Saved variable counts as .xlsx')
 
     """
@@ -972,7 +976,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         """
         return int(np.ceil(value(cap) / wt_cap)) * wt_cap
     
-    def save_results(model, workspace_folder, year, prev_capacity):
+    def save_results(model, year, prev_capacity):
         """
         Save the IDs of selected components of the optimization model along with all their corresponding parameters,
         including directly retrieved capacity and cost from the model expressions, into both .npy and Excel files as structured arrays.
@@ -996,10 +1000,6 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         }
 
         selected_components = {}
-
-        tpe = ["d", "hs", "c"][model_type]
-        crb = ["n", "in"][cross_border]
-        stg = ["sf", "mf"][multi_stage]
 
         # Define and aggregate data for wind farms
         wf_data = []
@@ -1206,7 +1206,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         # Save the objective value in a separate Excel file
         objective_value = rnd_f(model.global_cost_obj.expr())
         objective_df = pd.DataFrame([["Objective Value", objective_value]], columns=["Metric", "Value"])
-        objective_excel_file_path = os.path.join(results_dir, f'r_objective_value.xlsx')
+        objective_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_objective_value_{year}.xlsx')
         objective_df.to_excel(objective_excel_file_path, index=False)
         print(f'Saved objective value as .xlsx')
 
@@ -1233,7 +1233,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         }
 
         # Path to the log file
-        logfile_path = os.path.join(workspace_folder, "results", "combined", f"r_solverlog_{year_param}.txt")
+        logfile_path = os.path.join(workspace_folder, "results", "combined", f"r_{stg}_{tpe}_{crb}_solverlog_{year_param}.txt")
         
         # Solve the model, passing the parameter file as an option
         results = solver.solve(model, tee=True, logfile=logfile_path, options=solver_options)
@@ -1246,7 +1246,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
             else:
                 print(f"Solver stopped due to limit for {year_param}.")
                 print(f"Objective value: {rnd_f(model.global_cost_obj.expr())}")
-            save_results(model, workspace_folder, year_param, prev_capacity)
+            save_results(model, year_param, prev_capacity)
         elif results.solver.status == SolverStatus.error:
             print(f"Solver error occurred for {year_param}. Check solver log for more details.")
         elif results.solver.status == SolverStatus.warning:
@@ -1310,13 +1310,13 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
             model.first_year.store_values(year)
             model.wf_cost.store_values(wf_cost_params[year])
             
-            logfile_path = os.path.join(workspace_folder, "results", "combined", f"r_solverlog_{year}.txt")
+            logfile_path = os.path.join(workspace_folder, "results", "combined", f"r_{stg}_{tpe}_{crb}_solverlog_{year}.txt")
             results = solver.solve(model, tee=True, logfile=logfile_path, options=solver_options)
             
             if results.solver.status == SolverStatus.ok:
                 status_msg = "optimal solution" if results.solver.termination_condition == TerminationCondition.optimal else "stopped due to limit"
                 print(f"Solver found an {status_msg} for {year}. Objective value: {rnd_f(model.global_cost_obj.expr())}")
-                save_results(model, workspace_folder, year, prev_capacity)
+                save_results(model, year, prev_capacity)
                 
                 for var_name in prev_capacity.keys():
                     var = getattr(model, var_name)
