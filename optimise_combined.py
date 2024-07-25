@@ -40,6 +40,8 @@ wind farms, energy hubs, and connections between them, adhering to defined const
 from pyomo.environ import *
 import numpy as np
 import os
+import pandas as pd
+import openpyxl
 from itertools import product
 from scripts.present_value import present_value_single
 from scripts.eh_cost import check_supp, equip_cost_lin, inst_deco_cost_lin
@@ -230,7 +232,7 @@ def onc_cost_fun(first_year, distance, capacity, function="lin"):
     cable_length = 1.10 * distance
     cable_capacity = 348  # MW (assuming same as export cable capacity)
     cable_equip_cost = 0.860  # Million EU/km
-    cable_inst_cost = 0.540  # Million EU/km
+    cable_inst_cost = 0.540 * 0.5  # Million EU/km
     capacity_factor = 0.95
     
     if function == "lin":
@@ -379,7 +381,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
+def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -451,17 +453,34 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     # Define the year to be optimized for single stage
     first_year_sf = 2040
     
-    # Define the base capacity fractions for the final year
-    base_country_cf_sf = {
-        'DE': 1,  # Germany
-        'DK': 1,  # Denmark
-        'EE': 1,  # Estonia
-        'FI': 1,  # Finland
-        'LV': 1,  # Latvia
-        'LT': 1,  # Lithuania
-        'PL': 1,  # Poland
-        'SE': 1   # Sweden
+    # Define the base capacity fractions for the final year (national connections)
+    base_country_cf_sf_n = {
+        'DE': 100 * 1e-2,  # Germany, limited to 100%
+        'DK': 5.63 * 1e-2,  # Denmark
+        'EE': 12.19 * 1e-2,  # Estonia
+        'FI': 7.92 * 1e-2,  # Finland
+        'LV': 5.09 * 1e-2,  # Latvia
+        'LT': 2.82 * 1e-2,  # Lithuania
+        'PL': 100 * 1e-2,  # Poland, limited to 100%
+        'SE': 2.01 * 1e-2   # Sweden
     }
+    
+    # Define the base capacity fractions for the final year (international connections)
+    base_country_cf_sf_i = {
+        'DE': 500 * 1e-2,  # Germany, limited to 500%
+        'DK': 5.63 * 1e-2,  # Denmark
+        'EE': 12.19 * 1e-2,  # Estonia
+        'FI': 7.92 * 1e-2,  # Finland
+        'LV': 5.09 * 1e-2,  # Latvia
+        'LT': 2.82 * 1e-2,  # Lithuania
+        'PL': 226.51 * 1e-2,  # Poland
+        'SE': 2.01 * 1e-2   # Sweden
+    }
+    
+    if cross_border == 0:
+        base_country_cf_sf = base_country_cf_sf_n
+    elif cross_border == 1:
+        base_country_cf_sf = base_country_cf_sf_i
     
     # Adjust base capacity fractions for each country based on a selection parameter (select_countries)
     adj_country_cf_sf = {iso: base_country_cf_sf[iso] * select_countries[iso] for iso in base_country_cf_sf}
@@ -936,8 +955,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     def save_results(model, workspace_folder, year, prev_capacity):
         """
         Save the IDs of selected components of the optimization model along with all their corresponding parameters,
-        including directly retrieved capacity and cost from the model expressions, into both .npy and .txt files as structured arrays.
-        Headers are included in the .txt files for clarity.
+        including directly retrieved capacity and cost from the model expressions, into both .npy and Excel files as structured arrays.
 
         Parameters:
         - model: The optimized Pyomo model.
@@ -958,11 +976,11 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         }
 
         selected_components = {}
-        
+
         tpe = ["d", "hs", "c"][model_type]
         crb = ["n", "in"][cross_border]
         stg = ["sf", "mf"][multi_stage]
-        
+
         # Define and aggregate data for wind farms
         wf_data = []
         for wf in model.viable_wf_ids:
@@ -1097,20 +1115,18 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
 
-        # Save the .npy and .txt files for each component
+        # Save the .npy files and Excel files for each component
         for component, data in selected_components.items():
             # Save as .npy file
             npy_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.npy')
             np.save(npy_file_path, data['data'])
-            print(f'Saved {component} data')
-            
-            # Save as .txt file
-            txt_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.txt')
-            with open(txt_file_path, 'w') as file:
-                file.write(data['headers'] + "\n")
-                for entry in data['data']:
-                    file.write(", ".join(map(str, entry)) + "\n")
-            print(f'Saved {component} data')
+            print(f'Saved {component} data as .npy')
+
+            # Save as Excel file
+            df = pd.DataFrame(data['data'])
+            excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.xlsx')
+            df.to_excel(excel_file_path, index=False)
+            print(f'Saved {component} data as .xlsx')
 
         # Initialize dictionary to hold per-country data
         country_data = {country: {'wf_ids': {'capacity': 0, 'cost': 0},
@@ -1121,7 +1137,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
                                 'ec3_ids': {'capacity': 0, 'cost': 0},
                                 'onc_ids': {'capacity': 0, 'cost': 0},
                                 'overall': {'capacity': 0, 'cost': 0}}
-                        for country in int_to_iso_mp.values()}
+                    for country in int_to_iso_mp.values()}
 
         # Aggregate data per country for each component
         for component, data in selected_components.items():
@@ -1134,12 +1150,11 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
 
         # Save the aggregated data per country
         for country, data in country_data.items():
-            country_txt_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_country_{country}_{year}.txt')
-            with open(country_txt_file_path, 'w') as file:
-                file.write("Component, Total Capacity, Total Cost\n")
-                for component, values in data.items():
-                    file.write(f"{component}, {rnd_f(values['capacity'])}, {rnd_f(values['cost'])}\n")
-            print(f'Saved total capacity and cost for {country}')
+            country_df = pd.DataFrame([(component, rnd_f(values['capacity']), rnd_f(values['cost'])) for component, values in data.items()],
+                                    columns=["Component", "Total Capacity", "Total Cost"])
+            country_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_country_{country}_{year}.xlsx')
+            country_df.to_excel(country_excel_file_path, index=False)
+            print(f'Saved total capacity and cost for {country} as .xlsx')
 
         # Calculate overall totals
         overall_totals = {'wf_ids': {'capacity': 0, 'cost': 0},
@@ -1158,13 +1173,12 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
             overall_totals['overall']['capacity'] += overall_totals[component]['capacity']
             overall_totals['overall']['cost'] += overall_totals[component]['cost']
 
-        # Save the overall totals in the c_total file
-        total_txt_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_global_{year}.txt')
-        with open(total_txt_file_path, 'w') as file:
-            file.write("Component, Total Capacity, Total Cost\n")
-            for component, values in overall_totals.items():
-                file.write(f"{component}, {rnd_f(values['capacity'])}, {rnd_f(values['cost'])}\n")
-        print(f'Saved overall total capacities and cost')
+        # Save the overall totals in an Excel file
+        overall_df = pd.DataFrame([(component, rnd_f(values['capacity']), rnd_f(values['cost'])) for component, values in overall_totals.items()],
+                                columns=["Component", "Total Capacity", "Total Cost"])
+        total_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_global_{year}.xlsx')
+        overall_df.to_excel(total_excel_file_path, index=False)
+        print(f'Saved overall total capacities and cost as .xlsx')
 
 
     def solve_single_stage(model, workspace_folder):

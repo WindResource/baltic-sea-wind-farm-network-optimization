@@ -26,6 +26,9 @@ def generate_turbine_areas(windfarm_folder: str):
     if wf_layer is None:
         arcpy.AddError("No layer starting with 'windfarmspoly' found in the current map.")
         return
+    
+    # Deselect all currently selected features
+    arcpy.SelectLayerByAttribute_management(wf_layer, "CLEAR_SELECTION")
 
     arcpy.AddMessage(f"Processing layer: {wf_layer.name}")
 

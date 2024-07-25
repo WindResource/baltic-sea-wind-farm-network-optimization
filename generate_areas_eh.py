@@ -39,6 +39,9 @@ def generate_offshore_substation_areas(output_folder):
     if wf_layer is None:
         arcpy.AddError("No layer starting with 'windfarmspoly' found in the current map.")
         return
+    
+    # Deselect all currently selected features
+    arcpy.SelectLayerByAttribute_management(wf_layer, "CLEAR_SELECTION")
 
     # Create a feature layer from the WFA layer
     wfa_feature_layer = arcpy.management.MakeFeatureLayer(wf_layer, "wfa_feature_layer").getOutput(0)

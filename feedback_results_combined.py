@@ -233,7 +233,7 @@ def process_feature_layers(npy_file_paths, feature_layer_folder):
 
 if __name__ == "__main__":
     # Define the paths to the workspace and folders
-    workspace_folder = f"C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets\\results\\combined\\MF-C-I"
+    workspace_folder = f"C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets\\results\\combined"
     combined_folder = os.path.join(workspace_folder)
     feature_layer_folder = os.path.join(combined_folder, 'features')
 
