@@ -1204,7 +1204,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         print(f'Saved overall total capacities and cost as .xlsx')
         
         # Save the objective value in a separate Excel file
-        objective_value = rnd_f(model.global_cost_obj.expr())
+        objective_value = rnd_f(model.global_cost_obj)
         objective_df = pd.DataFrame([["Objective Value", objective_value]], columns=["Metric", "Value"])
         objective_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_objective_value_{year}.xlsx')
         objective_df.to_excel(objective_excel_file_path, index=False)
@@ -1242,10 +1242,10 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
         if results.solver.status == SolverStatus.ok:
             if results.solver.termination_condition == TerminationCondition.optimal:
                 print(f"Solver found an optimal solution for {year_param}.")
-                print(f"Objective value: {rnd_f(model.global_cost_obj.expr())}")
+                print(f"Objective value: {rnd_f(model.global_cost_obj)}")
             else:
                 print(f"Solver stopped due to limit for {year_param}.")
-                print(f"Objective value: {rnd_f(model.global_cost_obj.expr())}")
+                print(f"Objective value: {rnd_f(model.global_cost_obj)}")
             save_results(model, year_param, prev_capacity)
         elif results.solver.status == SolverStatus.error:
             print(f"Solver error occurred for {year_param}. Check solver log for more details.")
@@ -1315,7 +1315,7 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
             
             if results.solver.status == SolverStatus.ok:
                 status_msg = "optimal solution" if results.solver.termination_condition == TerminationCondition.optimal else "stopped due to limit"
-                print(f"Solver found an {status_msg} for {year}. Objective value: {rnd_f(model.global_cost_obj.expr())}")
+                print(f"Solver found an {status_msg} for {year}. Objective value: {rnd_f(model.global_cost_obj)}")
                 save_results(model, year, prev_capacity)
                 
                 for var_name in prev_capacity.keys():
