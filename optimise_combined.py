@@ -381,7 +381,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
+def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=0):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -500,17 +500,34 @@ def opt_model(workspace_folder, model_type=2, cross_border=1, multi_stage=1):
     dev_frac_mf_2 = 0.7115
     dev_frac_mf_3 = 1.00
 
-    # Define the base capacity fractions for the final year
-    base_country_cf_mf = {
-        'DE': 1,  # Germany
-        'DK': 1,  # Denmark
-        'EE': 1,  # Estonia
-        'FI': 1,  # Finland
-        'LV': 1,  # Latvia
-        'LT': 1,  # Lithuania
-        'PL': 1,  # Poland
-        'SE': 1   # Sweden
+    # Define the base capacity fractions for the final year (national connections)
+    base_country_cf_mf_n = {
+        'DE': 100 * 1e-2,  # Germany, limited to 100%
+        'DK': 5.63 * 1e-2,  # Denmark
+        'EE': 12.19 * 1e-2,  # Estonia
+        'FI': 7.92 * 1e-2,  # Finland
+        'LV': 5.09 * 1e-2,  # Latvia
+        'LT': 2.82 * 1e-2,  # Lithuania
+        'PL': 100 * 1e-2,  # Poland, limited to 100%
+        'SE': 2.01 * 1e-2   # Sweden
     }
+    
+    # Define the base capacity fractions for the final year (international connections)
+    base_country_cf_mf_i = {
+        'DE': 800 * 1e-2,  # Germany, limited to 800%
+        'DK': 5.63 * 1e-2,  # Denmark
+        'EE': 12.19 * 1e-2,  # Estonia
+        'FI': 7.92 * 1e-2,  # Finland
+        'LV': 5.09 * 1e-2,  # Latvia
+        'LT': 2.82 * 1e-2,  # Lithuania
+        'PL': 226.51 * 1e-2,  # Poland
+        'SE': 2.01 * 1e-2   # Sweden
+    }
+    
+    if cross_border == 0:
+        base_country_cf_mf = base_country_cf_mf_n
+    elif cross_border == 1:
+        base_country_cf_mf = base_country_cf_mf_i
 
     # Calculate base capacity fractions for 2030 and 2040 using development fractions
     base_country_cf_mf_1 = {country: dev_frac_mf_1 * cf for country, cf in base_country_cf_mf.items()}
