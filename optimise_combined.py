@@ -414,6 +414,17 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
         'SE': 8   # Sweden
     }
     
+    "Define Sensitivity Parameters"
+    
+    # Sensitivity factors
+    sf_wf = 1
+    sf_eh = 1
+    sf_ec1 = 1
+    sf_ec2 = 1
+    sf_ec3 = 1
+    sf_onss = 1
+    sf_onc = 1
+    
     "Define General Parameters"
     
     zero_th = 1e-2 # Define the zero threshold parameter
@@ -433,25 +444,6 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
         'PL': 1,  # Poland
         'SE': 1   # Sweden
     }
-    
-    solver_options = {
-        'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
-        'limits/nodes': 1e5,                 # Maximum number of nodes in the search tree
-        'limits/solutions': -1,             # Limit on the number of solutions found
-        'limits/time': 3600,                 # Set a time limit of 3600 seconds (1 hour)
-        'numerics/feastol': 1e-5,           # Feasibility tolerance for constraints
-        'numerics/dualfeastol': 1e-5,       # Tolerance for dual feasibility conditions
-        'presolving/maxrounds': -1,          # Maximum number of presolve iterations (-1 for no limit)
-        'propagating/maxrounds': -1,         # Maximum number of propagation rounds (-1 for no limit)
-        'propagating/maxroundsroot': -1,     # Propagation rounds at the root node
-        'separating/maxrounds': -1,          # Maximum cut rounds at non-root nodes
-        'display/verblevel': 4               # Verbosity level to display detailed information about the solution process
-    }
-    
-    "Define Single Stage Optimization Parameters"
-    
-    # Define the year to be optimized for single stage
-    first_year_sf = 2040
     
     # Define the base capacity fractions for the final year (national connections)
     base_country_cf_sf_n = {
@@ -476,6 +468,25 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
         'PL': 226.51 * 1e-2,  # Poland
         'SE': 2.01 * 1e-2   # Sweden
     }
+    
+    solver_options = {
+        'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
+        'limits/nodes': 1e5,                 # Maximum number of nodes in the search tree
+        'limits/solutions': -1,             # Limit on the number of solutions found
+        'limits/time': 3600,                 # Set a time limit of 3600 seconds (1 hour)
+        'numerics/feastol': 1e-5,           # Feasibility tolerance for constraints
+        'numerics/dualfeastol': 1e-5,       # Tolerance for dual feasibility conditions
+        'presolving/maxrounds': -1,          # Maximum number of presolve iterations (-1 for no limit)
+        'propagating/maxrounds': -1,         # Maximum number of propagation rounds (-1 for no limit)
+        'propagating/maxroundsroot': -1,     # Propagation rounds at the root node
+        'separating/maxrounds': -1,          # Maximum cut rounds at non-root nodes
+        'display/verblevel': 4               # Verbosity level to display detailed information about the solution process
+    }
+    
+    "Define Single Stage Optimization Parameters"
+    
+    # Define the year to be optimized for single stage
+    first_year_sf = 2040
     
     if cross_border == 0:
         base_country_cf_sf = base_country_cf_sf_n
@@ -738,7 +749,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     Define expressions for wind farms (WF)
     """
     def wf_cost_rule(model, wf):
-        return wf_cost_lin(model.wf_cost[wf], model.wf_cap[wf], model.wf_cap_var[wf])
+        return sf_wf * wf_cost_lin(model.wf_cost[wf], model.wf_cap[wf], model.wf_cap_var[wf])
     model.wf_cost_exp = Expression(model.viable_wf_ids, rule=wf_cost_rule)
 
     """
@@ -749,14 +760,14 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     model.ec1_dist_exp = Expression(model.viable_ec1_ids, rule=ec1_distance_rule)
 
     def ec1_cost_rule(model, wf, eh):
-        return ec1_cost_fun(value(model.first_year), model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh])
+        return sf_ec1 * ec1_cost_fun(value(model.first_year), model.ec1_dist_exp[wf, eh], model.ec1_cap_var[wf, eh])
     model.ec1_cost_exp = Expression(model.viable_ec1_ids, rule=ec1_cost_rule)
 
     """
     Define expressions for the Energy Hub (EH) capacity
     """
     def eh_cost_rule_with_binary(model, eh):
-        return eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh], model.eh_active_bin_var[eh])
+        return sf_eh * eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], model.eh_cap_var[eh], model.eh_active_bin_var[eh])
     model.eh_cost_exp = Expression(model.viable_eh_ids, rule=eh_cost_rule_with_binary)
 
     """
@@ -767,7 +778,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     model.ec2_dist_exp = Expression(model.viable_ec2_ids, rule=ec2_distance_rule)
 
     def ec2_cost_rule(model, eh, onss):
-        return ec2_cost_fun(value(model.first_year), model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss])
+        return sf_ec2 * ec2_cost_fun(value(model.first_year), model.ec2_dist_exp[eh, onss], model.ec2_cap_var[eh, onss])
     model.ec2_cost_exp = Expression(model.viable_ec2_ids, rule=ec2_cost_rule)
 
     """
@@ -778,14 +789,14 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     model.ec3_dist_exp = Expression(model.viable_ec3_ids, rule=ec3_distance_rule)
 
     def ec3_cost_rule(model, wf, onss):
-        return ec3_cost_fun(value(model.first_year), model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
+        return sf_ec3 * ec3_cost_fun(value(model.first_year), model.ec3_dist_exp[wf, onss], model.ec3_cap_var[wf, onss])
     model.ec3_cost_exp = Expression(model.viable_ec3_ids, rule=ec3_cost_rule)
 
     """
     Define expressions for Onshore Substation (ONSS) capacity
     """
     def onss_cost_rule(model, onss):
-        return onss_cost_lin(value(model.first_year), model.onss_cap_var[onss], model.onss_thold[onss])
+        return sf_onss * onss_cost_lin(value(model.first_year), model.onss_cap_var[onss], model.onss_thold[onss])
     model.onss_cost_exp = Expression(model.viable_onss_ids, rule=onss_cost_rule)
 
     """
@@ -796,7 +807,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     model.onc_dist_exp = Expression(model.viable_onc_ids, rule=onc_distance_rule)
 
     def onc_cost_rule(model, onss1, onss2):
-        return onc_cost_fun(value(model.first_year), model.onc_dist_exp[onss1, onss2], model.onc_cap_var[onss1, onss2])
+        return sf_onc * onc_cost_fun(value(model.first_year), model.onc_dist_exp[onss1, onss2], model.onc_cap_var[onss1, onss2])
     model.onc_cost_exp = Expression(model.viable_onc_ids, rule=onc_cost_rule)
 
     """
@@ -1195,6 +1206,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
         total_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_global_{year}.xlsx')
         overall_df.to_excel(total_excel_file_path, index=False)
         print(f'Saved overall total capacities and cost as .xlsx')
+        
+        # Save the objective value in a separate Excel file
+        objective_value = rnd_f(model.global_cost_obj)
+        objective_df = pd.DataFrame([["Objective Value", objective_value]], columns=["Metric", "Value"])
+        objective_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_objective_value_{year}.xlsx')
+        objective_df.to_excel(objective_excel_file_path, index=False)
+        print(f'Saved objective value as .xlsx')
 
     def solve_single_stage(model, workspace_folder):
         # Use country_cf_2050 for the single stage optimization
