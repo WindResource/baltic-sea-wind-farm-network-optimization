@@ -381,7 +381,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
+def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -427,6 +427,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     
     "Define General Parameters"
     
+    note_to_write = "This result contains MF-D-I-LIM100"
+    
     zero_th = 1e-2 # Define the zero threshold parameter
     
     wt_cap = 15  # Define the wind turbine capacity (MW)
@@ -459,19 +461,19 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     
     # Define the base capacity fractions for the final year (international connections)
     base_country_cf_sf_i = {
-        'DE': 2200 * 1e-2,  # Germany, limited to 2200%
+        'DE': 100 * 1e-2,  # Germany, limited to 100%
         'DK': 5.63 * 1e-2,  # Denmark
         'EE': 12.19 * 1e-2,  # Estonia
         'FI': 7.92 * 1e-2,  # Finland
         'LV': 5.09 * 1e-2,  # Latvia
         'LT': 2.82 * 1e-2,  # Lithuania
-        'PL': 226.51 * 1e-2,  # Poland
+        'PL': 100 * 1e-2,  # Poland, limited to 100%
         'SE': 2.01 * 1e-2   # Sweden
     }
     
     solver_options = {
         'limits/gap': 0,                  # Stop when the relative optimality gap is 0.6%
-        'limits/nodes': 1e5,                 # Maximum number of nodes in the search tree
+        'limits/nodes': 1e4,                 # Maximum number of nodes in the search tree
         'limits/solutions': -1,             # Limit on the number of solutions found
         'limits/time': 3600,                 # Set a time limit of 3600 seconds (1 hour)
         'numerics/feastol': 1e-5,           # Feasibility tolerance for constraints
@@ -739,6 +741,11 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
     # Define file path and save to Excel
     variable_counts_df.to_excel(os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_variable_counts.xlsx'), index=False)
     print(f'Saved variable counts as .xlsx')
+
+    # Create and write the note to a text file
+    with open(os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_note.txt'), 'w') as file:
+        file.write(note_to_write)
+    print(f'Saved note as .txt')
 
     """
     Define Expressions
@@ -1207,12 +1214,6 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0):
         overall_df.to_excel(total_excel_file_path, index=False)
         print(f'Saved overall total capacities and cost as .xlsx')
         
-        # Save the objective value in a separate Excel file
-        objective_value = rnd_f(model.global_cost_obj)
-        objective_df = pd.DataFrame([["Objective Value", objective_value]], columns=["Metric", "Value"])
-        objective_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_objective_value_{year}.xlsx')
-        objective_df.to_excel(objective_excel_file_path, index=False)
-        print(f'Saved objective value as .xlsx')
 
     def solve_single_stage(model, workspace_folder):
         # Use country_cf_2050 for the single stage optimization
