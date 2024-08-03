@@ -683,15 +683,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
         model.ec2_cap_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
         model.ec3_cap_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
 
-    # Initialize variables with time index for costs
-    model.wf_cost_var = Var(model.viable_wf_ids, within=NonNegativeReals)
-    model.eh_cost_var = Var(model.viable_eh_ids, within=NonNegativeReals)
     model.onss_cost_var = Var(model.viable_onss_ids, within=NonNegativeReals)
-    model.ec1_cost_var = Var(model.viable_ec1_ids, within=NonNegativeReals)
-    model.ec2_cost_var = Var(model.viable_ec2_ids, within=NonNegativeReals)
-    model.ec3_cost_var = Var(model.viable_ec3_ids, within=NonNegativeReals)
-    model.onc_cost_var = Var(model.viable_onc_ids, within=NonNegativeReals)
-    
+
     model.wf_country_alloc_var = Var(model.viable_wf_ids, model.country_ids, within=NonNegativeReals)
     
     # Define the binary variable for each energy hub
@@ -825,8 +818,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
     if cross_border == 1:
         def wf_country_cap_rule(model, country):
             """
-            Ensure the selected wind farms collectively meet a minimum required capacity for each country.
-            This capacity is specified as a fraction of the total potential capacity of all considered wind farms.
+            Wind Farm Capacity Allocation Constraint (National)
+            
+            Ensures that each country is assigned enough capacity from the country's total available wind farm capacity to meet its required minimum.
             """
             min_req_cap_country = model.country_cf[country] * sum(model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
             cap_country = sum(model.wf_country_alloc_var[wf, country] for wf in model.viable_wf_ids)
@@ -835,8 +829,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
     elif cross_border == 0:
         def wf_country_cap_rule(model, country):
             """
-            Ensure the selected wind farms collectively meet a minimum required capacity for each country.
-            This capacity is specified as a fraction of the total potential capacity of all considered wind farms.
+            Wind Farm Capacity Allocation Constraint (International)
+            
+            Ensures that each country is assigned enough capacity from the total available wind farm capacity to meet its required minimum.
             """
             min_req_cap_country = model.country_cf[country] * sum(model.wf_cap[wf] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
             cap_country = sum(model.wf_country_alloc_var[wf, country] for wf in model.viable_wf_ids if model.wf_iso[wf] == country)
@@ -845,15 +840,18 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
     
     def wf_alloc_rule(model, wf):
         """
-        Ensure the allocated capacity of each wind farm equals the total capacity based on the selected capacity.
-        Each wind farm's capacity allocation must match the selected capacity.
+        Wind Farm Capacity Constraint
+        
+        Ensures that each wind farm's total assigned capacity equals its selected wind farm capacity.
         """
         return sum(model.wf_country_alloc_var[wf, country] for country in model.country_ids) == model.wf_cap_var[wf]
     model.wf_alloc_con = Constraint(model.viable_wf_ids, rule=wf_alloc_rule)
 
     def wf_cap_rule(model, wf):
         """
-        Ensure the capacity of each wind farm does not exceed the wind farm's total available capacity.
+        Wind Farm Capacity Limit Constraint
+        
+        Ensures that each wind farm's selected capacity does not exceed its total available capacity.
         """
         return model.wf_cap_var[wf] <= model.wf_cap[wf]
     model.wf_cap_con = Constraint(model.viable_wf_ids, rule=wf_cap_rule)
@@ -862,8 +860,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
     
     def wf_connection_rule(model, wf, country):
         """
-        Ensure the allocated capacity of each wind farm is properly connected to the energy hub or onshore substation 
-        of the corresponding country. The capacity connected must be at least the allocated capacity for the country.
+        Wind Farm Network Constraint
+        
+        Ensures that each wind farm's assigned capacities are connected to the corresponding country's energy hub or onshore substation.
         """
         connect_to_eh = sum(model.ec1_cap_var[wf, eh] for eh in model.viable_eh_ids if (wf, eh) in model.viable_ec1_ids and model.eh_iso[eh] == country)
         connect_to_onss = sum(model.ec3_cap_var[wf, onss] for onss in model.viable_onss_ids if (wf, onss) in model.viable_ec3_ids and model.onss_iso[onss] == country)
@@ -872,23 +871,37 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
 
     def eh_cap_connect_rule(model, eh):
         """
-        Ensure the capacity of each energy hub matches or exceeds the total capacity of the connected wind farms.
+        Energy Hub Capacity Constraint
+        
+        Ensures that each energy hub's capacity matches or exceeds the total connected wind farm capacity.
         """
         connect_from_wf = sum(model.ec1_cap_var[wf, eh] for wf in model.viable_wf_ids if (wf, eh) in model.viable_ec1_ids)
         return model.eh_cap_var[eh] >= connect_from_wf
     model.eh_cap_connect_con = Constraint(model.viable_eh_ids, rule=eh_cap_connect_rule)
 
+    def max_eh_cap_rule(model, eh):
+        """
+        Energy Hub Capacity Limit Constraint
+        
+        Ensures that each energy hub's capacity does not exceed a specified capacity limit.
+        """
+        return model.eh_cap_var[eh] <= eh_cap_lim
+    model.max_eh_cap_con = Constraint(model.viable_eh_ids, rule=max_eh_cap_rule)
+    
     def eh_active_rule(model, eh):
         """
-        Ensures that the capacity of the energy hub (eh_cap_var) can only be greater than zero if the energy hub is active (eh_active_var is 1). 
-        A small value (zero_th) is added to account for potential rounding errors, allowing for numerical stability in the constraint.
+        Energy Hub Activation Constraint
+        
+        Ensures that the energy hub's total cost can only be positive if its capacity is greater than zero.
         """
         return model.eh_cap_var[eh] <= model.eh_active_bin_var[eh] * eh_cap_lim + zero_th
     model.eh_cap_to_active_con = Constraint(model.viable_eh_ids, rule=eh_active_rule)
 
     def eh_to_onss_connection_rule(model, eh):
         """
-        Ensure the capacity of each energy hub is connected to an onshore substation of the corresponding country.
+        Energy Hub Network Constraint
+        
+        Ensures that each energy hub's capacity is connected to the corresponding country's onshore substation.
         """
         country = model.eh_iso[eh]
         connect_to_onss = sum(model.ec2_cap_var[eh, onss] for onss in model.viable_onss_ids if (eh, onss) in model.viable_ec2_ids and model.onss_iso[onss] == country)
@@ -897,8 +910,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
 
     def onss_cap_connect_rule(model, onss):
         """
-        Ensure the capacity of each onshore substation is at least the total incoming capacity from connected energy hubs or wind farms,
-        considering only national connections for transfers to and from other onshore substations.
+        Onshore Substation Capacity Constraint
+        
+        Ensures that each substation's capacity is at least equal to the net connected capacity of connected wind farms, energy hubs and other domestic substations.
         """
         country = model.onss_iso[onss]
         connect_from_eh = sum(model.ec2_cap_var[eh, onss] for eh in model.viable_eh_ids if (eh, onss) in model.viable_ec2_ids)
@@ -911,16 +925,11 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
 
     print("Defining capacity limit constraints...")
     
-    def max_eh_cap_rule(model, eh):
-        """
-        Ensure the capacity of each energy hub does not exceed a certain capacity in MW.
-        """
-        return model.eh_cap_var[eh] <= eh_cap_lim
-    model.max_eh_cap_con = Constraint(model.viable_eh_ids, rule=max_eh_cap_rule)
-
     def max_onss_cap_rule(model, onss):
         """
-        Ensure the capacity of each onshore substation does not exceed twice the threshold value.
+        Onshore Substation Capacity Limit Constraint
+        
+        Ensures that each substation's capacity does not exceed a specified factor of its threshold value.
         """
         return model.onss_cap_var[onss] <= onss_cap_lim_fac * model.onss_thold[onss]
     model.max_onss_cap_con = Constraint(model.viable_onss_ids, rule=max_onss_cap_rule)
@@ -929,7 +938,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
     
     def onss_cost_rule(model, onss):
         """
-        Ensure the cost variable for each onshore substation meets or exceeds the calculated cost.
+        Onshore Substation Cost Variable Constraint
+        
+        Ensures that the substation's total cost in non-negative.
         """
         return model.onss_cost_var[onss] >= model.onss_cost_exp[onss]
     model.onss_cost_con = Constraint(model.viable_onss_ids, rule=onss_cost_rule)
