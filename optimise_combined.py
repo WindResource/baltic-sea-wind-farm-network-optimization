@@ -381,7 +381,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
+def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, linear_result=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -427,9 +427,9 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
     
     "Define General Parameters"
     
-    note_to_write = "This result contains MF-D-I-LIM100"
+    note_to_write = "This result contains model_type=0, cross_border=1, multi_stage=0, linear_result=1"
     
-    zero_th = 1e-2 # Define the zero threshold parameter
+    zero_th = 1e-3 # Define the zero threshold parameter
     
     wt_cap = 15  # Define the wind turbine capacity (MW)
     eh_cap_lim = 2500 # Define the energy hub capacity limit (MW)
@@ -1034,9 +1034,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
                 wf_capacity = rnd_f(model.wf_cap_var[wf])
                 wf_cap_diff = wf_capacity - prev_capacity.get('wf_cap_var', {}).get(wf, 0)
                 wf_rate = rnd_f(value(wf_capacity) / value(model.wf_cap[wf]))
-                wf_cost = rnd_f(nearest_wt_cap(wf_cap_diff) / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
+                if linear_result == 1:
+                    wf_cost = sf_wf * rnd_f(wf_cap_diff / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
+                    wf_cost_sf = sf_wf * rnd_f(model.wf_cap_var[wf] / value(model.wf_cap[wf]) * value(wf_cost_param[wf]))
+                if linear_result == 0:
+                    wf_cost = sf_wf * rnd_f(nearest_wt_cap(wf_cap_diff) / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
+                    wf_cost_sf = sf_wf * rnd_f(nearest_wt_cap(model.wf_cap_var[wf]) / value(model.wf_cap[wf]) * value(wf_cost_param[wf]))
                 wf_cost_param = {2030: model.wf_cost_1, 2040: model.wf_cost_2, 2050: model.wf_cost_3}.get(value(model.first_year_sf))
-                wf_cost_sf = rnd_f(nearest_wt_cap(model.wf_cap_var[wf]) / value(model.wf_cap[wf]) * value(wf_cost_param[wf]))
                 wf_data.append((wf_id, wf_iso, wf_lon, wf_lat, wf_capacity, wf_cost, wf_rate, wf_cost_sf))
 
         selected_components['wf_ids'] = {
@@ -1057,8 +1061,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
                 eh_port_dist = model.eh_pdist[eh]
                 eh_capacity = rnd_f(model.eh_cap_var[eh])
                 eh_cap_diff = eh_capacity - prev_capacity.get('eh_cap_var', {}).get(eh, 0)
-                eh_cost = rnd_f(eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], eh_cap_diff, model.eh_active_bin_var[eh]))
-                eh_cost_sf = rnd_f(eh_cost_lin(value(model.first_year_sf), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], value(model.eh_cap_var[eh]), model.eh_active_bin_var[eh]))
+                eh_cost = sf_eh * rnd_f(eh_cost_lin(value(model.first_year), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], eh_cap_diff, model.eh_active_bin_var[eh]))
+                eh_cost_sf = sf_eh * rnd_f(eh_cost_lin(value(model.first_year_sf), model.eh_wdepth[eh], model.eh_icover[eh], model.eh_pdist[eh], value(model.eh_cap_var[eh]), model.eh_active_bin_var[eh]))
                 eh_data.append((eh_id, eh_iso, eh_lon, eh_lat, eh_water_depth, eh_ice_cover, eh_port_dist, eh_capacity, eh_cost, eh_cost_sf))
 
         selected_components['eh_ids'] = {
@@ -1077,8 +1081,8 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
                 onss_threshold = model.onss_thold[onss]
                 onss_capacity = rnd_f(model.onss_cap_var[onss])
                 onss_cap_diff = onss_capacity - prev_capacity.get('onss_ids', {}).get(onss, 0)
-                onss_cost = rnd_f(max(0, onss_cost_lin(value(model.first_year), onss_cap_diff, model.onss_thold[onss])))
-                onss_cost_sf = rnd_f(max(0, onss_cost_lin(value(model.first_year_sf), value(model.onss_cap_var[onss]), value(model.onss_thold[onss]))))
+                onss_cost = sf_onss * rnd_f(max(0, onss_cost_lin(value(model.first_year), onss_cap_diff, model.onss_thold[onss])))
+                onss_cost_sf = sf_onss * rnd_f(max(0, onss_cost_lin(value(model.first_year_sf), value(model.onss_cap_var[onss]), value(model.onss_thold[onss]))))
                 onss_data.append((onss_id, onss_iso, onss_lon, onss_lat, onss_threshold, onss_capacity, onss_cost, onss_cost_sf))
 
         selected_components['onss_ids'] = {
@@ -1096,8 +1100,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
                 ec1_cap = rnd_f(model.ec1_cap_var[wf, eh])
                 ec1_cap_diff = ec1_cap - prev_capacity.get('ec1_cap_var', {}).get((wf, eh), 0)
                 dist1 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh]))
-                ec1_cost = rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap_diff, "ceil"))
-                ec1_cost_sf = rnd_f(ec1_cost_fun(value(model.first_year_sf), dist1, value(model.ec1_cap_var[wf, eh]), "ceil"))
+                if linear_result == 1:
+                    ec1_cost_sf = sf_ec1 * rnd_f(ec1_cost_fun(value(model.first_year_sf), dist1, value(model.ec1_cap_var[wf, eh]), "lin"))
+                    ec1_cost = sf_ec1 * rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap_diff, "lin"))
+                if linear_result == 0:
+                    ec1_cost_sf = sf_ec1 * rnd_f(ec1_cost_fun(value(model.first_year_sf), dist1, value(model.ec1_cap_var[wf, eh]), "ceil"))
+                    ec1_cost = sf_ec1 * rnd_f(ec1_cost_fun(value(model.first_year), dist1, ec1_cap_diff, "ceil"))
                 ec1_data.append((ec_id_counter, int_to_iso_mp[int(model.eh_iso[eh])], wf, eh, model.wf_lon[wf], model.wf_lat[wf], model.eh_lon[eh], model.eh_lat[eh], dist1, ec1_cap, ec1_cost, ec1_cost_sf))
                 ec_id_counter += 1
 
@@ -1114,8 +1122,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
                 ec2_cap = rnd_f(model.ec2_cap_var[eh, onss])
                 ec2_cap_diff = ec2_cap - prev_capacity.get('ec2_cap_var', {}).get((eh, onss), 0)
                 dist2 = rnd_f(haversine(model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss]))
-                ec2_cost = rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap_diff, "ceil"))
-                ec2_cost_sf = rnd_f(ec2_cost_fun(value(model.first_year_sf), dist2, value(model.ec2_cap_var[eh, onss]), "ceil"))
+                if linear_result == 1:
+                    ec2_cost = sf_ec2 * rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap_diff, "lin"))
+                    ec2_cost_sf = sf_ec2 * rnd_f(ec2_cost_fun(value(model.first_year_sf), dist2, value(model.ec2_cap_var[eh, onss]), "lin"))
+                if linear_result == 0:
+                    ec2_cost = sf_ec2 * rnd_f(ec2_cost_fun(value(model.first_year), dist2, ec2_cap_diff, "ceil"))
+                    ec2_cost_sf = sf_ec2 * rnd_f(ec2_cost_fun(value(model.first_year_sf), dist2, value(model.ec2_cap_var[eh, onss]), "ceil"))
                 ec2_data.append((ec_id_counter, int_to_iso_mp[int(model.onss_iso[onss])], eh, onss, model.eh_lon[eh], model.eh_lat[eh], model.onss_lon[onss], model.onss_lat[onss], dist2, ec2_cap, ec2_cost, ec2_cost_sf))
                 ec_id_counter += 1
 
@@ -1132,8 +1144,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
                 ec3_cap = rnd_f(model.ec3_cap_var[wf, onss])
                 ec3_cap_diff = ec3_cap - prev_capacity.get('ec3_cap_var', {}).get((wf, onss), 0)
                 dist3 = rnd_f(haversine(model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss]))
-                ec3_cost = rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap_diff, "ceil"))
-                ec3_cost_sf = rnd_f(ec3_cost_fun(value(model.first_year_sf), dist3, value(model.ec3_cap_var[wf, onss]), "ceil"))
+                if linear_result == 1:
+                    ec3_cost = sf_ec3 * rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap_diff, "lin"))
+                    ec3_cost_sf = sf_ec3 * rnd_f(ec3_cost_fun(value(model.first_year_sf), dist3, value(model.ec3_cap_var[wf, onss]), "lin"))
+                if linear_result == 0:
+                    ec3_cost = sf_ec3 * rnd_f(ec3_cost_fun(value(model.first_year), dist3, ec3_cap_diff, "ceil"))
+                    ec3_cost_sf = sf_ec3 * rnd_f(ec3_cost_fun(value(model.first_year_sf), dist3, value(model.ec3_cap_var[wf, onss]), "ceil"))
                 ec3_data.append((ec_id_counter, int_to_iso_mp[int(model.onss_iso[onss])], wf, onss, model.wf_lon[wf], model.wf_lat[wf], model.onss_lon[onss], model.onss_lat[onss], dist3, ec3_cap, ec3_cost, ec3_cost_sf))
                 ec_id_counter += 1
 
@@ -1150,8 +1166,12 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=1):
                 onc_cap = rnd_f(model.onc_cap_var[onss1, onss2])
                 onc_cap_diff = onc_cap - prev_capacity.get('onc_ids', {}).get((onss1, onss2), 0)
                 dist4 = rnd_f(haversine(model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2]))
-                onc_cost = rnd_f(onc_cost_fun(value(model.first_year), dist4, onc_cap_diff, "ceil"))
-                onc_cost_sf = rnd_f(onc_cost_fun(value(model.first_year_sf), dist4, value(model.onc_cap_var[onss1, onss2]), "ceil"))
+                if linear_result == 1:
+                    onc_cost = sf_onc * rnd_f(onc_cost_fun(value(model.first_year), dist4, onc_cap_diff, "lin"))
+                    onc_cost_sf = sf_onc * rnd_f(onc_cost_fun(value(model.first_year_sf), dist4, value(model.onc_cap_var[onss1, onss2]), "lin"))
+                if linear_result == 0:
+                    onc_cost = sf_onc * rnd_f(onc_cost_fun(value(model.first_year), dist4, onc_cap_diff, "ceil"))
+                    onc_cost_sf = sf_onc * rnd_f(onc_cost_fun(value(model.first_year_sf), dist4, value(model.onc_cap_var[onss1, onss2]), "ceil"))
                 onc_data.append((onc_id_counter, int_to_iso_mp[int(model.onss_iso[onss1])], onss1, onss2, model.onss_lon[onss1], model.onss_lat[onss1], model.onss_lon[onss2], model.onss_lat[onss2], dist4, onc_cap, onc_cost, onc_cost_sf))
                 onc_id_counter += 1
 

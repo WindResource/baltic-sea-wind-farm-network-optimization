@@ -289,7 +289,7 @@ if __name__ == "__main__":
     # Define the paths to the workspace and folders
     workspace_dir = f"C:\\Users\\cflde\\Documents\\Graduation Project\\ArcGIS Pro\\BalticSea\\Results\\datasets\\results\\combined"
     
-    results_folder = 'MF-D-I-DE2200'
+    results_folder = 'MF-D-I-LIM100'
     results_dir = os.path.join(workspace_dir, results_folder)
 
     # Define the feature_layer_dir
