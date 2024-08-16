@@ -990,7 +990,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, lin
             param_file.write(f"{key} = {val}\n")
 
     def rnd_f(e):
-            return round(value(e), 3)
+            return round(value(e), 6)
     
     def nearest_wt_cap(cap):
         """
@@ -1034,13 +1034,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, lin
                 wf_capacity = rnd_f(model.wf_cap_var[wf])
                 wf_cap_diff = wf_capacity - prev_capacity.get('wf_cap_var', {}).get(wf, 0)
                 wf_rate = rnd_f(value(wf_capacity) / value(model.wf_cap[wf]))
+                wf_cost_param = {2030: model.wf_cost_1, 2040: model.wf_cost_2, 2050: model.wf_cost_3}.get(value(model.first_year_sf))
                 if linear_result == 1:
-                    wf_cost = sf_wf * rnd_f(wf_cap_diff / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
-                    wf_cost_sf = sf_wf * rnd_f(model.wf_cap_var[wf] / value(model.wf_cap[wf]) * value(wf_cost_param[wf]))
+                    wf_cost = sf_wf * rnd_f(value(wf_cap_diff) / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
+                    wf_cost_sf = sf_wf * rnd_f(value(model.wf_cap_var[wf]) / value(model.wf_cap[wf]) * value(wf_cost_param[wf]))
                 if linear_result == 0:
                     wf_cost = sf_wf * rnd_f(nearest_wt_cap(wf_cap_diff) / value(model.wf_cap[wf]) * value(model.wf_cost[wf]))
                     wf_cost_sf = sf_wf * rnd_f(nearest_wt_cap(model.wf_cap_var[wf]) / value(model.wf_cap[wf]) * value(wf_cost_param[wf]))
-                wf_cost_param = {2030: model.wf_cost_1, 2040: model.wf_cost_2, 2050: model.wf_cost_3}.get(value(model.first_year_sf))
                 wf_data.append((wf_id, wf_iso, wf_lon, wf_lat, wf_capacity, wf_cost, wf_rate, wf_cost_sf))
 
         selected_components['wf_ids'] = {
@@ -1192,34 +1192,6 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, lin
             excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_{component}_{year}.xlsx')
             df.to_excel(excel_file_path, index=False)
             print(f'Saved {component} data as .xlsx')
-
-        # Initialize dictionary to hold per-country data
-        country_data = {country: {'wf_ids': {'capacity': 0, 'cost': 0},
-                                'eh_ids': {'capacity': 0, 'cost': 0},
-                                'onss_ids': {'capacity': 0, 'cost': 0},
-                                'ec1_ids': {'capacity': 0, 'cost': 0},
-                                'ec2_ids': {'capacity': 0, 'cost': 0},
-                                'ec3_ids': {'capacity': 0, 'cost': 0},
-                                'onc_ids': {'capacity': 0, 'cost': 0},
-                                'overall': {'capacity': 0, 'cost': 0}}
-                    for country in int_to_iso_mp.values()}
-
-        # Aggregate data per country for each component
-        for component, data in selected_components.items():
-            for entry in data['data']:
-                country = entry['iso']
-                country_data[country][component]['capacity'] += entry['capacity']
-                country_data[country][component]['cost'] += entry['cost']
-                country_data[country]['overall']['capacity'] += entry['capacity']
-                country_data[country]['overall']['cost'] += entry['cost']
-
-        # Save the aggregated data per country
-        for country, data in country_data.items():
-            country_df = pd.DataFrame([(component, rnd_f(values['capacity']), rnd_f(values['cost'])) for component, values in data.items()],
-                                    columns=["Component", "Total Capacity", "Total Cost"])
-            country_excel_file_path = os.path.join(results_dir, f'r_{stg}_{tpe}_{crb}_country_{country}_{year}.xlsx')
-            country_df.to_excel(country_excel_file_path, index=False)
-            print(f'Saved total capacity and cost for {country} as .xlsx')
 
         # Calculate overall totals
         overall_totals = {'wf_ids': {'capacity': 0, 'cost': 0},
