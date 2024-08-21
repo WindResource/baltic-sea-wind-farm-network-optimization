@@ -417,7 +417,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, lin
     "Define Sensitivity Parameters"
     
     # Sensitivity factors
-    sf_wf = 1
+    sf_wf = 0.80
     sf_eh = 1
     sf_ec1 = 1
     sf_ec2 = 1

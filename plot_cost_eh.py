@@ -16,6 +16,8 @@ plt.rc('font', **font)
 def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     """
     """
+    inst_year = 2040
+    
     # Determine support structure
     supp_structure = check_supp(water_depth)
     
@@ -31,15 +33,15 @@ def eh_cost_lin(water_depth, ice_cover, port_distance, eh_capacity):
     # Calculate yearly operational cost
     ope_cost_yearly = 0.03 * conv_cost
     
-    total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = present_value(equip_cost, inst_cost, ope_cost_yearly, deco_cost)  # Calculate present value of cost
+    total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost = present_value(inst_year, equip_cost, inst_cost, ope_cost_yearly, deco_cost)  # Calculate present value of cost
 
     return total_cost, equip_cost, inst_cost, total_ope_cost, deco_cost
 
 def plot_total_cost_vs_water_depth():
     water_depths = np.linspace(0, 300, 500)
-    ice_cover = 0  # Assuming no ice cover for simplicity
-    port_distance = 50  # Assuming a constant port distance
-    eh_capacity = 1000  # Assuming a constant energy hub capacity of 1GW
+    ice_cover = 0
+    port_distance = 50
+    eh_capacity = 1000
 
     total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
 
@@ -52,27 +54,27 @@ def plot_total_cost_vs_water_depth():
         deco_costs.append(deco_cost)
 
     fig, axs = plt.subplots(2, 1, figsize=(6, 6), gridspec_kw={'height_ratios': [4, 1]}, sharex=True)
-    
+
     # Plotting the larger range
-    axs[0].plot(water_depths, total_costs, label='Total PV')
-    axs[0].plot(water_depths, equip_costs, label='Equipment PV')
-    axs[0].plot(water_depths, inst_costs, label='Installation PV')
-    axs[0].plot(water_depths, total_ope_costs, label='Total Operating PV')
-    axs[0].plot(water_depths, deco_costs, label='Decommissioning PV')
+    axs[0].plot(water_depths, total_costs, label='Total Cost')
+    axs[0].plot(water_depths, equip_costs, label='Equipment Cost')
+    axs[0].plot(water_depths, inst_costs, label='Installation Cost')
+    axs[0].plot(water_depths, total_ope_costs, label='Operating Cost')
+    axs[0].plot(water_depths, deco_costs, label='Decommissioning Cost')
 
     axs[0].set_xlim(0, 300)
-    axs[0].set_ylim(0, 100)
-    axs[0].yaxis.set_major_locator(MultipleLocator(25))
-    axs[0].yaxis.set_minor_locator(MultipleLocator(5))
+    axs[0].set_ylim(0, 50)
+    axs[0].yaxis.set_major_locator(MultipleLocator(50 / 4))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(50 / 4 / 4))
 
     # Plotting the smaller range
-    axs[1].plot(water_depths, total_costs, label='Total PV')
-    axs[1].plot(water_depths, equip_costs, label='Equipment PV')
-    axs[1].plot(water_depths, inst_costs, label='Installation PV')
-    axs[1].plot(water_depths, total_ope_costs, label='Total Operating PV')
-    axs[1].plot(water_depths, deco_costs, label='Decommissioning PV')
+    axs[1].plot(water_depths, total_costs, label='Total Cost')
+    axs[1].plot(water_depths, equip_costs, label='Equipment Cost')
+    axs[1].plot(water_depths, inst_costs, label='Installation Cost')
+    axs[1].plot(water_depths, total_ope_costs, label='Operating Cost')
+    axs[1].plot(water_depths, deco_costs, label='Decommissioning Cost')
 
-    axs[1].set_ylim(0, 2)
+    axs[1].set_ylim(0, 1)
     axs[1].yaxis.set_major_locator(MultipleLocator(1))
     axs[1].yaxis.set_minor_locator(MultipleLocator(0.25))
 
@@ -92,11 +94,82 @@ def plot_total_cost_vs_water_depth():
     axs[0].set_ylabel('Cost (M€)')
     axs[1].set_ylabel('Cost (M€)')
 
+    # Get legend handles and labels
     lines, labels = axs[0].get_legend_handles_labels()
-    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.02), loc='center', ncol=2, frameon=False)
+    
+    # Define desired order for the legend
+    desired_order = ['Total Cost', 'Equipment Cost', 'Operating Cost', 'Installation Cost',  'Decommissioning Cost']
+    
+    # Rearrange lines and labels according to desired order
+    ordered_lines = [lines[labels.index(label)] for label in desired_order]
+    ordered_labels = [label for label in desired_order]
+
+    fig.legend(ordered_lines, ordered_labels, bbox_to_anchor=(0.5, 1.02), loc='center', ncol=2, frameon=False)
     
     plt.tight_layout()
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_total_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
+    plt.show()
+
+def plot_inst_deco_cost_vs_port_distance(water_depths):
+    port_distances = np.linspace(0, 300, 500)
+
+    fig, axs = plt.subplots(2, 1, figsize=(6, 6), gridspec_kw={'height_ratios': [1, 1]}, sharex=True)
+
+    for i, water_depth in enumerate(water_depths):
+        inst_costs, deco_costs = [], []
+
+        for pd in port_distances:
+            support_structure = check_supp(water_depth)
+            inst_cost = inst_deco_cost_lin(support_structure, pd, "inst")
+            deco_cost = inst_deco_cost_lin(support_structure, pd, "deco")
+            inst_costs.append(inst_cost)
+            deco_costs.append(deco_cost)
+
+        axs[i].plot(port_distances, inst_costs, label='Installation Cost')
+        axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost')
+        
+        # Set domain and range
+        axs[i].set_xlim(0, 300)
+        axs[i].set_ylim(0, 1.5)
+
+        x_major_locator = MultipleLocator(50)
+        x_minor_locator = MultipleLocator(10)
+        y_major_locator = MultipleLocator(1.5 / 2)
+        y_minor_locator = MultipleLocator(1.5 / 4 / 4)
+
+        axs[i].xaxis.set_major_locator(x_major_locator)
+        axs[i].xaxis.set_minor_locator(x_minor_locator)
+        axs[i].yaxis.set_major_locator(y_major_locator)
+        axs[i].yaxis.set_minor_locator(y_minor_locator)
+
+        axs[i].grid(which='major', linestyle='-', linewidth='0.5', color='gray')
+        axs[i].grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+        axs[i].minorticks_on()
+
+        supp_struct_str = 'Jacket' if water_depth < 120 else 'Floating'
+        axs[i].text(2, axs[i].get_ylim()[1] * 0.05, supp_struct_str, rotation=90)
+        
+        # Add horizontal text annotation in the top left of the figure
+        axs[i].text(2, 1.45, f'$WD ={water_depth}m$', ha='left', va='top')
+
+        axs[i].set_ylabel('Cost (M€)')
+
+    # Get legend handles and labels from the first subplot
+    lines, labels = axs[0].get_legend_handles_labels()
+    
+    # Define desired order for the legend
+    desired_order = ['Installation Cost', 'Decommissioning Cost']
+    
+    # Rearrange lines and labels according to desired order
+    ordered_lines = [lines[labels.index(label)] for label in desired_order]
+    ordered_labels = [label for label in desired_order]
+
+    fig.legend(ordered_lines, ordered_labels, bbox_to_anchor=(0.3, 1.03), loc='center', ncol=1, frameon=False)
+        
+    axs[1].set_xlabel('Port Distance (km)')
+    
+    plt.tight_layout()
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_inst_deco_cost_vs_port_distance.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 def plot_total_cost_vs_capacity(water_depth):
@@ -217,58 +290,6 @@ def plot_equip_cost_vs_water_depth():
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_equip_cost_vs_water_depth.png', dpi=400, bbox_inches='tight')
     plt.show()
 
-def plot_inst_deco_cost_vs_port_distance(water_depths):
-    port_distances = np.linspace(0, 300, 500)
-
-    fig, axs = plt.subplots(2, 1, figsize=(6, 6), gridspec_kw={'height_ratios': [1, 1]}, sharex=True)
-    
-    for i, water_depth in enumerate(water_depths):
-        inst_costs, deco_costs = [], []
-
-        for pd in port_distances:
-            support_structure = check_supp(water_depth)
-            inst_cost = inst_deco_cost_lin(support_structure, pd, "inst")
-            deco_cost = inst_deco_cost_lin(support_structure, pd, "deco")
-            inst_costs.append(inst_cost)
-            deco_costs.append(deco_cost)
-
-        axs[i].plot(port_distances, inst_costs, label='Installation Cost')
-        axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost')
-        
-        # Set domain and range
-        axs[i].set_xlim(0, 300)
-        axs[i].set_ylim(0, 1.5)
-
-        x_major_locator = MultipleLocator(50)
-        x_minor_locator = MultipleLocator(10)
-        y_major_locator = MultipleLocator(0.25)
-        y_minor_locator = MultipleLocator(0.05)
-
-        axs[i].xaxis.set_major_locator(x_major_locator)
-        axs[i].xaxis.set_minor_locator(x_minor_locator)
-        axs[i].yaxis.set_major_locator(y_major_locator)
-        axs[i].yaxis.set_minor_locator(y_minor_locator)
-
-        axs[i].grid(which='major', linestyle='-', linewidth='0.5', color='gray')
-        axs[i].grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
-        axs[i].minorticks_on()
-
-        supp_struct_str = 'Jacket' if water_depth < 120 else 'Floating'
-        axs[i].text(2, axs[i].get_ylim()[1] * 0.05, supp_struct_str, rotation=90)
-        
-        # Add horizontal text annotation in the top left of the figure
-        axs[i].text(2, 1.45, f'$WD ={water_depth}m$', ha='left', va='top')
-
-        axs[i].set_ylabel('Cost (M€)')
-
-    lines, labels = axs[0].get_legend_handles_labels()
-    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.03), loc='center', ncol=1, frameon=False)
-        
-    axs[1].set_xlabel('Port Distance (km)')
-    
-    plt.tight_layout()
-    plt.savefig(f'C:\\Users\\cflde\\Downloads\\eh_inst_deco_cost_vs_port_distance.png', dpi=400, bbox_inches='tight')
-    plt.show()
 
 def plot_ic_cost_vs_water_depth():
     water_depths = np.linspace(0, 300, 500)
@@ -431,14 +452,14 @@ if __name__ == "__main__":
 
     plot_total_cost_vs_water_depth()
 
-    for wd in (wd_jacket, wd_floating):
-        plot_total_cost_vs_capacity(wd)
-        
-    plot_equip_cost_vs_water_depth()
-    
     # Call the function to plot the costs
     plot_inst_deco_cost_vs_port_distance([wd_jacket, wd_floating])
     
-    plot_ic_cost_vs_water_depth()
+    # for wd in (wd_jacket, wd_floating):
+    #     plot_total_cost_vs_capacity(wd)
+        
+    # plot_equip_cost_vs_water_depth()
     
-    plot_ic_equip_cost_vs_water_depth()
+    # plot_ic_cost_vs_water_depth()
+    
+    # plot_ic_equip_cost_vs_water_depth()
