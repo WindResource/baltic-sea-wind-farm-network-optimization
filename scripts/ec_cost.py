@@ -24,7 +24,7 @@ def ec1_cost_fun(first_year, distance, capacity, function="lin"):
     capacity_factor = 0.95
     
     if function == "lin":
-        parallel_cables = capacity / (cable_capacity * capacity_factor)
+        parallel_cables = capacity / (cable_capacity * capacity_factor) + 0.5
     elif function == "ceil":
         parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
     
@@ -62,7 +62,7 @@ def ec2_cost_fun(first_year, distance, capacity, function="lin"):
     capacity_factor = 0.95
     
     if function == "lin":
-        parallel_cables = capacity / (cable_capacity * capacity_factor)
+        parallel_cables = capacity / (cable_capacity * capacity_factor) + 0.5
     elif function == "ceil":
         parallel_cables = np.ceil(capacity / (cable_capacity * capacity_factor))
     

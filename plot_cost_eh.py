@@ -125,8 +125,8 @@ def plot_inst_deco_cost_vs_port_distance(water_depths):
             inst_costs.append(inst_cost)
             deco_costs.append(deco_cost)
 
-        axs[i].plot(port_distances, inst_costs, label='Installation Cost')
-        axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost')
+        axs[i].plot(port_distances, inst_costs, label='Installation Cost', linestyle='-')
+        axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost', linestyle='--')
         
         # Set domain and range
         axs[i].set_xlim(0, 300)
