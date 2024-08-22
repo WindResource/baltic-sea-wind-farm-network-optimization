@@ -35,25 +35,25 @@ def plot_cost_vs_distance():
     axs[0].plot(distances, total_costs, label='Total Cost')
     axs[0].plot(distances, equip_costs, label='Equipment Cost')
     axs[0].plot(distances, inst_costs, label='Installation Cost')
-    axs[0].plot(distances, total_ope_costs, label='Total Operating Cost')
+    axs[0].plot(distances, total_ope_costs, label='Operating Cost')
     axs[0].plot(distances, deco_costs, label='Decommissioning Cost')
 
     axs[0].set_xlim(0, 300)
-    axs[0].set_ylim(0, 1800)
-    axs[0].yaxis.set_major_locator(MultipleLocator(200))
-    axs[0].yaxis.set_minor_locator(MultipleLocator(50))
+    axs[0].set_ylim(0, 800)
+    axs[0].yaxis.set_major_locator(MultipleLocator(800 /4))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(800 /4 /4))
 
     # Plotting the smaller range
     axs[1].plot(distances, total_costs, label='Total Cost')
     axs[1].plot(distances, equip_costs, label='Equipment Cost')
     axs[1].plot(distances, inst_costs, label='Installation Cost')
-    axs[1].plot(distances, total_ope_costs, label='Total Operating Cost')
+    axs[1].plot(distances, total_ope_costs, label='Operating Cost')
     axs[1].plot(distances, deco_costs, label='Decommissioning Cost')
 
     axs[1].set_xlim(0, 300)
-    axs[1].set_ylim(0, 100)
+    axs[1].set_ylim(0, 50)
     axs[1].yaxis.set_major_locator(MultipleLocator(50))
-    axs[1].yaxis.set_minor_locator(MultipleLocator(12.5))
+    axs[1].yaxis.set_minor_locator(MultipleLocator(50 / 4))
 
     for ax in axs:
         ax.xaxis.set_major_locator(MultipleLocator(50))
@@ -61,7 +61,7 @@ def plot_cost_vs_distance():
         ax.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
         ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
 
-    axs[0].text(axs[0].get_xlim()[1] * 0.02, axs[0].get_ylim()[1] * 0.99, f'$Capacity ={capacity}MW$', ha='left', va='top', fontsize=11)
+    # axs[0].text(axs[0].get_xlim()[1] * 0.02, axs[0].get_ylim()[1] * 0.99, f'$Capacity ={capacity}MW$', ha='left', va='top', fontsize=11)
 
     axs[1].set_xlabel('Distance (km)')
     axs[0].set_ylabel('Cost (M€)')
@@ -142,10 +142,10 @@ def plot_cost_vs_capacity():
     axs[0].plot(capacities, inst_costs_lin, linestyle="--", color=line3.get_color())
     axs[0].plot(capacities, deco_costs_lin, linestyle="--", color=line5.get_color())
 
-    axs[0].set_xlim(0, 1500)
-    axs[0].set_ylim(0, 500)
-    axs[0].yaxis.set_major_locator(plt.MultipleLocator(500 / 4))
-    axs[0].yaxis.set_minor_locator(plt.MultipleLocator(500 / 4 / 4))
+    axs[0].set_xlim(-50, 1500)
+    axs[0].set_ylim(0, 400)
+    axs[0].yaxis.set_major_locator(plt.MultipleLocator(400 / 4))
+    axs[0].yaxis.set_minor_locator(plt.MultipleLocator(400 / 4 / 4))
 
     # Plotting the smaller range
     axs[1].plot(capacities, total_costs, label='Total Cost', color=colors['Total Cost'])
@@ -160,7 +160,7 @@ def plot_cost_vs_capacity():
     axs[1].plot(capacities, inst_costs_lin, linestyle="--", color=line3.get_color())
     axs[1].plot(capacities, deco_costs_lin, linestyle="--", color=line5.get_color())
 
-    axs[1].set_xlim(0, 1500)
+    axs[1].set_xlim(-50, 1500)
     axs[1].set_ylim(0, 20)
     axs[1].yaxis.set_major_locator(plt.MultipleLocator(20))
     axs[1].yaxis.set_minor_locator(plt.MultipleLocator(20 / 4))
@@ -171,7 +171,7 @@ def plot_cost_vs_capacity():
         ax.grid(which='major', linestyle='-', linewidth='0.5', color='gray')
         ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
 
-    axs[0].text(axs[0].get_xlim()[1] * 0.02, axs[0].get_ylim()[1] * 0.99, f'$Distance = {distance}km$', ha='left', va='top', fontsize=11)
+    # axs[0].text(axs[0].get_xlim()[1] * 0.02, axs[0].get_ylim()[1] * 0.99, f'$Distance = {distance}km$', ha='left', va='top', fontsize=11)
 
     axs[1].set_xlabel('Capacity (MW)')
     axs[0].set_ylabel('Cost (M€)')

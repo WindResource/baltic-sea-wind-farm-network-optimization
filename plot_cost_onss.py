@@ -71,7 +71,7 @@ class HandlerStackedLines(HandlerBase):
 
         # Draw solid line at the top
         solid_line = mlines.Line2D([xdescent, xdescent + width], [ydescent + height / 2 + vertical_gap, ydescent + height / 2 + vertical_gap],
-                                   color=orig_handle.get_color(), linestyle='-', lw=2, transform=trans)
+                                color=orig_handle.get_color(), linestyle='-', lw=2, transform=trans)
 
         # Draw dashed line below the solid line
         dashed_line = mlines.Line2D([xdescent, xdescent + width], [ydescent + height / 2 - vertical_gap, ydescent + height / 2 - vertical_gap],

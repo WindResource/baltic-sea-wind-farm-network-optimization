@@ -381,7 +381,7 @@ def get_viable_entities(viable_ec1, viable_ec2, viable_ec3):
 
     return viable_wf, viable_eh, viable_onss
 
-def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, linear_result=1):
+def opt_model(workspace_folder, model_type=0, cross_border=0, multi_stage=0, linear_result=1):
     """
     Create an optimization model for offshore wind farm layout optimization.
 
@@ -417,7 +417,7 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, lin
     "Define Sensitivity Parameters"
     
     # Sensitivity factors
-    sf_wf = 0.80
+    sf_wf = 0
     sf_eh = 1
     sf_ec1 = 1
     sf_ec2 = 1
