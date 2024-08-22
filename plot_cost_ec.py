@@ -161,9 +161,9 @@ def plot_cost_vs_capacity():
     axs[1].plot(capacities, deco_costs_lin, linestyle="--", color=line5.get_color())
 
     axs[1].set_xlim(0, 1500)
-    axs[1].set_ylim(0, 25)
-    axs[1].yaxis.set_major_locator(plt.MultipleLocator(25))
-    axs[1].yaxis.set_minor_locator(plt.MultipleLocator(25 / 4))
+    axs[1].set_ylim(0, 20)
+    axs[1].yaxis.set_major_locator(plt.MultipleLocator(20))
+    axs[1].yaxis.set_minor_locator(plt.MultipleLocator(20 / 4))
 
     for ax in axs:
         ax.xaxis.set_major_locator(plt.MultipleLocator(250))
