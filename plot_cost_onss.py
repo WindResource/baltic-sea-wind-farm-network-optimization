@@ -22,16 +22,18 @@ def onss_cost(capacity, threshold):
     Returns:
     - (float) Cost of expanding the ONSS if the capacity exceeds the threshold.
     """
+    global inst_year
+    inst_year = 2040
     
     threshold_equip_cost = 0.02287 # Million EU/ MW
     
     # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    equip_cost_function = np.maximum(capacity - threshold, 0) * threshold_equip_cost
+    equip_cost = np.maximum(capacity - threshold, 0) * threshold_equip_cost
     
-    ope_cost_yearly = 0.015 * equip_cost_function
+    ope_cost_yearly = 0.015 * equip_cost
     
     # Calculate present value
-    total_cost, equip_cost, _, total_ope_cost, _ = present_value(equip_cost_function, 0, ope_cost_yearly, 0)
+    total_cost, equip_cost, _, total_ope_cost, _ = present_value(inst_year, equip_cost, 0, ope_cost_yearly, 0)
     
     return total_cost, equip_cost, total_ope_cost
 
@@ -50,12 +52,12 @@ def onss_cost_lin(capacity, threshold):
     threshold_equip_cost = 0.02287 # Million EU/ MW
     
     # Calculate the cost function: difference between capacity and threshold multiplied by the cost factor
-    equip_cost_function = (capacity - threshold) * threshold_equip_cost
+    equip_cost = (capacity - threshold) * threshold_equip_cost
     
-    ope_cost_yearly = 0.015 * equip_cost_function
+    ope_cost_yearly = 0.015 * equip_cost
     
     # Calculate present value
-    total_cost, equip_cost, _, total_ope_cost, _ = present_value(equip_cost_function, 0, ope_cost_yearly, 0)
+    total_cost, equip_cost, _, total_ope_cost, _ = present_value(inst_year, equip_cost, 0, ope_cost_yearly, 0)
     
     return total_cost, equip_cost, total_ope_cost
 
@@ -65,7 +67,7 @@ def plot_onss_costs():
     """
     
     threshold = 0
-    capacities = np.linspace(-200, 600, 400)
+    capacities = np.linspace(-200, 501, 400)
 
     total_costs = []
     equip_costs = []
@@ -101,13 +103,13 @@ def plot_onss_costs():
     
     # Set domain and range
     plt.xlim(-200, 500)
-    plt.ylim(-7.5, 15)
+    plt.ylim(-5, 10)
     
     # Define major and minor locators
     x_major_locator = MultipleLocator(200)
     x_minor_locator = MultipleLocator(50)
     y_major_locator = MultipleLocator(5)
-    y_minor_locator = MultipleLocator(1.25)
+    y_minor_locator = MultipleLocator(5 / 4)
     
     ax = plt.gca()
     ax.xaxis.set_major_locator(x_major_locator)
