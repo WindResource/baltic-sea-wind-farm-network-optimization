@@ -42,17 +42,17 @@ def plot_cost_vs_distance():
     axs[0].plot(distances, total_ope_costs, label='Operating Cost', color=colors['Operating Cost'])
     axs[0].plot(distances, deco_costs, label='Decommissioning Cost', color=colors['Decommissioning Cost'])
 
-    axs[0].set_xlim(0, 300)
-    axs[0].set_ylim(0, 800)
-    axs[0].yaxis.set_major_locator(MultipleLocator(800 / 4))
-    axs[0].yaxis.set_minor_locator(MultipleLocator(800 / 4 / 4))
-
     # Plotting the smaller range
     axs[1].plot(distances, total_costs, label='Total Cost', color=colors['Total Cost'])
     axs[1].plot(distances, equip_costs, label='Equipment Cost', color=colors['Equipment Cost'])
     axs[1].plot(distances, inst_costs, label='Installation Cost', color=colors['Installation Cost'])
     axs[1].plot(distances, total_ope_costs, label='Operating Cost', color=colors['Operating Cost'])
     axs[1].plot(distances, deco_costs, label='Decommissioning Cost', color=colors['Decommissioning Cost'])
+
+    axs[0].set_xlim(0, 300)
+    axs[0].set_ylim(0, 800)
+    axs[0].yaxis.set_major_locator(MultipleLocator(800 / 4))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(800 / 4 / 4))
 
     axs[1].set_xlim(0, 300)
     axs[1].set_ylim(0, 50)
@@ -69,8 +69,22 @@ def plot_cost_vs_distance():
     axs[0].set_ylabel('Cost (M€)')
     axs[1].set_ylabel('Cost (M€)')
 
+    # Rearranging legend order
+    legend_order = [
+        'Total Cost', 
+        'Equipment Cost', 
+        'Operating Cost',
+        'Installation Cost', 
+        'Decommissioning Cost'
+    ]
+
     lines, labels = axs[0].get_legend_handles_labels()
-    fig.legend(lines, labels, bbox_to_anchor=(0.5, 1.05), loc='center', ncol=2, frameon=False)
+    # Create a dictionary for quick lookup
+    handle_dict = dict(zip(labels, lines))
+    # Order handles according to the specified legend order
+    ordered_handles = [handle_dict[label] for label in legend_order]
+    
+    fig.legend(ordered_handles, legend_order, bbox_to_anchor=(0.5, 1.05), loc='center', ncol=2, frameon=False)
 
     plt.tight_layout()
     plt.savefig(f'C:\\Users\\cflde\\Downloads\\ec_cost_vs_distance.png', dpi=400, bbox_inches='tight')
