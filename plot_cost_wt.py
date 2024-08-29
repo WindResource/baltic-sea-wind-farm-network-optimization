@@ -85,9 +85,9 @@ def plot_costs_vs_water_depth():
         axs[0].plot(water_depths, costs, label=label, color=colors[label])
 
     axs[0].set_xlim(0, 120)
-    axs[0].set_ylim(0, 25)
-    axs[0].yaxis.set_major_locator(MultipleLocator(5))
-    axs[0].yaxis.set_minor_locator(MultipleLocator(1.125))
+    axs[0].set_ylim(0, 20)
+    axs[0].yaxis.set_major_locator(MultipleLocator(20/5))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(20/4))
     axs[0].yaxis.set_major_formatter(y_axis_formatter_large)
 
     # Plotting the smaller range
@@ -96,8 +96,8 @@ def plot_costs_vs_water_depth():
 
     axs[1].set_xlim(0, 120)
     axs[1].set_ylim(0, 1)
-    axs[1].yaxis.set_major_locator(MultipleLocator(0.5))
-    axs[1].yaxis.set_minor_locator(MultipleLocator(0.125))
+    axs[1].yaxis.set_major_locator(MultipleLocator(1/2))
+    axs[1].yaxis.set_minor_locator(MultipleLocator(1/2/2))
     axs[1].yaxis.set_major_formatter(y_axis_formatter_small)
 
     for ax in axs:
@@ -110,9 +110,9 @@ def plot_costs_vs_water_depth():
         ax.axvline(x=25, color='grey', linewidth='1.5', linestyle='--')
         ax.axvline(x=55, color='grey', linewidth='1.5', linestyle='--')
 
-    axs[0].text(2, plt.ylim()[1] * 0.5, 'Monopile', rotation=90)
-    axs[0].text(27, plt.ylim()[1] * 0.5, 'Jacket', rotation=90)
-    axs[0].text(57, plt.ylim()[1] * 0.5, 'Floating', rotation=90)
+    axs[0].text(2, plt.ylim()[1], 'Monopile', rotation=90)
+    axs[0].text(27, plt.ylim()[1], 'Jacket', rotation=90)
+    axs[0].text(57, plt.ylim()[1], 'Floating', rotation=90)
 
     axs[1].set_xlabel('Water Depth (m)')
     axs[0].set_ylabel('Cost (M€)')
@@ -135,7 +135,7 @@ def plot_costs_vs_water_depth():
     plt.show()
 
 def plot_inst_deco_cost_vs_port_distance():
-    port_distances = np.linspace(0, 200, 100)
+    port_distances = np.linspace(0, 400, 500)
     turbine_capacity = 15
     water_depths = [40, 80]
 
@@ -152,22 +152,22 @@ def plot_inst_deco_cost_vs_port_distance():
         inst_costs, deco_costs = [], []
 
         for pd in port_distances:
-            inst_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "inst")
-            deco_cost = calc_inst_deco_cost(water_depth, pd, turbine_capacity, "deco")
+            inst_cost = calc_inst_deco_cost(water_depth, 1e3 * pd, turbine_capacity, "inst")
+            deco_cost = calc_inst_deco_cost(water_depth, 1e3 * pd, turbine_capacity, "deco")
             inst_costs.append(inst_cost)
             deco_costs.append(deco_cost)
 
         axs[i].plot(port_distances, inst_costs, label='Installation Cost', color=colors['Installation Cost'])
-        axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost', linestyle='-', color=colors['Decommissioning Cost'])
+        axs[i].plot(port_distances, deco_costs, label='Decommissioning Cost', linestyle='--', color=colors['Decommissioning Cost'])
         
         # Set domain and range
-        axs[i].set_xlim(0, 200)
+        axs[i].set_xlim(0, 400)
         axs[i].set_ylim(0, 2)
 
-        x_major_locator = MultipleLocator(20)
-        x_minor_locator = MultipleLocator(2)
-        y_major_locator = MultipleLocator(0.5)
-        y_minor_locator = MultipleLocator(0.125)
+        x_major_locator = MultipleLocator(400/4)
+        x_minor_locator = MultipleLocator(400/4/4)
+        y_major_locator = MultipleLocator(2/4)
+        y_minor_locator = MultipleLocator(2/4/4)
 
         axs[i].xaxis.set_major_locator(x_major_locator)
         axs[i].xaxis.set_minor_locator(x_minor_locator)
@@ -185,10 +185,10 @@ def plot_inst_deco_cost_vs_port_distance():
         axs[i].set_ylabel('Cost (M€)')
         
         supp_struct_str = f'Monopile/Jacket' if water_depth < 55 else f'Floating'
-        axs[i].text(2, 0.05, supp_struct_str, rotation=90, ha='left', va='bottom')
+        axs[i].text(5, 0.1, supp_struct_str, rotation=90, ha='left', va='bottom')
         
         # Add horizontal text annotation in the top left of the figure
-        axs[i].text(2, 1.95, f'$WD ={water_depth}m$', ha='left', va='top')
+        axs[i].text(5, 1.95, f'$H_{{w}} = {water_depth}$ m', ha='left', va='top')
         
     axs[1].set_xlabel('Distance to Closest Port (km)')
     

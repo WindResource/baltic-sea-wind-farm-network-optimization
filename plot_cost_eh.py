@@ -142,8 +142,8 @@ def plot_inst_deco_cost_vs_port_distance():
 
         for pd in port_distances:
             support_structure = check_supp(water_depth)
-            inst_cost = inst_deco_cost_lin(support_structure, pd, "inst")
-            deco_cost = inst_deco_cost_lin(support_structure, pd, "deco")
+            inst_cost = inst_deco_cost_lin(support_structure, 1e3 * pd, "inst")
+            deco_cost = inst_deco_cost_lin(support_structure, 1e3 * pd, "deco")
             inst_costs.append(inst_cost)
             deco_costs.append(deco_cost)
 

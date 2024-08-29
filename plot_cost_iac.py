@@ -114,7 +114,7 @@ def plot_costs_vs_distance():
     plt.show()
 
 def plot_costs_vs_capacity():
-    distance = 1440  # km
+    distance = 6 * 240  # km
     capacities = np.linspace(0, 150, 1000)  # Capacities in MW
 
     total_costs, equip_costs, inst_costs, total_ope_costs, deco_costs = [], [], [], [], []
@@ -161,9 +161,9 @@ def plot_costs_vs_capacity():
     axs[1].plot(capacities, deco_costs, label='Decommissioning Cost', color=colors['Decommissioning Cost'])
 
     axs[1].set_xlim(0, 150)
-    axs[1].set_ylim(0, 0.075)
-    axs[1].yaxis.set_major_locator(MultipleLocator(0.075))
-    axs[1].yaxis.set_minor_locator(MultipleLocator(0.075 / 4))
+    axs[1].set_ylim(0, 0.025)
+    axs[1].yaxis.set_major_locator(MultipleLocator(0.025))
+    axs[1].yaxis.set_minor_locator(MultipleLocator(0.025 / 4))
     axs[1].yaxis.set_major_formatter(FuncFormatter(format_y_axis_capacity))
     axs[1].xaxis.set_major_formatter(FuncFormatter(format_x_axis_capacity))
 
