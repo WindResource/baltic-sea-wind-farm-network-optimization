@@ -63,7 +63,7 @@ def plot_total_cost_vs_water_depth():
 
     # Inline formatter functions
     y_axis_formatter_large = FuncFormatter(lambda y, pos: '0' if y == 0 else f'{y:.0f}')
-    y_axis_formatter_small = FuncFormatter(lambda y, pos: '0' if y == 0 else f'{y:.0f}')
+    y_axis_formatter_small = FuncFormatter(lambda y, pos: '0' if y == 0 else f'{y:.2f}')
 
     # Plotting the larger range
     axs[0].plot(water_depths, total_costs, label='Total Cost', color=colors['Total Cost'])
@@ -74,7 +74,7 @@ def plot_total_cost_vs_water_depth():
 
     axs[0].set_xlim(0, 300)
     axs[0].set_ylim(0, 50)
-    axs[0].yaxis.set_major_locator(MultipleLocator(50 / 4))
+    axs[0].yaxis.set_major_locator(MultipleLocator(50 / 5))
     axs[0].yaxis.set_minor_locator(MultipleLocator(50 / 4 / 4))
     axs[0].yaxis.set_major_formatter(y_axis_formatter_large)
 
@@ -85,8 +85,8 @@ def plot_total_cost_vs_water_depth():
     axs[1].plot(water_depths, total_ope_costs, label='Operating Cost', color=colors['Operating Cost'])
     axs[1].plot(water_depths, deco_costs, label='Decommissioning Cost', color=colors['Decommissioning Cost'])
 
-    axs[1].set_ylim(0, 1)
-    axs[1].yaxis.set_major_locator(MultipleLocator(1))
+    axs[1].set_ylim(0, 0.75)
+    axs[1].yaxis.set_major_locator(MultipleLocator(0.75))
     axs[1].yaxis.set_minor_locator(MultipleLocator(0.25))
     axs[1].yaxis.set_major_formatter(y_axis_formatter_small)
 
@@ -123,7 +123,7 @@ def plot_total_cost_vs_water_depth():
     plt.show()
 
 def plot_inst_deco_cost_vs_port_distance():
-    wd_jacket = 50
+    wd_jacket = 80
     wd_floating = 150
     water_depths = [wd_jacket, wd_floating]
     port_distances = np.linspace(0, 300, 500)
