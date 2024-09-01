@@ -10,14 +10,13 @@ font = {'family': 'serif',
 # Set font
 plt.rc('font', **font)
 
-def plot_heatmap(num_std_dev=1):
+def plot_heatmap():
     """
     Plots an adjusted heatmap where positive values are in red and negative values are in blue.
     The "Energy Hubs" component is excluded from the heatmap.
-    
     """
-    num_std_dev=2
-    
+    num_std_dev = 2
+
     data = np.array([
         [2.37, 0, -2.91, -11.36, 52.15, 1.51],
         [0.44, 0, -2.33, 3.67, 13.82, 1.71],
@@ -28,8 +27,8 @@ def plot_heatmap(num_std_dev=1):
 
     components = ["Wind farms", "Energy Hubs", "Onshore substations", "Export cables", "Onshore cables", "Overall System"]
     labels = [
-        "National Combined", "Int. Combined, Multi-stage", "Int. Hub-Spoke",
-        "Int. Combined, 80% WF Cost", "Int. Combined, 80% Cable Cost"
+        "National Combined", "Int. Combined, Multi-stage", "Int. Hub&Spoke",
+        "Int. Combined, 80% WF Cost", "Int. Combined, 80% TC Cost"
     ]
     
     # Exclude the "Energy Hubs" component
@@ -53,28 +52,15 @@ def plot_heatmap(num_std_dev=1):
     # Create a diverging color map with red for positive and blue for negative values
     cmap = sns.diverging_palette(240, 10, as_cmap=True, center="light")
     
-    # Plot the heatmap
+    # Plot the heatmap with annotation font size set via annot_kws
     heatmap = sns.heatmap(data_filtered.T, annot=True, cmap=cmap, fmt=".2f", xticklabels=labels, yticklabels=components_filtered, 
-                        ax=ax, norm=norm, cbar_kws={"shrink": 1, "aspect": 10})
+                        ax=ax, norm=norm, cbar_kws={"shrink": 1, "aspect": 10},
+                        annot_kws={"size": 14})  # Adjust the font size for heatmap values here
 
     # Adjust the position of the x-axis labels
     ax.xaxis.set_label_position('top')
     ax.xaxis.tick_top()
     plt.xticks(rotation=45, ha='left')
-
-    # Bold the "Overall System" label
-    for label in ax.get_xticklabels():
-        if label.get_text() == "Overall System":
-            label.set_fontweight('bold')
-            label.set_fontsize(12)  # Optional: Adjust font size if needed
-
-    # Bold the last row of values
-    num_columns = len(labels)
-    num_rows = len(components_filtered)
-    last_row_start = num_columns * (num_rows - 1)
-    for i, text in enumerate(ax.texts):
-        if i >= last_row_start:  # Check if it's in the last row
-            text.set_fontweight('bold')
 
     # Format the annotations in math format
     for text in ax.texts:
@@ -82,18 +68,25 @@ def plot_heatmap(num_std_dev=1):
 
     # Add the unit (%) to the color bar
     cbar = heatmap.collections[0].colorbar
-    cbar.set_label('Percentage (%)', rotation=0, ha='right', va='center', labelpad=50)
+    cbar.set_label('(%)', rotation=0, ha='left', va='center', labelpad=10)
     
-    # Optional: Customize the font properties of the color bar label
-    cbar.ax.yaxis.label.set_size(12)  # Adjust label size
-    cbar.ax.yaxis.label.set_fontweight('normal')  # Make the label bold
+    # Customize the font properties of the color bar label
+    cbar.ax.yaxis.label.set_size(14)  # Adjust label size
+    cbar.ax.yaxis.label.set_fontweight('normal')  # Make the label not bold (or adjust as needed)
 
-    # Show the plot
+    # Set the font size for color bar tick labels
+    cbar.ax.tick_params(labelsize=14)  # Set the font size for the color bar tick labels
+
+    # Make "Overall System" bold
+    if "Overall System" in components_filtered:
+        overall_system_index = components_filtered.index("Overall System")
+        ax.yaxis.get_ticklabels()[overall_system_index].set_fontweight('bold')
+
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\heatmap.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 # Call the function
 plot_heatmap()
-
 
 def plot_grouped_bar_chart():
     # Data for each component in the specified order
