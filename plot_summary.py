@@ -118,7 +118,7 @@ def plot_grouped_bar_chart(include_configs=None):
     # Select a Seaborn color palette
     sns_palette = sns.color_palette("muted", len(components))
     
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6), gridspec_kw={'height_ratios': [3, 1]})
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 5), gridspec_kw={'height_ratios': [3, 1]})
     
     # Plot bars for each component with colors from Seaborn palette
     handles = []
