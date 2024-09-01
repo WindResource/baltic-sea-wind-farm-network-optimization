@@ -194,6 +194,7 @@ def plot_grouped_bar_chart(include_configs=None):
     fig.legend(handles, components + ['Minimum Value', 'Maximum Value'], bbox_to_anchor=(0.45, 1.06), loc='center', ncol=3, frameon=False)
     
     plt.tight_layout()
+    plt.savefig('C:\\Users\\cflde\\Downloads\\grouped_bar_chart.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 # Example usage:
