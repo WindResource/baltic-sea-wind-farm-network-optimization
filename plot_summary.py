@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.ticker import AutoMinorLocator
+from matplotlib.ticker import MultipleLocator
 
 # Define font parameters
 font = {'family': 'serif',
@@ -86,34 +88,33 @@ def plot_heatmap():
     plt.show()
 
 # Call the function
-plot_heatmap()
+# plot_heatmap()
 
 def plot_grouped_bar_chart():
-    # Data for each component in the specified order
-    components = ["Onshore substations", "Energy Hubs", "Onshore cables", "Export cables", "Wind farms", "Overall System"]
-
-    # Costs for each configuration (reordered accordingly)
-    onshore_substations = [111, 114, 111, 114, 113, 118]
-    energy_hubs = [0, 0, 0, 431, 0, 0]
-    onshore_cables = [1868, 1228, 1398, 1289, 1017, 982]
-    export_cables = [5496, 6200, 6427, 5976, 6190, 5245]
-    wind_farms = [21454, 20957, 21049, 21016, 13486, 20898]
+    # New order for the legend and data arrays directly ordered
+    components = ["Overall System", "Wind farms", "Energy Hubs", "Onshore substations", "Export cables", "Onshore cables"]
     overall_system = [28928, 28499, 28986, 28827, 20806, 27243]
+    wind_farms = [21454, 20957, 21049, 21016, 13486, 20898]
+    energy_hubs = [0, 0, 0, 431, 0, 0]
+    onshore_substations = [111, 114, 111, 114, 113, 118]
+    export_cables = [5496, 6200, 6427, 5976, 6190, 5245]
+    onshore_cables = [1868, 1228, 1398, 1289, 1017, 982]
 
-    # Combine data into a single array for easier plotting
-    data_reordered = np.array([
-        onshore_substations,
-        energy_hubs,
-        onshore_cables,
-        export_cables,
+    # Data directly ordered as per the new legend order
+    data_ordered = np.array([
+        overall_system,
         wind_farms,
-        overall_system
+        energy_hubs,
+        onshore_substations,
+        export_cables,
+        onshore_cables
     ]).T
+    data_ordered_billion = data_ordered / 1000
 
     # Labels for the configurations
     labels = [
         "National Combined", "Int. Combined", "Int. Combined, Multi-stage",
-        "Int. Hub & Spoke", "Int. Combined, 80% WF Cost", "Int. Combined, 80% Cable Cost"
+        "Int. Hub&Spoke", "Int. Combined, 80% WF Cost", "Int. Combined, 80% TC Cost"
     ]
 
     # Number of configurations
@@ -121,28 +122,44 @@ def plot_grouped_bar_chart():
 
     # Create the bar positions
     bar_width = 0.15
-    index = np.arange(n_configurations)
+    group_width = len(components) * bar_width + 0.2  # Width of one group plus spacing
+    index = np.arange(n_configurations) * group_width * 1.2  # Increase gap between groups
+
+    # Specify colors using 'C0', 'C1', 'C2', etc.
+    colors = ['C0', 'C1', 'C2', 'C3', 'C4', 'C6']
 
     # Create the plot
-    fig, ax = plt.subplots(figsize=(14, 8))
+    fig, ax = plt.subplots(figsize=(8, 5))
 
-    # Plot bars for each component in the specified order
-    for i in range(len(components)):
-        ax.bar(index + i * bar_width, data_reordered[:, i], bar_width, label=components[i])
+    # Plot bars for each component in the specified order with colors
+    handles = []
+    for i, component in enumerate(components):
+        bars = ax.bar(index + i * bar_width, data_ordered_billion[:, i], bar_width, label=component, color=colors[i])
+        handles.append(bars[0])  # Store the handle for the legend
 
     # Adding labels and title
-    ax.set_xlabel('Network Configuration')
-    ax.set_ylabel('Cost (M EUR)')
-    ax.set_title('Component Costs by Network Configuration (Grouped Bar Chart)')
-    ax.set_xticks(index + bar_width * 2.5)
-    ax.set_xticklabels(labels)
-    ax.legend(title="Components")
+    ax.set_ylabel('Cost (B\u20AC)', fontsize=12)
+    ax.set_xticks(index + bar_width * (len(components) / 2))
+    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=10)
+    
+    # Set x and y limits with additional space on the left
+    ax.set_xlim(-0.5, index[-1] + len(components) * bar_width + 0.5)  # Adjust space on the x-axis
+    ax.set_ylim(0, np.max(data_ordered_billion) + 2)  # Add a bit of padding
 
-    plt.xticks(rotation=45, ha='right')
+    # Set major and minor gridlines
+    ax.yaxis.set_major_locator(MultipleLocator(5))  # Adjust as needed
+    ax.yaxis.set_minor_locator(MultipleLocator(1))  # Adjust as needed
+
+    # Add grid lines for better readability
+    ax.grid(which='major', axis='y', linestyle='--', linewidth='0.5', color='gray')
+    ax.grid(which='minor', axis='y', linestyle=':', linewidth='0.5', color='gray')
+    ax.set_axisbelow(True)
+
+    # Add legend using the specified format and order
+    fig.legend(handles, components, bbox_to_anchor=(0.4, 1.05), loc='center', ncol=2, frameon=False, fontsize=10)
+
     plt.tight_layout()
     plt.show()
 
+plot_grouped_bar_chart()
 
-
-
-#plot_grouped_bar_chart()
