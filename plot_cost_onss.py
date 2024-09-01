@@ -104,28 +104,31 @@ def plot_onss_costs():
 
     plt.figure(figsize=(6, 5))
 
-    # Plot solid lines
-    line1, = plt.plot(capacities, total_costs, label='Total PV', color='C0')
-    line2, = plt.plot(capacities, equip_costs, label='Equipment PV', color='C1')
-    line3, = plt.plot(capacities, total_ope_costs, label='Total Operating PV', color='C2')
+    # Plot dashed lines (piecewise linear function)
+    line2, = plt.plot(capacities, equip_costs, label='Equipment PV', color='C1', linestyle='--')
+    line3, = plt.plot(capacities, total_ope_costs, label='Total Operating PV', color='C2', linestyle='--')
+    line1, = plt.plot(capacities, total_costs, label='Total PV', color='C0', linestyle='--')
 
-    # Plot dashed lines
-    plt.plot(capacities, total_costs_lin, color=line1.get_color(), linestyle='--')
-    plt.plot(capacities, equip_costs_lin, color=line2.get_color(), linestyle='--')
-    plt.plot(capacities, total_ope_costs_lin, color=line3.get_color(), linestyle='--')
+    # Plot solid lines (linear function)
+    plt.plot(capacities, total_costs_lin, color=line1.get_color(), linestyle='-')
+    plt.plot(capacities, equip_costs_lin, color=line2.get_color(), linestyle='-')
+    plt.plot(capacities, total_ope_costs_lin, color=line3.get_color(), linestyle='-')
 
+    # Add vertical dashed line at x=0
+    plt.axvline(x=0, color='grey', linewidth='1.5', linestyle='--')
+    
     plt.xlabel('Capacity (MW)')
     plt.ylabel('Cost (M\u20AC)')
     
     # Set domain and range
     plt.xlim(-200, 500)
-    plt.ylim(-5, 10)
+    plt.ylim(-4, 8)
     
     # Define major and minor locators
     x_major_locator = MultipleLocator(200)
     x_minor_locator = MultipleLocator(50)
-    y_major_locator = MultipleLocator(5)
-    y_minor_locator = MultipleLocator(5 / 4)
+    y_major_locator = MultipleLocator(8 / 4)
+    y_minor_locator = MultipleLocator(8 / 4 / 4)
     
     ax = plt.gca()
     ax.xaxis.set_major_locator(x_major_locator)
