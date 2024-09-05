@@ -49,6 +49,9 @@ def plot_lifecycle_phases():
     # Creating the figure
     fig, ax = plt.subplots(figsize=(12, 1.2))
 
+    # Add vertical major gridlines
+    ax.grid(True, which='major', axis='x', linestyle='--', linewidth=0.5, color='grey')
+
     # Plotting the highlights first
     ax.barh([''], [year_width * capex_years_final], color='green', alpha=0.2, height=bar_height + 0.2, left=start_capex, label='CAPEX')
     ax.barh([''], [year_width * opex_years_final], color='blue', alpha=0.2, height=bar_height + 0.2, left=start_opex, label='OPEX')
@@ -78,7 +81,7 @@ def plot_lifecycle_phases():
         plt.Line2D([0], [0], color='cornflowerblue', marker='o', markersize=10, markeredgecolor='black', markeredgewidth=1, lw=0, label=stages_combined[3]),
         plt.Line2D([0], [0], color='salmon', marker='o', markersize=10, markeredgecolor='black', markeredgewidth=1, lw=0, label=stages_combined[4]),
         plt.Line2D([0], [0], color='green', marker='o', markersize=10, alpha=0.5, markeredgecolor='black', markeredgewidth=1, lw=0, label='Capital Expenses'),
-        plt.Line2D([0], [0], color='blue', marker='o', markersize=10, alpha=0.5, markeredgecolor='black', markeredgewidth=1, lw=0, label='Operation Expenses'),
+        plt.Line2D([0], [0], color='blue', marker='o', markersize=10, alpha=0.5, markeredgecolor='black', markeredgewidth=1, lw=0, label='Operating Expenses'),
         plt.Line2D([0], [0], color='red', marker='o', markersize=10, alpha=0.5, markeredgecolor='black', markeredgewidth=1, lw=0, label='Decommissioning Expenses')
     ]
     
