@@ -10,75 +10,86 @@ plt.rc('font', **font)
 
 
 def plot_lifecycle_phases():
+    # Define parameters inside the function
+    start_capex = 0
+    start_opex = 5
+    start_decex = 30
+
     # Define fixed parameters
-    bar_height = 0.3
+    bar_height = 0.2
     year_width = 1
-    spacing = 0.2
-    year_segment_width = 1
 
     # Define the stages and durations
-    stages_combined = ['Capital Investment & Project Preparation', 'Procurement & Site Preparation', 
-                       'Support Structure & Infrastructure Installation', 'Turbine Installation & Commissioning', 
-                       'Operation & Maintenance', 'Decommissioning & Site Restoration']
+    stages_combined = ['Procurement & Site Preparation', 
+                       'Support Structure & Infrastructure Installation', 
+                       'Turbine Installation & Commissioning', 
+                       'Operation & Maintenance', 
+                       'Decommissioning & Site Restoration']
 
-    durations_combined = [1, 1, 2, 1, 25, 2]  # Updated durations with Year 3-4 combined
+    durations_combined = [1, 2, 2, 25, 2]  # Updated durations
 
     # Total years including Year 0
     years_combined = sum(durations_combined)
 
     # Colors for each phase
-    colors_combined = ['lightgreen'] * durations_combined[0] + ['gold'] * durations_combined[1] + \
-                      ['steelblue'] * durations_combined[2] + ['orange'] * durations_combined[3] + \
-                      ['lightblue'] * durations_combined[4] + ['grey'] * durations_combined[5]
+    colors_combined = ['limegreen'] * durations_combined[0] + \
+                      ['green'] * durations_combined[1] + \
+                      ['darkgreen'] * durations_combined[2] + \
+                      ['cornflowerblue'] * durations_combined[3] + \
+                      ['salmon'] * durations_combined[4]
 
     # Define CAPEX, OPEX, and DECEX values
     capex_years_final = 1  # CAPEX only in Year 0
     opex_years_final = 25  # OPEX covering Years 5-29
-    decex_years_final = 1  # DECEX only in Years 30-31
+    decex_years_final = 1  # DECEX covering Years 30-31
 
     # Create a list of x positions for the bars
     x_positions = list(range(years_combined))
 
     # Creating the figure
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(12, 1.2))
 
     # Plotting the highlights first
-    ax.barh([''], [year_width * capex_years_final], color='green', alpha=0.2, height=bar_height + 0.2, left=0, label='CAPEX')
-    ax.barh([''], [year_width * opex_years_final], color='blue', alpha=0.2, height=bar_height + 0.2, left=5, label='OPEX')
-    ax.barh([''], [year_width * decex_years_final], color='grey', alpha=0.2, height=bar_height + 0.2, left=30, label='DECEX')
+    ax.barh([''], [year_width * capex_years_final], color='green', alpha=0.2, height=bar_height + 0.2, left=start_capex, label='CAPEX')
+    ax.barh([''], [year_width * opex_years_final], color='blue', alpha=0.2, height=bar_height + 0.2, left=start_opex, label='OPEX')
+    ax.barh([''], [year_width * decex_years_final], color='red', alpha=0.2, height=bar_height + 0.2, left=start_decex, label='DECEX')
 
     # Plotting the lifecycle phases (main bars) on top of the highlights
     ax.barh([''] * years_combined, [year_width] * years_combined, color=colors_combined, edgecolor='black', height=bar_height, left=x_positions)
 
-    # Adding the year numbers starting from 0
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels([f'{i}' for i in range(years_combined)])
+    # Adding the year numbers
+    ax.set_xticks(range(0, years_combined + 2))  # Ensure Year 32 is included
+    ax.set_xticklabels([f'{i}' for i in range(0, years_combined + 2)])
 
     # Set the x-axis label to "Year"
     ax.set_xlabel('Year')
 
-    # Updating the x-axis limit to end at the end of the last bar
-    ax.set_xlim(0, years_combined)
+    # Updating the x-axis limit to end at the end of Year 32
+    ax.set_xlim(0, years_combined + 0.01)  # Adding 1 to include Year 32
+    
+    # # Define the y-axis limits to control height (number of bars shown)
+    ax.set_ylim(-0.25, 0.25)  # Adjust these values as needed
 
-    # Updating the legend to fit above the figure using figure coordinates
-    legend_elements_no_title = [plt.Line2D([0], [0], color='lightgreen', lw=4, label=stages_combined[0]),
-                                plt.Line2D([0], [0], color='gold', lw=4, label=stages_combined[1]),
-                                plt.Line2D([0], [0], color='steelblue', lw=4, label=stages_combined[2]),
-                                plt.Line2D([0], [0], color='orange', lw=4, label=stages_combined[3]),
-                                plt.Line2D([0], [0], color='lightblue', lw=4, label=stages_combined[4]),
-                                plt.Line2D([0], [0], color='grey', lw=4, label=stages_combined[5]),
-                                plt.Line2D([0], [0], color='green', lw=4, alpha=0.5, label='CAPEX'),
-                                plt.Line2D([0], [0], color='blue', lw=4, alpha=0.5, label='OPEX'),
-                                plt.Line2D([0], [0], color='grey', lw=4, alpha=0.5, label='DECEX')]
-
+    # Define legend elements with borders around symbols
+    legend_elements_no_title = [
+        plt.Line2D([0], [0], color='limegreen', marker='o', markersize=10, markeredgecolor='black', markeredgewidth=1, lw=0, label=stages_combined[0]),
+        plt.Line2D([0], [0], color='green', marker='o', markersize=10, markeredgecolor='black', markeredgewidth=1, lw=0, label=stages_combined[1]),
+        plt.Line2D([0], [0], color='darkgreen', marker='o', markersize=10, markeredgecolor='black', markeredgewidth=1, lw=0, label=stages_combined[2]),
+        plt.Line2D([0], [0], color='cornflowerblue', marker='o', markersize=10, markeredgecolor='black', markeredgewidth=1, lw=0, label=stages_combined[3]),
+        plt.Line2D([0], [0], color='salmon', marker='o', markersize=10, markeredgecolor='black', markeredgewidth=1, lw=0, label=stages_combined[4]),
+        plt.Line2D([0], [0], color='green', marker='o', markersize=10, alpha=0.5, markeredgecolor='black', markeredgewidth=1, lw=0, label='Capital Expenses'),
+        plt.Line2D([0], [0], color='blue', marker='o', markersize=10, alpha=0.5, markeredgecolor='black', markeredgewidth=1, lw=0, label='Operation Expenses'),
+        plt.Line2D([0], [0], color='red', marker='o', markersize=10, alpha=0.5, markeredgecolor='black', markeredgewidth=1, lw=0, label='Decommissioning Expenses')
+    ]
+    
     # Position the legend above the figure without resizing
-    ax.legend(handles=legend_elements_no_title, loc='upper center', bbox_to_anchor=(0.5, 2), ncol=3, frameon=False)
+    ax.legend(handles=legend_elements_no_title, loc='upper center', bbox_to_anchor=(0.5, 2.5), ncol=2, frameon=False)
 
     # Remove y-axis labels
     ax.set_yticks([])
 
     # Display the chart
-    plt.tight_layout()
+    plt.savefig(f'C:\\Users\\cflde\\Downloads\\lifecycle.png', dpi=400, bbox_inches='tight')
     plt.show()
 
 # Call the function
