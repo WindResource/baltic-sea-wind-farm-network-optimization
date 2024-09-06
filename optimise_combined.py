@@ -699,12 +699,13 @@ def opt_model(workspace_folder, model_type=0, cross_border=1, multi_stage=0, lin
     crb = ["n", "in"][cross_border]
     stg = ["sf", "mf"][multi_stage]
     
-    # Print total available wind farm capacity per country
-    print("Total available wind farm capacity per country:")
-    for country, country_code in iso_to_int_mp.items():
-        total_capacity = sum(wf_cap[wf] for wf in wf_ids if wf_iso[wf] == country_code)
-        print(f"{country}: {total_capacity} MW")
-    
+    # Calculate total capacity per country and save to Excel
+    wf_cap_country = pd.DataFrame([
+        {'Country': country, 'Total Capacity (MW)': sum(wf_cap[wf] for wf in wf_ids if wf_iso[wf] == code)}
+        for country, code in iso_to_int_mp.items()
+    ])
+    wf_cap_country.to_excel(os.path.join(results_dir, 'wf_cap_country.xlsx'), index=False)
+
     # Create a DataFrame for variable counts
     variable_counts_df = pd.DataFrame({
         "Variable": [

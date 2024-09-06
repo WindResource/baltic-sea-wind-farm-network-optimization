@@ -55,7 +55,7 @@ def calc_equip_cost(first_year, water_depth, support_structure, ice_cover, turbi
     supp_cost = turbine_capacity * (c1 * (water_depth ** 2) + c2 * water_depth + c3 * 1e3)
     
     if ice_cover == 1:
-        turbine_coeff *= 1.5714
+        turbine_coeff *= (1 + 0.4 * 0.5714) # REDUCED BY 60%
 
     turbine_cost = turbine_capacity * turbine_coeff
 

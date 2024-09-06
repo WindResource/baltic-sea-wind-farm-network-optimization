@@ -50,7 +50,7 @@ def plot_lifecycle_phases():
     fig, ax = plt.subplots(figsize=(12, 1.2))
 
     # Add vertical major gridlines
-    ax.grid(True, which='major', axis='x', linestyle='--', linewidth=0.5, color='grey')
+    #ax.grid(True, which='major', axis='x', linestyle='--', linewidth=0.75, color='grey')
 
     # Plotting the highlights first
     ax.barh([''], [year_width * capex_years_final], color='green', alpha=0.2, height=bar_height + 0.2, left=start_capex, label='CAPEX')
