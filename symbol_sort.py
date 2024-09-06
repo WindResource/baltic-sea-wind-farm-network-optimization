@@ -2,50 +2,60 @@ import re
 
 def sorting_key(symbol):
     """
-    Define the sorting order based on the letter and LaTeX style, ensuring that
-    uppercase symbols are followed by their corresponding lowercase variants for each letter.
+    Define the sorting order where Latin letters come first, followed by Greek letters.
+    Within each group, symbols are first sorted by base character, and then by case (uppercase first, lowercase second).
     """
     # Unpack the symbol tuple
     symbol_name, description = symbol
 
-    # Remove LaTeX commands and extract the base letter for sorting
+    # Remove LaTeX commands and extract the base character for sorting
     clean_symbol = re.sub(r"(\\mathcal|\\mathbb|\{|\}|_|\^|\(|\))", "", symbol_name)
 
-    # Define sorting priority for uppercase followed by lowercase:
-    # 1. Uppercase Latin: A-Z
-    # 2. Calligraphic Uppercase: \mathcal{A} - \mathcal{Z}
-    # 3. Blackboard Uppercase: \mathbb{A} - \mathbb{Z}
-    # 4. Lowercase Latin: a-z
-    # 5. Greek letters
-
-    if clean_symbol[0].isalpha():
-        base_char = clean_symbol[0].upper()  # Uppercase version of the base letter for sorting
-
-        # Sort Uppercase first
-        if clean_symbol[0].isupper():
-            if not ("mathcal" in symbol_name or "mathbb" in symbol_name):
-                return (base_char, 0, 0)  # Plain uppercase
-            elif "mathcal" in symbol_name:
-                return (base_char, 0, 1)  # Calligraphic uppercase
-            elif "mathbb" in symbol_name:
-                return (base_char, 0, 2)  # Blackboard uppercase
-
-        # Sort Lowercase second
-        elif clean_symbol[0].islower():
-            return (base_char, 1, 0)  # Plain lowercase
-
-    # Greek letters at the end
-    greek_letter_order = {
+    # Sorting Greek letters
+    greek_letters = {
         'alpha': 0, 'beta': 1, 'gamma': 2, 'delta': 3, 'epsilon': 4, 'zeta': 5, 'eta': 6, 'theta': 7,
         'iota': 8, 'kappa': 9, 'lambda': 10, 'mu': 11, 'nu': 12, 'xi': 13, 'omicron': 14, 'pi': 15,
         'rho': 16, 'sigma': 17, 'tau': 18, 'upsilon': 19, 'phi': 20, 'chi': 21, 'psi': 22, 'omega': 23
     }
-    if re.match(r'\\[a-zA-Z]+', symbol_name):
-        greek_symbol = re.sub(r'\\', '', symbol_name)
-        if greek_symbol in greek_letter_order:
-            return ("Z", 2, greek_letter_order[greek_symbol])  # Greek letters after Latin letters
 
-    return (symbol_name, 2, 0)  # Default catch-all
+    # First handle Greek symbols
+    greek_match = re.match(r'\\([a-zA-Z]+)', symbol_name)
+    if greek_match:
+        greek_symbol = greek_match.group(1).lower()  # Base Greek letter (case insensitive)
+
+        if greek_symbol in greek_letters:
+            # Distinguish between uppercase and lowercase by checking the first character after \
+            is_uppercase_greek = symbol_name[1].isupper()
+
+            # Group Greek uppercase first, then lowercase (after Latin)
+            if is_uppercase_greek:
+                return (2, greek_letters[greek_symbol], 0)  # Greek uppercase
+            else:
+                return (2, greek_letters[greek_symbol], 1)  # Greek lowercase
+
+    # For Latin characters
+    if clean_symbol and clean_symbol[0].isalpha():
+        base_char = clean_symbol[0].upper()  # Normalize to uppercase for case-insensitive sorting
+
+        # Distinguish between uppercase and lowercase for Latin letters
+        is_uppercase = clean_symbol[0].isupper()
+
+        # Sorting priority:
+        # 1. Latin letters first (uppercase followed by lowercase)
+        # 2. Calligraphic and Blackboard styles for uppercase (Latin)
+
+        if is_uppercase:
+            # Uppercase Latin: Plain, Calligraphic, Blackboard
+            if not ("mathcal" in symbol_name or "mathbb" in symbol_name):
+                return (1, base_char, 0, 0)  # Plain uppercase
+            elif "mathcal" in symbol_name:
+                return (1, base_char, 0, 1)  # Calligraphic uppercase
+            elif "mathbb" in symbol_name:
+                return (1, base_char, 0, 2)  # Blackboard uppercase
+        else:
+            return (1, base_char, 1, 0)  # Plain lowercase Latin
+
+    return (3, symbol_name, 2, 0)  # Default catch-all
 
 
 def sort_symbols(symbols_definitions):
@@ -72,7 +82,7 @@ symbols_definitions = [
     ("N_c", "Number of parallel cables"),
     ("P", "Power capacity parameter, in megawatts"),
     ("P_F", "Power factor"),
-    ("Phi^{(s)}", "Progression level for stage s"),
+    ("\\Phi^{(s)}", "Progression level for stage s"),
     ("P_i", "Geographic coordinates of point P_i, in radians"),
     ("P_{th}", "Capacity threshold, in megawatts"),
     ("R", "Power capacity ratio"),
