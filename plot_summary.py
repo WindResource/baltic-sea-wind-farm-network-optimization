@@ -19,25 +19,21 @@ def plot_heatmap():
     """
     num_std_dev = 2
 
-    # Define components and their respective data in a dictionary
+    # Define components and their respective data in a dictionary (excluding Energy Hubs)
     data_dict = {
-        "Wind farms": [2.37, 0.44, 0.28, -19.56, -0.28],
-        "Energy Hubs": [0, 0, 0, 0, 0],
-        "Onshore substations": [-2.91, -2.33, -0.19, -1.06, 3.24],
-        "Export cables": [-11.36, 3.67, -3.61, -0.16, -15.40],
-        "Onshore cables": [52.15, 13.82, 5.01, -17.14, -20.00],
-        "Overall System": [1.51, 1.71, 1.15, -15.16, -4.41]
+        "Wind farms": [2.37, 0.44, 0.28, -19.56, -0.28, 0.74],
+        "Onshore substations": [-2.91, -2.33, -0.19, -1.06, 3.24, -3.08],
+        "Export cables": [-11.36, 3.67, -3.61, -0.16, -15.40, -7.21],
+        "Onshore cables": [52.15, 13.82, 5.01, -17.14, -20.00, 0.00],
+        "Overall System": [1.51, 1.71, 1.15, -15.16, -4.41, -1.04]
     }
     
     labels = [
         "National Combined", "Int. Combined, Multi-stage", "Int. Hub&Spoke",
-        "Int. Combined, 80% WF Cost", "Int. Combined, 80% TC Cost"
+        "Int. Combined, 20% Red. WF Cost", "Int. Combined, 20% Red. TC Cost",
+        "Int. Combined, 60% Red. IC Cost"
     ]
 
-    # Exclude the "Energy Hubs" component
-    if "Energy Hubs" in data_dict:
-        data_dict.pop("Energy Hubs")
-    
     # Convert the dictionary values into a numpy array and get the list of components
     components_filtered = list(data_dict.keys())
     data_filtered = np.array(list(data_dict.values())).T
@@ -78,11 +74,13 @@ def plot_heatmap():
     plt.savefig('C:\\Users\\cflde\\Downloads\\heatmap.png', dpi=400, bbox_inches='tight')
     plt.show()
     
-# Call the function
+# Call the updated function
 #plot_heatmap()
 
 
-def plot_grouped_bar_chart(include_configs=None):
+def plot_grouped_bar_chart():
+    include_configs = ["National Combined", "Int. Combined", "Int. Combined,\nMulti-stage", "Int. Hub&Spoke"]
+
     # Define components and data in a dictionary for better management
     data_dict = {
         "Overall System": [28928, 28499, 28986, 28827, 20806, 27243],
@@ -96,7 +94,7 @@ def plot_grouped_bar_chart(include_configs=None):
     # Labels for the configurations
     labels = [
         "National Combined", "Int. Combined", "Int. Combined,\nMulti-stage",
-        "Int. Hub&Spoke", "Int. Combined, 80% WF Cost", "Int. Combined, 80% TC Cost"
+        "Int. Hub&Spoke", "Int. Combined, 20% Red. WF Cost", "Int. Combined, 20% Red. TC Cost"
     ]
     
     # Filter configurations if needed
@@ -111,19 +109,28 @@ def plot_grouped_bar_chart(include_configs=None):
     data_billion = data / 1000  # Convert to billions
     
     n_configurations = len(labels)
-    bar_width = 0.15
+    bar_width = 0.25
     group_width = len(components) * bar_width + 0.2
     index = np.arange(n_configurations) * group_width * 1.2
     
-    # Select a Seaborn color palette
-    sns_palette = sns.color_palette("muted", len(components))
     
+    # Define specific colors for each component with saturated colors
+    color_mapping = {
+        "Wind farms": "forestgreen",       # Deep and rich green
+        "Energy Hubs": "deepskyblue",      # Bright and vibrant blue
+        "Onshore substations": "gold",     # Bold and saturated yellow
+        "Export cables": "limegreen",      # Bright and vibrant green
+        "Onshore cables": "mediumseagreen", # Balanced and rich green
+        "Overall System": "royalblue"      # Deep and saturated blue
+    }
+
+
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 5), gridspec_kw={'height_ratios': [3, 1]})
     
-    # Plot bars for each component with colors from Seaborn palette
+    # Plot bars for each component with specific colors
     handles = []
-    for i, (component, color) in enumerate(zip(components, sns_palette)):
-        bars = ax1.bar(index + i * bar_width, data_billion[:, i], bar_width, label=component, color=color)
+    for i, component in enumerate(components):
+        bars = ax1.bar(index + i * bar_width, data_billion[:, i], bar_width, label=component, color=color_mapping[component])
         
         # Highlight min and max values with cross markers
         min_val = np.min(data_billion[:, i])
@@ -143,7 +150,7 @@ def plot_grouped_bar_chart(include_configs=None):
     zoom_indices = [components.index(comp) for comp in zoom_components]
     
     for i in zoom_indices:
-        bars = ax2.bar(index + i * bar_width, data_billion[:, i], bar_width, label=components[i], color=sns_palette[i])
+        bars = ax2.bar(index + i * bar_width, data_billion[:, i], bar_width, label=components[i], color=color_mapping[components[i]])
         
         # Highlight min and max values with cross markers
         min_val = np.min(data_billion[:, i])
@@ -198,7 +205,8 @@ def plot_grouped_bar_chart(include_configs=None):
     plt.show()
 
 # Example usage:
-plot_grouped_bar_chart(include_configs=["National Combined", "Int. Combined", "Int. Combined,\nMulti-stage", "Int. Hub&Spoke"])
+plot_grouped_bar_chart()
+
 
 
 
