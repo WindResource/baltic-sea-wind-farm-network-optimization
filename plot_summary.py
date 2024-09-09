@@ -43,7 +43,7 @@ def plot_heatmap():
     norm = plt.Normalize(vmin=-num_std_dev * std_dev, vmax=num_std_dev * std_dev)
     
     # Create the plot
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(8, 6))
     cmap = sns.diverging_palette(240, 10, as_cmap=True, center="light")
     
     # Plot heatmap
@@ -75,7 +75,7 @@ def plot_heatmap():
     plt.show()
     
 # Call the updated function
-#plot_heatmap()
+plot_heatmap()
 
 
 def plot_grouped_bar_chart():
@@ -117,13 +117,13 @@ def plot_grouped_bar_chart():
     color_mapping = {
         "Wind farms": "forestgreen",       # Deep and rich green
         "Energy Hubs": "deepskyblue",      # Bright and vibrant blue
-        "Onshore substations": "gold",     # Bold and saturated yellow
+        "Onshore substations": "goldenrod",     # Bold and saturated yellow
         "Export cables": "limegreen",      # Bright and vibrant green
         "Onshore cables": "mediumseagreen", # Balanced and rich green
         "Overall System": "royalblue"      # Deep and saturated blue
     }
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), gridspec_kw={'height_ratios': [3, 1]})
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 4.5), gridspec_kw={'height_ratios': [3, 1]})
     
     # Plot bars for each component with specific colors
     handles = []
@@ -136,8 +136,9 @@ def plot_grouped_bar_chart():
         
         for bar in bars:
             height = bar.get_height()
-            # Add text within the bar just below the top
-            ax1.text(bar.get_x() + bar.get_width() / 2, height - 0.25, f'{height:.1f}', ha='center', va='top', fontsize=8, fontweight='bold', color='white')
+            # Add text within the bar just below the top (excluding specific components)
+            if component not in ["Energy Hubs", "Onshore substations"]:
+                ax1.text(bar.get_x() + bar.get_width() / 2, height - 0.25, f'{height:.1f}', ha='center', va='top', fontsize=8, fontweight='bold', color='white')
             if height == min_val and component != "Energy Hubs":
                 ax1.plot(bar.get_x() + bar.get_width() / 2, height, 'gx', markersize=10, markeredgewidth=2)
             if height == max_val:
@@ -159,7 +160,7 @@ def plot_grouped_bar_chart():
         for bar in bars:
             height = bar.get_height()
             if height > 0:  # Display value only if positive
-                ax2.text(bar.get_x() + bar.get_width() / 2, height - 0.025, f'{height:.1f}', ha='center', va='top', fontsize=8, fontweight='bold', color='white')
+                ax2.text(bar.get_x() + bar.get_width() / 2, height - 0.025, f'{height:.2f}', ha='center', va='top', fontsize=8, fontweight='bold', color='white')
             if height == min_val and components[i] != "Energy Hubs":
                 ax2.plot(bar.get_x() + bar.get_width() / 2, height, 'gx', markersize=10, markeredgewidth=2)
             if height == max_val:
@@ -207,7 +208,7 @@ def plot_grouped_bar_chart():
     plt.show()
 
 # Example usage:
-plot_grouped_bar_chart()
+# plot_grouped_bar_chart()
 
 
 
