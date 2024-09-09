@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib.ticker import MultipleLocator
+from matplotlib import gridspec
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Define font parameters
 font = {'family': 'serif',
@@ -48,7 +50,7 @@ def plot_heatmap():
     
     # Plot heatmap
     heatmap = sns.heatmap(data_filtered.T, annot=True, cmap=cmap, fmt=".2f", xticklabels=labels, yticklabels=components_filtered, 
-                        ax=ax, norm=norm, cbar_kws={"shrink": 1, "aspect": 10}, annot_kws={"size": 14})
+                        ax=ax, norm=norm, cbar=False, annot_kws={"size": 14})
     
     # Adjust axis labels and tick labels
     ax.xaxis.set_label_position('top')
@@ -59,24 +61,41 @@ def plot_heatmap():
     for text in ax.texts:
         text.set_text(f"${text.get_text()}$")
     
-    # Customize color bar
-    cbar = heatmap.collections[0].colorbar
+    # Calculate cell width based on the figure and heatmap dimensions
+    num_cols = len(labels)
+    heatmap_width = ax.get_position().width * fig.get_size_inches()[0]  # Width in inches
+    cell_width = heatmap_width / num_cols  # Width of one cell
+    
+    # Set the size and padding based on the calculated cell width
+    colorbar_size = cell_width / 3  # Color bar size as 1/3 of cell width
+    colorbar_pad = cell_width / 3  # Padding as 1/3 of cell width
+    
+    # Create a color bar with a height matching the heatmap y-axis height
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size=colorbar_size, pad=colorbar_pad)  # Use float values
+
+    cbar = fig.colorbar(heatmap.collections[0], cax=cax)
     cbar.set_label('(%)', rotation=0, ha='left', va='center', labelpad=10)
     cbar.ax.yaxis.label.set_size(14)
     cbar.ax.yaxis.label.set_fontweight('normal')
     cbar.ax.tick_params(labelsize=14)
+    
+    # Remove the black border around the color bar
+    cbar.outline.set_visible(False)
     
     # Highlight "Overall System" if present
     if "Overall System" in components_filtered:
         overall_system_index = components_filtered.index("Overall System")
         ax.yaxis.get_ticklabels()[overall_system_index].set_fontweight('bold')
 
+    # Set aspect ratio to ensure cells are square
+    ax.set_aspect('equal', 'box')
+
     plt.savefig('C:\\Users\\cflde\\Downloads\\heatmap.png', dpi=400, bbox_inches='tight')
     plt.show()
-    
+
 # Call the updated function
 plot_heatmap()
-
 
 def plot_grouped_bar_chart():
     include_configs = ["National Combined", "Int. Combined", "Int. Combined,\nMulti-stage", "Int. Hub&Spoke"]
