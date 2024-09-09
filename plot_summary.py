@@ -125,7 +125,7 @@ def plot_grouped_bar_chart():
     }
 
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 5), gridspec_kw={'height_ratios': [3, 1]})
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), gridspec_kw={'height_ratios': [3, 1]})
     
     # Plot bars for each component with specific colors
     handles = []
