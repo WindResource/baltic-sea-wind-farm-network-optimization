@@ -109,10 +109,9 @@ def plot_grouped_bar_chart():
     data_billion = data / 1000  # Convert to billions
     
     n_configurations = len(labels)
-    bar_width = 0.25
-    group_width = len(components) * bar_width + 0.2
-    index = np.arange(n_configurations) * group_width * 1.2
-    
+    bar_width = 1.0  # Increase bar width
+    group_width = len(components) * bar_width + 0.5  # Increase the group width for spacing
+    index = np.arange(n_configurations) * group_width
     
     # Define specific colors for each component with saturated colors
     color_mapping = {
@@ -124,8 +123,7 @@ def plot_grouped_bar_chart():
         "Overall System": "royalblue"      # Deep and saturated blue
     }
 
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), gridspec_kw={'height_ratios': [3, 1]})
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), gridspec_kw={'height_ratios': [3, 1]})
     
     # Plot bars for each component with specific colors
     handles = []
@@ -138,6 +136,8 @@ def plot_grouped_bar_chart():
         
         for bar in bars:
             height = bar.get_height()
+            # Add text within the bar just below the top
+            ax1.text(bar.get_x() + bar.get_width() / 2, height - 0.25, f'{height:.1f}', ha='center', va='top', fontsize=8, fontweight='bold', color='white')
             if height == min_val and component != "Energy Hubs":
                 ax1.plot(bar.get_x() + bar.get_width() / 2, height, 'gx', markersize=10, markeredgewidth=2)
             if height == max_val:
@@ -158,6 +158,8 @@ def plot_grouped_bar_chart():
         
         for bar in bars:
             height = bar.get_height()
+            if height > 0:  # Display value only if positive
+                ax2.text(bar.get_x() + bar.get_width() / 2, height - 0.025, f'{height:.1f}', ha='center', va='top', fontsize=8, fontweight='bold', color='white')
             if height == min_val and components[i] != "Energy Hubs":
                 ax2.plot(bar.get_x() + bar.get_width() / 2, height, 'gx', markersize=10, markeredgewidth=2)
             if height == max_val:
@@ -167,7 +169,7 @@ def plot_grouped_bar_chart():
     ax1.set_ylabel('Cost (B\u20AC)')
     ax1.set_xticks(index + bar_width * (len(components) / 2))
     ax1.set_xticklabels(labels, rotation=45, ha='right')
-    ax1.set_xlim(-0.5, index[-1] + len(components) * bar_width + 0.5)
+    ax1.set_xlim(-0.5, index[-1] + bar_width * len(components) - 0.5)
     ax1.set_ylim(0, np.max(data_billion) + 2)
     # Set grid lines for the main plot
     ax1.yaxis.set_major_locator(MultipleLocator(5))
@@ -180,7 +182,7 @@ def plot_grouped_bar_chart():
     ax2.set_ylabel('Cost (B\u20AC)')
     ax2.set_xticks(index + bar_width * (len(components) / 2))
     ax2.set_xticklabels(labels, rotation=0, ha='center')
-    ax2.set_xlim(-0.5, index[-1] + len(components) * bar_width + 0.5)
+    ax2.set_xlim(-0.5, index[-1] + bar_width * len(components) - 0.5)
     ax2.set_ylim(0, np.max(data_billion[:, zoom_indices]) + 0.1)
     # Set grid lines for the zoomed plot
     ax2.yaxis.set_major_locator(MultipleLocator(0.5/2))
